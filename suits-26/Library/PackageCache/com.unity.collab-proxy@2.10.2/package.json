@@ -1,0 +1,42 @@
+{
+  "name": "com.unity.collab-proxy",
+  "displayName": "Unity Version Control",
+  "version": "2.10.2",
+  "unity": "2021.3",
+  "unityRelease": "0f1",
+  "description": "The package gives you the ability to use Unity Version Control in the Unity editor. To use Unity Version Control, a subscription is required. Learn more about how you can get started for free by visiting https://unity.com/solutions/version-control",
+  "dependencies": {},
+  "keywords": [
+    "backup",
+    "cloud",
+    "collab",
+    "collaborate",
+    "collaboration",
+    "control",
+    "devops",
+    "plastic",
+    "plasticscm",
+    "source",
+    "team",
+    "teams",
+    "version",
+    "vcs",
+    "uvcs"
+  ],
+  "category": "Editor",
+  "relatedPackages": {
+    "com.unity.collab-proxy.tests": "2.10.2"
+  },
+  "_upm": {
+    "changelog": "### Fixed\n\n- Fixed the Toolbar button icon that was not visible for uncontrolled projects for Editor older than Unity 6.3.\n- Fixed the Pending changes view that was refreshed on window activation for no reason.\n- Fixed Library folder that was sometimes wrongly added to source control on a new project created from the Hub."
+  },
+  "upmCi": {
+    "footprint": "ac998fa341ca6794a266ce1563e56751edb89180"
+  },
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.collab-proxy@2.10/manual/index.html",
+  "repository": {
+    "url": "https://github.cds.internal.unity3d.com/unity/com.unity.cloud.collaborate.git",
+    "type": "git",
+    "revision": "53b710e518c9aaa47eeb059db533c0588530450f"
+  }
+}
