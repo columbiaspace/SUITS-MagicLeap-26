@@ -2,7 +2,7 @@
 This repo is for developing our EVA Astronaut assistance program on the Magic Leap 2
 
 ### Introduction
-ROARR, Space Cadets! You've landed in the cosmic command center of Team CUITS of the Columbia Space Initiative, boldly venturing into the NASA SUITS (Spacesuit User Interface Technologies for Students) Challenge for the stellar year 2025-26! Prepare for an intergalactic coding adventure.
+ROARR, Space Cadets! You've landed in the cosmic command center of Team Lunar Lions of the Columbia Space Initiative, boldly venturing into the NASA SUITS (Spacesuit User Interface Technologies for Students) Challenge for the stellar year 2025-26! Prepare for an intergalactic coding adventure.
 
 ### Contribution Guidelines
 To navigate the stars with us, here are the rules for contributing to the NASA SUITS repository:
@@ -18,7 +18,6 @@ To navigate the stars with us, here are the rules for contributing to the NASA S
 - ALWAYS close Unity before committing and pushing to your branch. Let's avoid space-time paradoxes and keep our coding universe in order.
 - Add any unnecessary generated files (like build, log, memory captures, or mac DS files) to .gitignore. This will make merging a lot easier! Remember to leave scene, config & obj files so people can properly run your code!
 - Make sure to be on `Unity Editor Version 2022.3.7` or higher. 
-- Remember to use the MRTK library components when development for 3D space.
 
 #### 3. Merging to Main
 - 🚀 Merges to the main branch will be celebrated during our out-of-this-world group meetings. Keep your creations on your own branch until the cosmic council approves a merge.
@@ -26,7 +25,7 @@ To navigate the stars with us, here are the rules for contributing to the NASA S
 ### Current Members
 Meet our stellar crew navigating the NASA SUITS challenge: 
 
-- Grace
+- Grace :)
 - Hiba
 - add your names here
 
