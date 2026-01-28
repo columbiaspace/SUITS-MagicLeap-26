@@ -33,6 +33,7 @@ Meet our stellar crew navigating the NASA SUITS challenge:
 - Ava
 - Thea
 - Alex Tu
+- Richard Li
 - Erica Z.
 - Julia
 
