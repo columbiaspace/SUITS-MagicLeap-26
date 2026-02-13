@@ -36,6 +36,7 @@ Meet our stellar crew navigating the NASA SUITS challenge:
 - Richard Li
 - Erica Z.
 - Julia
+- Henry H.
 
 May the code be with you, intrepid space explorer! 🚀🌌
 
