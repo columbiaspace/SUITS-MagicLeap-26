@@ -24,6 +24,7 @@ public sealed class PipelineController : MonoBehaviour
     private IPostProcessor _post;
     private OverlayRenderer _overlay;
     private DebugHud _debugHud;
+    private StatusBorderEffect _statusEffect;
     private bool _ready;
     private readonly Stopwatch _inferenceStopwatch = new();
 
@@ -38,6 +39,7 @@ public sealed class PipelineController : MonoBehaviour
 
         _overlay = GetComponent<OverlayRenderer>();
         _debugHud = GetComponent<DebugHud>();
+        _statusEffect = GetComponent<StatusBorderEffect>();
 
         _post = new MockPostProcessor();
 
@@ -48,6 +50,7 @@ public sealed class PipelineController : MonoBehaviour
             _runner = new MockModelRunner();
             _debugHud?.SetModelStatus("mock");
             _ready = true;
+            _statusEffect?.TriggerActivation();
             yield break;
         }
 #endif
@@ -71,6 +74,7 @@ public sealed class PipelineController : MonoBehaviour
             _runner = new OrtModelRunner(modelPath);
             _debugHud?.SetModelStatus("ORT ready");
             _ready = true;
+            _statusEffect?.TriggerActivation();
         }
         catch (System.Exception ex)
         {
