@@ -15,9 +15,6 @@ public class NavigationManager : MonoBehaviour
     private const float HEAD_Y_OFFSET = 0.34f;
 
     // Inspector Fields
-    [Header("References")]
-    [SerializeField] private Transform xrOrigin;
-
     [Header("Pin Settings")]
     [SerializeField] private Vector3 pinPosition = new Vector3(3f, 0f, 3f);
     [SerializeField] private Color pinColor = Color.red;
@@ -29,11 +26,13 @@ public class NavigationManager : MonoBehaviour
     // Private State
     private LineRenderer lineRenderer;
     private GameObject pinMarker;
+    private Transform headsetTransform;
 
     // Lifecycle
 
     void Start()
     {
+        headsetTransform = Camera.main.transform;
         CreatePinMarker();
         SetupLineRenderer();
     }
@@ -49,7 +48,7 @@ public class NavigationManager : MonoBehaviour
 
     private bool IsReady()
     {
-        return xrOrigin != null && lineRenderer != null;
+        return headsetTransform != null && lineRenderer != null;
     }
 
     // Path Updates
@@ -64,7 +63,7 @@ public class NavigationManager : MonoBehaviour
 
     private Vector3 GetUserGroundPosition()
     {
-        return ProjectToGround(xrOrigin.position);
+        return ProjectToGround(headsetTransform.position);
     }
 
     private Vector3 GetPinGroundPosition()
