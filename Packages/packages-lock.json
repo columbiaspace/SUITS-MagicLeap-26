@@ -8,7 +8,7 @@
       "hash": "f718da7db057f894efa01de982d84eec83e57bc8"
     },
     "com.magicleap.unitysdk": {
-      "version": "file:/Users/admin/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
+      "version": "file:/Users/tu15/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
       "depth": 0,
       "source": "local-tarball",
       "dependencies": {
