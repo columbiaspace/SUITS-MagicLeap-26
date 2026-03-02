@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using TssApi;
 using UnityEngine;
@@ -10,6 +11,9 @@ public class ImageCarouselUI : MonoBehaviour
     {
         MissionStarted,
         UiaEva1Power,
+        UiaEva1Oxy,
+        UiaEva1WaterSupply,
+        UiaEva1WaterWaste,
         UiaDepress,
         UiaOxyVent,
         DcuEva1BattUmb,
@@ -52,11 +56,11 @@ public class ImageCarouselUI : MonoBehaviour
 
     [Header("Auto Progress (EVA1)")]
     [SerializeField] private bool autoProgressEnabled = true;
+    [SerializeField] private float stateSyncIntervalSeconds = 0.2f;
     [SerializeField] private List<EvaStepRule> stepRules = new List<EvaStepRule>();
 
     private int index;
-    private int stepIndex;
-    private bool? lastCurrentStepPassed;
+    private Coroutine syncCoroutine;
 
     private void Awake()
     {
@@ -76,8 +80,6 @@ public class ImageCarouselUI : MonoBehaviour
         }
 
         index = 0;
-        stepIndex = 0;
-        lastCurrentStepPassed = null;
         Refresh();
     }
 
@@ -89,10 +91,18 @@ public class ImageCarouselUI : MonoBehaviour
         }
 
         tssApi.EvaUpdated += OnPacketUpdated;
+        SyncFromApiState();
+        syncCoroutine = StartCoroutine(SyncLoop());
     }
 
     private void OnDisable()
     {
+        if (syncCoroutine != null)
+        {
+            StopCoroutine(syncCoroutine);
+            syncCoroutine = null;
+        }
+
         if (tssApi != null)
         {
             tssApi.EvaUpdated -= OnPacketUpdated;
@@ -109,38 +119,47 @@ public class ImageCarouselUI : MonoBehaviour
         AdvanceIfReady(packet);
     }
 
+    private IEnumerator SyncLoop()
+    {
+        WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, stateSyncIntervalSeconds));
+        while (autoProgressEnabled)
+        {
+            SyncFromApiState();
+            yield return wait;
+        }
+    }
+
+    private void SyncFromApiState()
+    {
+        if (tssApi == null)
+        {
+            return;
+        }
+
+        Dictionary<string, object> eva = tssApi.GetEva();
+        if (eva == null || eva.Count == 0)
+        {
+            return;
+        }
+
+        object uiaEva1Power = GetPath(eva, "uia.eva1_power");
+        Debug.Log("[SYNC] uia.eva1_power = " + uiaEva1Power);
+
+        AdvanceIfReady(eva);
+    }
+
     private void AdvanceIfReady(Dictionary<string, object> packet)
     {
-        if (stepRules.Count == 0 || stepIndex >= stepRules.Count)
+        if (stepRules.Count == 0 || slides.Count == 0) return;
+
+        int completed = 0;
+        for (int i = 0; i < stepRules.Count; i++)
         {
-            return;
+            if (EvaluateRule(stepRules[i], packet)) completed++;
+            else break; // stop at first unmet (ordered procedure)
         }
 
-        EvaStepRule currentRule = stepRules[stepIndex];
-        bool currentPass = EvaluateRule(currentRule, packet);
-
-        if (!lastCurrentStepPassed.HasValue)
-        {
-            lastCurrentStepPassed = currentPass;
-            return;
-        }
-
-        // Advance only on false -> true transition for the current step.
-        if (lastCurrentStepPassed.Value || !currentPass)
-        {
-            lastCurrentStepPassed = currentPass;
-            return;
-        }
-
-        stepIndex++;
-        lastCurrentStepPassed = null;
-
-        if (slides.Count == 0)
-        {
-            return;
-        }
-
-        index = Mathf.Min(stepIndex, slides.Count - 1);
+        index = Mathf.Clamp(completed, 0, slides.Count - 1);
         Refresh();
     }
 
@@ -182,6 +201,9 @@ public class ImageCarouselUI : MonoBehaviour
         {
             EvaField.MissionStarted => "status.started",
             EvaField.UiaEva1Power => "uia.eva1_power",
+            EvaField.UiaEva1Oxy => "uia.eva1_oxy",
+            EvaField.UiaEva1WaterSupply => "uia.eva1_water_supply",
+            EvaField.UiaEva1WaterWaste => "uia.eva1_water_waste",
             EvaField.UiaDepress => "uia.depress",
             EvaField.UiaOxyVent => "uia.oxy_vent",
             EvaField.DcuEva1BattUmb => "dcu.eva1.batt.lu",
@@ -321,20 +343,9 @@ public class ImageCarouselUI : MonoBehaviour
         {
             new EvaStepRule { name = "Mission started", field = EvaField.MissionStarted, comparison = StepComparison.BoolIsTrue },
             new EvaStepRule { name = "EV1 EMU power on", field = EvaField.UiaEva1Power, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "Batt umbilical selected", field = EvaField.DcuEva1BattUmb, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "Depress enabled", field = EvaField.UiaDepress, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "O2 vent open", field = EvaField.UiaOxyVent, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "Primary O2 tank below 10", field = EvaField.Eva1OxyPriStorage, comparison = StepComparison.FloatLessOrEqual, targetValue = 10f },
-            new EvaStepRule { name = "Secondary O2 tank below 10", field = EvaField.Eva1OxySecStorage, comparison = StepComparison.FloatLessOrEqual, targetValue = 10f },
-            new EvaStepRule { name = "O2 vent closed", field = EvaField.UiaOxyVent, comparison = StepComparison.BoolIsFalse },
-            new EvaStepRule { name = "Primary O2 pressure above 3000 psi", field = EvaField.Eva1OxyPriPressure, comparison = StepComparison.FloatGreaterOrEqual, targetValue = 3000f },
-            new EvaStepRule { name = "Secondary O2 pressure above 3000 psi", field = EvaField.Eva1OxySecPressure, comparison = StepComparison.FloatGreaterOrEqual, targetValue = 3000f },
-            new EvaStepRule { name = "Suit pressure O2 near 4", field = EvaField.Eva1SuitPressureOxy, comparison = StepComparison.FloatNear, targetValue = 4f, tolerance = 0.1f },
-            new EvaStepRule { name = "Depress pump off", field = EvaField.UiaDepress, comparison = StepComparison.BoolIsFalse },
-            new EvaStepRule { name = "Batt local selected", field = EvaField.DcuEva1BattLocal, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "EV1 EMU power off", field = EvaField.UiaEva1Power, comparison = StepComparison.BoolIsFalse },
-            new EvaStepRule { name = "Verify fan primary", field = EvaField.DcuEva1Fan, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "Verify CO2-A", field = EvaField.DcuEva1Co2, comparison = StepComparison.BoolIsTrue }
+            new EvaStepRule { name = "EV1 oxygen on", field = EvaField.UiaEva1Oxy, comparison = StepComparison.BoolIsTrue },
+            new EvaStepRule { name = "EV1 water supply on", field = EvaField.UiaEva1WaterSupply, comparison = StepComparison.BoolIsTrue },
+            new EvaStepRule { name = "EV1 water waste on", field = EvaField.UiaEva1WaterWaste, comparison = StepComparison.BoolIsTrue }
         };
     }
 

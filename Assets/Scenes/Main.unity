@@ -501,11 +501,36 @@ MonoBehaviour:
   slides:
   - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 50b05fbcf1d2e48b59aeb3ec8d2bb90e, type: 3}
+  - {fileID: 21300000, guid: b879001c78f4d46ff889585dfb9f6c71, type: 3}
+  - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   tssApi: {fileID: 782628376}
   autoProgressEnabled: 1
+  stateSyncIntervalSeconds: 0.2
   stepRules:
   - name: 
+    field: 0
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: 
     field: 1
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: 
+    field: 2
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: 
+    field: 3
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: 
+    field: 4
     comparison: 0
     targetValue: 0
     tolerance: 0
