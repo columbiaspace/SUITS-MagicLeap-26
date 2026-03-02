@@ -99,7 +99,8 @@ InitTestScene*.unity*
 /[Aa]ssets/[Ii]nit[Tt]est[Ss]cene*.unity*
 
 .DS_Store
-test*
 Assets/UI-Prefab/.DS_Store
 Assets/XR/Temp/
 Assets/TextMesh Pro/
+*apk
+test*
