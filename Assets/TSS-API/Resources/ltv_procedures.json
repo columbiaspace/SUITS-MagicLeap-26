@@ -1,0 +1,186 @@
+{
+  "ltv": {
+    "erm": {
+      "title": "Emergency Recovery Mode",
+      "description": "Stabilize and exit recovery mode before subsystem-specific repair.",
+      "steps": [
+        {
+          "id": "erm-1",
+          "instruction": "Verify recovery mode condition is present.",
+          "completion_criteria": [
+            { "path": "ltv.errors.recovery_mode", "op": "eq", "value": true }
+          ],
+          "criticality": "critical",
+          "hint": "Use this as your branch gate before deeper repairs.",
+          "voice_short": "Confirm recovery mode is active."
+        },
+        {
+          "id": "erm-2",
+          "instruction": "Perform recovery actions and clear recovery mode.",
+          "completion_criteria": [
+            { "path": "ltv.errors.recovery_mode", "op": "eq", "value": false }
+          ],
+          "criticality": "critical",
+          "hint": "Do not proceed while recovery mode remains active.",
+          "voice_short": "Clear recovery mode."
+        }
+      ]
+    },
+    "power_distribution_reset": {
+      "title": "Power Distribution Reset",
+      "description": "Recover power routing and validate downstream systems.",
+      "steps": [
+        {
+          "id": "pdr-1",
+          "instruction": "Confirm power distribution fault is active.",
+          "completion_criteria": [
+            { "path": "ltv.errors.power_distribution", "op": "eq", "value": true }
+          ],
+          "criticality": "critical",
+          "hint": "If not active, this procedure may be unnecessary.",
+          "voice_short": "Check power distribution fault."
+        },
+        {
+          "id": "pdr-2",
+          "instruction": "Reset power distribution path and verify fault clears.",
+          "completion_criteria": [
+            { "path": "ltv.errors.power_distribution", "op": "eq", "value": false }
+          ],
+          "criticality": "critical",
+          "hint": "Validate stable power before moving on.",
+          "voice_short": "Reset and clear power distribution."
+        }
+      ]
+    },
+    "nav_restart": {
+      "title": "NAV System Restart",
+      "description": "Restart navigation and ensure NAV fault clears.",
+      "steps": [
+        {
+          "id": "nav-1",
+          "instruction": "Confirm NAV system error is active.",
+          "completion_criteria": [
+            { "path": "ltv.errors.nav_system", "op": "eq", "value": true }
+          ],
+          "criticality": "critical",
+          "hint": "Only run NAV restart when NAV error is set.",
+          "voice_short": "Confirm NAV error."
+        },
+        {
+          "id": "nav-2",
+          "instruction": "Execute NAV restart and verify error clears.",
+          "completion_criteria": [
+            { "path": "ltv.errors.nav_system", "op": "eq", "value": false }
+          ],
+          "criticality": "critical",
+          "hint": "Confirm position updates once restarted.",
+          "voice_short": "Restart NAV and confirm clear."
+        }
+      ]
+    },
+    "fuse_service": {
+      "title": "Fuse Service",
+      "description": "Inspect and clear fuse condition.",
+      "steps": [
+        {
+          "id": "fuse-1",
+          "instruction": "Confirm fuse error is active.",
+          "completion_criteria": [
+            { "path": "ltv.errors.fuse", "op": "eq", "value": true }
+          ],
+          "criticality": "critical",
+          "hint": "Perform electrical isolation before replacement.",
+          "voice_short": "Confirm fuse fault."
+        },
+        {
+          "id": "fuse-2",
+          "instruction": "Replace or reset fuse and verify error clears.",
+          "completion_criteria": [
+            { "path": "ltv.errors.fuse", "op": "eq", "value": false }
+          ],
+          "criticality": "critical",
+          "hint": "Verify no immediate re-trip after restoration.",
+          "voice_short": "Service fuse and clear fault."
+        }
+      ]
+    },
+    "comms_recover": {
+      "title": "Comms Recover",
+      "description": "Recover communications channel and validate signal path.",
+      "steps": [
+        {
+          "id": "comms-1",
+          "instruction": "Confirm comms error is active.",
+          "completion_criteria": [
+            { "path": "ltv.errors.comms", "op": "eq", "value": true }
+          ],
+          "criticality": "critical",
+          "hint": "Check interface and antenna links before reset.",
+          "voice_short": "Confirm comms fault."
+        },
+        {
+          "id": "comms-2",
+          "instruction": "Recover comms and verify fault clears.",
+          "completion_criteria": [
+            { "path": "ltv.errors.comms", "op": "eq", "value": false }
+          ],
+          "criticality": "critical",
+          "hint": "Recheck signal after restoration.",
+          "voice_short": "Restore comms and verify clear."
+        }
+      ]
+    },
+    "dust_sensor_clean": {
+      "title": "Dust Sensor Clean",
+      "description": "Clear dust sensor issues and verify normal operation.",
+      "steps": [
+        {
+          "id": "dust-1",
+          "instruction": "Confirm dust sensor error is active.",
+          "completion_criteria": [
+            { "path": "ltv.errors.dust_sensor", "op": "eq", "value": true }
+          ],
+          "criticality": "optional",
+          "hint": "Inspect contamination around the sensor head.",
+          "voice_short": "Confirm dust sensor fault."
+        },
+        {
+          "id": "dust-2",
+          "instruction": "Clean sensor and verify error clears.",
+          "completion_criteria": [
+            { "path": "ltv.errors.dust_sensor", "op": "eq", "value": false }
+          ],
+          "criticality": "optional",
+          "hint": "If recurring, escalate to hardware replacement.",
+          "voice_short": "Clean sensor and clear fault."
+        }
+      ]
+    },
+    "electronic_heater_recover": {
+      "title": "Electronic Heater Recover",
+      "description": "Recover heater subsystem and verify nominal state.",
+      "steps": [
+        {
+          "id": "heat-1",
+          "instruction": "Confirm electronic heater error is active.",
+          "completion_criteria": [
+            { "path": "ltv.errors.electronic_heater", "op": "eq", "value": true }
+          ],
+          "criticality": "critical",
+          "hint": "Heater faults can propagate to power draw anomalies.",
+          "voice_short": "Confirm heater fault."
+        },
+        {
+          "id": "heat-2",
+          "instruction": "Execute heater recovery and verify error clears.",
+          "completion_criteria": [
+            { "path": "ltv.errors.electronic_heater", "op": "eq", "value": false }
+          ],
+          "criticality": "critical",
+          "hint": "Monitor post-recovery thermal behavior.",
+          "voice_short": "Recover heater and verify clear."
+        }
+      ]
+    }
+  }
+}
