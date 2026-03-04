@@ -13,7 +13,7 @@ PlayerSettings:
   useOnDemandResources: 0
   accelerometerFrequency: 60
   companyName: CSISUITS
-  productName: 2026SUITS
+  productName: SUITS2026
   defaultCursor: {fileID: 0}
   cursorHotspot: {x: 0, y: 0}
   m_SplashScreenBackgroundColor: {r: 0.13725491, g: 0.12156863, b: 0.1254902, a: 1}
@@ -134,7 +134,10 @@ PlayerSettings:
   vulkanEnableCommandBufferRecycling: 1
   loadStoreDebugModeEnabled: 0
   bundleVersion: 0.1
-  preloadedAssets: []
+  preloadedAssets:
+  - {fileID: 6967921907048044934, guid: c761bc8a9a07b4bbd896483595753c2d, type: 2}
+  - {fileID: 11400000, guid: 81fe73fad731b4c30af147196646e16a, type: 2}
+  - {fileID: 4629081107691164802, guid: 8ed9a45425179499dbcea186030840ed, type: 2}
   metroInputSource: 0
   wsaTransparentSwapchain: 0
   m_HolographicPauseOnTrackingLoss: 1
@@ -154,7 +157,7 @@ PlayerSettings:
   androidSupportedAspectRatio: 1
   androidMaxAspectRatio: 2.1
   applicationIdentifier:
-    Android: com.CSISUITS.2026SUITS
+    Android: com.CSISUITS.SUITS2026
     Standalone: com.DefaultCompany.2026SUITS
   buildNumber:
     Standalone: 0
