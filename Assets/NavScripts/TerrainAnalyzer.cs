@@ -23,9 +23,9 @@ public class TerrainAnalyzer : MonoBehaviour
 
     [Header("Walkability Thresholds")]
     [Tooltip("Slope angle (degrees) beyond which terrain is fully unwalkable")]
-    [SerializeField] private float maxSlopeDegrees = 30f;
+    [SerializeField] private float maxSlopeDegrees = 3f;
     [Tooltip("Height range (meters) within a single tile beyond which it's fully unwalkable")]
-    [SerializeField] private float maxHeightRange = 0.3f;
+    [SerializeField] private float maxHeightRange = 0.02f;
     [Tooltip("Blend factor for slope vs height: 0 = height only, 1 = slope only")]
     [Range(0f, 1f)]
     [SerializeField] private float slopeBlendFactor = 0.6f;
@@ -52,6 +52,9 @@ public class TerrainAnalyzer : MonoBehaviour
 
     private void Start()
     {
+        maxSlopeDegrees = 25f;
+        maxHeightRange = 0.2f;
+        slopeBlendFactor = 0.6f;
         BuildGrid();
     }
 

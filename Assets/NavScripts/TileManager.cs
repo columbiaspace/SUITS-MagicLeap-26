@@ -20,14 +20,14 @@ public class TileManager : MonoBehaviour
     [SerializeField] private Color cautionColor = new Color(1f, 0.85f, 0f, 0.6f);
     [SerializeField] private Color unwalkableColor = new Color(0.9f, 0.15f, 0.1f, 0.6f);
     [SerializeField] private Color pathColor = new Color(0.2f, 0.5f, 1.0f, 0.9f);
-    [SerializeField] private float walkableThreshold = 0.3f;
-    [SerializeField] private float unwalkableThreshold = 0.7f;
+    [SerializeField] private float walkableThreshold = 0.1f;
+    [SerializeField] private float unwalkableThreshold = 0.25f;
     [SerializeField] private float skipThreshold = 1.1f;
 
     [Header("Debug Path (desktop testing)")]
     [Tooltip("Automatically compute and display a test path after tiles spawn")]
     [SerializeField] private bool showDebugPath = true;
-    [SerializeField] private float pathImpassableThreshold = 0.9f;
+    [SerializeField] private float pathImpassableThreshold = 0.3f;
 
     [Header("IMU Position")]
     [SerializeField] private bool useImuPosition = true;
@@ -60,6 +60,10 @@ public class TileManager : MonoBehaviour
                       && anchorManager.subsystem != null;
         _mpb = new MaterialPropertyBlock();
         _unlitMaterial = new Material(Shader.Find("Unlit/Color"));
+
+        walkableThreshold = 0.25f;
+        unwalkableThreshold = 0.55f;
+        pathImpassableThreshold = 0.6f;
     }
 
     void Update()
@@ -165,8 +169,8 @@ public class TileManager : MonoBehaviour
             return cmp != 0 ? cmp : a.y.CompareTo(b.y);
         });
 
-        Vector2Int start = walkable[0];
-        Vector2Int goal = walkable[walkable.Count - 1];
+        Vector2Int start = walkable[walkable.Count / 4];
+        Vector2Int goal = walkable[walkable.Count * 3 / 4];
 
         _debugStatus = $"A* running: {start} -> {goal} ({walkable.Count} walkable)";
         Debug.Log($"TileManager: Computing debug path from {start} to {goal} ({walkable.Count} walkable cells)...");
