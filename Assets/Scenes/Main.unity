@@ -170,6 +170,7 @@ MonoBehaviour:
   maxSlopeDegrees: 30
   maxHeightRange: 0.3
   slopeBlendFactor: 0.6
+  impassableThreshold: 0.6
 --- !u!4 &223974228
 Transform:
   m_ObjectHideFlags: 0
@@ -510,7 +511,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &782628376
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -518,7 +519,7 @@ MonoBehaviour:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 782628375}
-  m_Enabled: 0
+  m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
@@ -978,18 +979,7 @@ MonoBehaviour:
   xrOrigin: {fileID: 369427047}
   anchorManager: {fileID: 369427049}
   tilePrefab: {fileID: 1166795026}
-  spawnRadius: 5
-  maxTiles: 200
-  walkableColor: {r: 0.1, g: 0.85, b: 0.2, a: 0.6}
-  cautionColor: {r: 1, g: 0.85, b: 0, a: 0.6}
-  unwalkableColor: {r: 0.9, g: 0.15, b: 0.1, a: 0.6}
   pathColor: {r: 0.2, g: 0.5, b: 1, a: 0.9}
-  walkableThreshold: 0.3
-  unwalkableThreshold: 0.7
-  skipThreshold: 1.1
-  showDebugPath: 1
-  pathImpassableThreshold: 0.9
-  useImuPosition: 1
   evaId: eva1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:

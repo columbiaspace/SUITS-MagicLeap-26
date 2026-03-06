@@ -31,6 +31,13 @@ public class TerrainAnalyzer : MonoBehaviour
 
     private float _objMinX, _objMaxX, _objMinZ, _objMaxZ;
 
+    private struct CellTerrain
+    {
+        public float maxSlope;
+        public float minY;
+        public float maxY;
+    }
+
     public IEnumerable<Vector2Int> AllCells => _walkabilityGrid.Keys;
     public HashSet<Vector2Int> WalkableSet => _walkableSet;
 
@@ -54,29 +61,23 @@ public class TerrainAnalyzer : MonoBehaviour
         BuildGrid();
     }
 
+    // --- Public queries ---
+
     public float GetWeight(Vector2Int gridCell)
     {
-        if (_walkabilityGrid.TryGetValue(gridCell, out float weight))
-            return weight;
-        return -1f;
+        return _walkabilityGrid.TryGetValue(gridCell, out float weight) ? weight : -1f;
     }
 
     public float GetHeight(Vector2Int gridCell)
     {
-        if (_heightGrid.TryGetValue(gridCell, out float h))
-            return h;
-        return 0f;
+        return _heightGrid.TryGetValue(gridCell, out float h) ? h : 0f;
     }
 
-    public bool HasData(Vector2Int gridCell)
-    {
-        return _walkabilityGrid.ContainsKey(gridCell);
-    }
+    public bool HasData(Vector2Int gridCell) => _walkabilityGrid.ContainsKey(gridCell);
 
-    public bool IsWalkable(Vector2Int gridCell)
-    {
-        return _walkableSet.Contains(gridCell);
-    }
+    public bool IsWalkable(Vector2Int gridCell) => _walkableSet.Contains(gridCell);
+
+    // --- Coordinate conversions ---
 
     public Vector2Int DustToGrid(float dustX, float dustY)
     {
@@ -92,28 +93,53 @@ public class TerrainAnalyzer : MonoBehaviour
         return new Vector2Int(gx, gz);
     }
 
+    // --- Grid construction pipeline ---
+
     private void BuildGrid()
     {
+        if (!ValidateMesh(out Vector3[] verts, out int[] tris))
+            return;
+
+        ComputeBounds(verts);
+
+        var cellTerrain = AccumulateTriangleSlopesAndHeights(verts, tris);
+        ClassifyCells(cellTerrain);
+
+        IsReady = true;
+        Debug.Log($"TerrainAnalyzer: Grid built — {_walkabilityGrid.Count} total cells, " +
+                  $"{_walkableSet.Count} walkable (threshold {impassableThreshold}). " +
+                  $"OBJ bounds X[{_objMinX:F2},{_objMaxX:F2}] Z[{_objMinZ:F2},{_objMaxZ:F2}]");
+    }
+
+    private bool ValidateMesh(out Vector3[] verts, out int[] tris)
+    {
+        verts = null;
+        tris = null;
+
         if (terrainMesh == null)
         {
             Debug.LogError("TerrainAnalyzer: No terrain mesh assigned.");
-            return;
+            return false;
         }
 
-        Vector3[] verts = terrainMesh.vertices;
-        int[] tris = terrainMesh.triangles;
+        verts = terrainMesh.vertices;
+        tris = terrainMesh.triangles;
 
         if (verts.Length == 0 || tris.Length == 0)
         {
             Debug.LogError("TerrainAnalyzer: Terrain mesh has no geometry.");
-            return;
+            return false;
         }
 
-        ComputeBounds(verts);
+        return true;
+    }
 
-        var cellSlopes = new Dictionary<Vector2Int, float>();
-        var cellMinY = new Dictionary<Vector2Int, float>();
-        var cellMaxY = new Dictionary<Vector2Int, float>();
+    /// For each grid cell that overlaps a triangle, record the steepest
+    /// slope angle and the min/max vertex height seen in that cell.
+    private Dictionary<Vector2Int, CellTerrain> AccumulateTriangleSlopesAndHeights(
+        Vector3[] verts, int[] tris)
+    {
+        var cells = new Dictionary<Vector2Int, CellTerrain>();
 
         for (int i = 0; i < tris.Length; i += 3)
         {
@@ -121,44 +147,72 @@ public class TerrainAnalyzer : MonoBehaviour
             Vector3 b = verts[tris[i + 1]];
             Vector3 c = verts[tris[i + 2]];
 
-            Vector3 normal = Vector3.Cross(b - a, c - a).normalized;
-            float slopeDeg = Vector3.Angle(normal, Vector3.up);
-
-            Vector3 centroid = (a + b + c) / 3f;
-            Vector2Int cell = ObjToGrid(centroid.x, centroid.z);
-
-            if (!cellSlopes.ContainsKey(cell) || slopeDeg > cellSlopes[cell])
-                cellSlopes[cell] = slopeDeg;
-
+            float slopeDeg = TriangleSlopeDegrees(a, b, c);
+            Vector2Int cell = TriangleCentroidCell(a, b, c);
             float triMinY = Mathf.Min(a.y, Mathf.Min(b.y, c.y));
             float triMaxY = Mathf.Max(a.y, Mathf.Max(b.y, c.y));
 
-            if (!cellMinY.ContainsKey(cell) || triMinY < cellMinY[cell])
-                cellMinY[cell] = triMinY;
-            if (!cellMaxY.ContainsKey(cell) || triMaxY > cellMaxY[cell])
-                cellMaxY[cell] = triMaxY;
+            if (cells.TryGetValue(cell, out CellTerrain existing))
+            {
+                existing.maxSlope = Mathf.Max(existing.maxSlope, slopeDeg);
+                existing.minY = Mathf.Min(existing.minY, triMinY);
+                existing.maxY = Mathf.Max(existing.maxY, triMaxY);
+                cells[cell] = existing;
+            }
+            else
+            {
+                cells[cell] = new CellTerrain
+                {
+                    maxSlope = slopeDeg,
+                    minY = triMinY,
+                    maxY = triMaxY
+                };
+            }
         }
 
-        foreach (Vector2Int cell in cellSlopes.Keys)
+        return cells;
+    }
+
+    /// Angle in degrees between the triangle face normal and world-up.
+    private static float TriangleSlopeDegrees(Vector3 a, Vector3 b, Vector3 c)
+    {
+        Vector3 normal = Vector3.Cross(b - a, c - a).normalized;
+        return Vector3.Angle(normal, Vector3.up);
+    }
+
+    /// Grid cell that contains the triangle's centroid.
+    private Vector2Int TriangleCentroidCell(Vector3 a, Vector3 b, Vector3 c)
+    {
+        Vector3 centroid = (a + b + c) / 3f;
+        return ObjToGrid(centroid.x, centroid.z);
+    }
+
+    /// Converts raw slope/height data into a 0-1 walkability weight per cell,
+    /// records average height, and marks cells below the impassable threshold
+    /// as walkable.
+    private void ClassifyCells(Dictionary<Vector2Int, CellTerrain> cellTerrain)
+    {
+        foreach (var kvp in cellTerrain)
         {
-            float slope = cellSlopes[cell];
-            float heightRange = cellMaxY[cell] - cellMinY[cell];
+            Vector2Int cell = kvp.Key;
+            CellTerrain terrain = kvp.Value;
 
-            float slopeWeight = Mathf.Clamp01(slope / maxSlopeDegrees);
-            float heightWeight = Mathf.Clamp01(heightRange / maxHeightRange);
-
-            float weight = slopeWeight * slopeBlendFactor + heightWeight * (1f - slopeBlendFactor);
-            _walkabilityGrid[cell] = Mathf.Clamp01(weight);
-            _heightGrid[cell] = (cellMinY[cell] + cellMaxY[cell]) * 0.5f;
+            float weight = BlendedDifficultyWeight(terrain.maxSlope, terrain.maxY - terrain.minY);
+            _walkabilityGrid[cell] = weight;
+            _heightGrid[cell] = (terrain.minY + terrain.maxY) * 0.5f;
 
             if (weight < impassableThreshold)
                 _walkableSet.Add(cell);
         }
+    }
 
-        IsReady = true;
-        Debug.Log($"TerrainAnalyzer: Grid built — {_walkabilityGrid.Count} total cells, " +
-                  $"{_walkableSet.Count} walkable (threshold {impassableThreshold}). " +
-                  $"OBJ bounds X[{_objMinX:F2},{_objMaxX:F2}] Z[{_objMinZ:F2},{_objMaxZ:F2}]");
+    /// Produces a 0-1 traversal difficulty score by blending normalised slope
+    /// steepness with normalised height variation within the cell.
+    private float BlendedDifficultyWeight(float slopeDeg, float heightRange)
+    {
+        float slopeWeight = Mathf.Clamp01(slopeDeg / maxSlopeDegrees);
+        float heightWeight = Mathf.Clamp01(heightRange / maxHeightRange);
+        return Mathf.Clamp01(slopeWeight * slopeBlendFactor + heightWeight * (1f - slopeBlendFactor));
     }
 
     private void ComputeBounds(Vector3[] verts)
