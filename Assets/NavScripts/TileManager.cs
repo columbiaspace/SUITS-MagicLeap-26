@@ -20,14 +20,12 @@ public class TileManager : MonoBehaviour
     [SerializeField] private Color cautionColor = new Color(1f, 0.85f, 0f, 0.6f);
     [SerializeField] private Color unwalkableColor = new Color(0.9f, 0.15f, 0.1f, 0.6f);
     [SerializeField] private Color pathColor = new Color(0.2f, 0.5f, 1.0f, 0.9f);
-    [SerializeField] private float walkableThreshold = 0.1f;
-    [SerializeField] private float unwalkableThreshold = 0.25f;
+    [SerializeField] private float walkableThreshold = 0.25f;
+    [SerializeField] private float unwalkableThreshold = 0.55f;
     [SerializeField] private float skipThreshold = 1.1f;
 
     [Header("Debug Path (desktop testing)")]
-    [Tooltip("Automatically compute and display a test path after tiles spawn")]
     [SerializeField] private bool showDebugPath = true;
-    [SerializeField] private float pathImpassableThreshold = 0.3f;
 
     [Header("IMU Position")]
     [SerializeField] private bool useImuPosition = true;
@@ -44,8 +42,6 @@ public class TileManager : MonoBehaviour
     private bool _initialized;
     private bool _useAnchors;
 
-    private static readonly int ColorProp = Shader.PropertyToID("_Color");
-    private MaterialPropertyBlock _mpb;
     private Material _unlitMaterial;
 
     private HashSet<Vector2Int> _pathCells = new HashSet<Vector2Int>();
@@ -58,12 +54,10 @@ public class TileManager : MonoBehaviour
     {
         _useAnchors = anchorManager != null && anchorManager.enabled
                       && anchorManager.subsystem != null;
-        _mpb = new MaterialPropertyBlock();
         _unlitMaterial = new Material(Shader.Find("Unlit/Color"));
 
         walkableThreshold = 0.25f;
         unwalkableThreshold = 0.55f;
-        pathImpassableThreshold = 0.6f;
     }
 
     void Update()
@@ -148,50 +142,45 @@ public class TileManager : MonoBehaviour
 
     void ComputeDebugPath(TerrainAnalyzer terrain)
     {
-        var walkable = new List<Vector2Int>();
-        foreach (Vector2Int cell in terrain.AllCells)
-        {
-            float w = terrain.GetWeight(cell);
-            if (w >= 0f && w < pathImpassableThreshold)
-                walkable.Add(cell);
-        }
+        HashSet<Vector2Int> walkableSet = terrain.WalkableSet;
 
-        if (walkable.Count < 2)
+        if (walkableSet.Count < 2)
         {
-            _debugStatus = $"Not enough walkable cells ({walkable.Count})";
+            _debugStatus = $"Not enough walkable cells ({walkableSet.Count})";
             Debug.LogWarning(_debugStatus);
             return;
         }
 
-        walkable.Sort((a, b) =>
+        var sorted = new List<Vector2Int>(walkableSet);
+        sorted.Sort((a, b) =>
         {
             int cmp = a.x.CompareTo(b.x);
             return cmp != 0 ? cmp : a.y.CompareTo(b.y);
         });
 
-        Vector2Int start = walkable[walkable.Count / 4];
-        Vector2Int goal = walkable[walkable.Count * 3 / 4];
+        Vector2Int start = sorted[sorted.Count / 4];
+        Vector2Int goal = sorted[sorted.Count * 3 / 4];
 
-        _debugStatus = $"A* running: {start} -> {goal} ({walkable.Count} walkable)";
-        Debug.Log($"TileManager: Computing debug path from {start} to {goal} ({walkable.Count} walkable cells)...");
+        _debugStatus = $"A* running: {start} -> {goal} ({walkableSet.Count} walkable)";
+        Debug.Log($"TileManager: A* from {start} to {goal} ({walkableSet.Count} walkable cells)...");
 
-        var path = NavPathfinder.FindPath(terrain, start, goal, pathImpassableThreshold);
+        var path = NavPathfinder.FindPath(walkableSet, terrain, start, goal);
 
         if (path.Count > 0)
         {
             _debugStatus = $"Path: {path.Count} blue tiles from {start} to {goal}";
-            Debug.Log($"TileManager: Debug path found with {path.Count} steps.");
+            Debug.Log($"TileManager: Path found — {path.Count} steps.");
             SetPath(new HashSet<Vector2Int>(path));
         }
         else
         {
-            Debug.LogWarning($"TileManager: No path found from {start} to {goal}. Trying shorter path...");
-            Vector2Int mid = walkable[walkable.Count / 2];
-            path = NavPathfinder.FindPath(terrain, start, mid, pathImpassableThreshold);
+            Debug.LogWarning($"TileManager: No path from {start} to {goal}. Trying shorter...");
+            Vector2Int mid = sorted[sorted.Count / 2];
+            path = NavPathfinder.FindPath(walkableSet, terrain, start, mid);
             if (path.Count > 0)
             {
                 _debugStatus = $"Short path: {path.Count} blue tiles to {mid}";
-                Debug.Log($"TileManager: Shorter debug path found with {path.Count} steps (to {mid}).");
+                Debug.Log($"TileManager: Short path — {path.Count} steps to {mid}.");
                 SetPath(new HashSet<Vector2Int>(path));
             }
             else

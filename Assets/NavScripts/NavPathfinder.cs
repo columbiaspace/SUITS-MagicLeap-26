@@ -1,10 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-/// <summary>
-/// A* pathfinder over the TerrainAnalyzer walkability grid.
-/// 8-directional movement with weight-based edge costs.
-/// </summary>
 public static class NavPathfinder
 {
     private static readonly Vector2Int[] Dirs =
@@ -21,13 +17,20 @@ public static class NavPathfinder
 
     private const float Sqrt2 = 1.41421356f;
 
+    /// <summary>
+    /// A* over a pre-filtered walkable set. Only cells in walkableSet are
+    /// considered; weights from TerrainAnalyzer influence edge costs.
+    /// </summary>
     public static List<Vector2Int> FindPath(
+        HashSet<Vector2Int> walkableSet,
         TerrainAnalyzer terrain,
         Vector2Int start,
-        Vector2Int goal,
-        float impassableThreshold = 0.9f)
+        Vector2Int goal)
     {
-        if (terrain == null || !terrain.IsReady)
+        if (walkableSet == null || walkableSet.Count == 0)
+            return new List<Vector2Int>();
+
+        if (!walkableSet.Contains(start) || !walkableSet.Contains(goal))
             return new List<Vector2Int>();
 
         if (start == goal)
@@ -56,12 +59,11 @@ public static class NavPathfinder
             {
                 Vector2Int neighbor = pos + Dirs[i];
 
-                if (!terrain.HasData(neighbor))
+                if (!walkableSet.Contains(neighbor))
                     continue;
 
-                float nWeight = terrain.GetWeight(neighbor);
-                if (nWeight >= impassableThreshold)
-                    continue;
+                float nWeight = terrain != null ? terrain.GetWeight(neighbor) : 0f;
+                if (nWeight < 0f) nWeight = 0f;
 
                 bool diagonal = i >= 4;
                 float stepCost = (1f + nWeight) * (diagonal ? Sqrt2 : 1f);

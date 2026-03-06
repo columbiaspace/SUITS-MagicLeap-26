@@ -1,5 +1,4 @@
 using System.Collections.Generic;
-using System.Linq;
 using UnityEngine;
 
 public class TerrainAnalyzer : MonoBehaviour
@@ -8,36 +7,32 @@ public class TerrainAnalyzer : MonoBehaviour
     [SerializeField] private Mesh terrainMesh;
 
     [Header("Grid Settings")]
-    [Tooltip("Must match TileManager.TILE_SIZE")]
     [SerializeField] private float tileSize = 0.6096f;
 
     [Header("Coordinate Mapping (OBJ → DUST)")]
-    [Tooltip("Center of the rock yard in DUST X")]
     [SerializeField] private float dustCenterX = -5655f;
-    [Tooltip("Center of the rock yard in DUST Y")]
     [SerializeField] private float dustCenterY = -10007.5f;
-    [Tooltip("DUST X units per OBJ X unit")]
     [SerializeField] private float dustScaleX = 4.027f;
-    [Tooltip("DUST Y units per OBJ Z unit")]
     [SerializeField] private float dustScaleZ = 2.38f;
 
     [Header("Walkability Thresholds")]
-    [Tooltip("Slope angle (degrees) beyond which terrain is fully unwalkable")]
-    [SerializeField] private float maxSlopeDegrees = 3f;
-    [Tooltip("Height range (meters) within a single tile beyond which it's fully unwalkable")]
-    [SerializeField] private float maxHeightRange = 0.02f;
-    [Tooltip("Blend factor for slope vs height: 0 = height only, 1 = slope only")]
+    [SerializeField] private float maxSlopeDegrees = 25f;
+    [SerializeField] private float maxHeightRange = 0.2f;
     [Range(0f, 1f)]
     [SerializeField] private float slopeBlendFactor = 0.6f;
+    [SerializeField] private float impassableThreshold = 0.6f;
 
     public static TerrainAnalyzer Instance { get; private set; }
-
     public bool IsReady { get; private set; }
 
     private Dictionary<Vector2Int, float> _walkabilityGrid = new Dictionary<Vector2Int, float>();
     private Dictionary<Vector2Int, float> _heightGrid = new Dictionary<Vector2Int, float>();
+    private HashSet<Vector2Int> _walkableSet = new HashSet<Vector2Int>();
 
     private float _objMinX, _objMaxX, _objMinZ, _objMaxZ;
+
+    public IEnumerable<Vector2Int> AllCells => _walkabilityGrid.Keys;
+    public HashSet<Vector2Int> WalkableSet => _walkableSet;
 
     private void Awake()
     {
@@ -55,6 +50,7 @@ public class TerrainAnalyzer : MonoBehaviour
         maxSlopeDegrees = 25f;
         maxHeightRange = 0.2f;
         slopeBlendFactor = 0.6f;
+        impassableThreshold = 0.6f;
         BuildGrid();
     }
 
@@ -77,11 +73,11 @@ public class TerrainAnalyzer : MonoBehaviour
         return _walkabilityGrid.ContainsKey(gridCell);
     }
 
-    public IEnumerable<Vector2Int> AllCells => _walkabilityGrid.Keys;
+    public bool IsWalkable(Vector2Int gridCell)
+    {
+        return _walkableSet.Contains(gridCell);
+    }
 
-    /// <summary>
-    /// Converts a DUST IMU position to the OBJ local grid coordinate used by this analyzer.
-    /// </summary>
     public Vector2Int DustToGrid(float dustX, float dustY)
     {
         float objX = (dustX - dustCenterX) / dustScaleX;
@@ -89,9 +85,6 @@ public class TerrainAnalyzer : MonoBehaviour
         return ObjToGrid(objX, objZ);
     }
 
-    /// <summary>
-    /// Converts OBJ-space X/Z to a grid cell index.
-    /// </summary>
     public Vector2Int ObjToGrid(float objX, float objZ)
     {
         int gx = Mathf.FloorToInt(objX / tileSize);
@@ -156,12 +149,15 @@ public class TerrainAnalyzer : MonoBehaviour
 
             float weight = slopeWeight * slopeBlendFactor + heightWeight * (1f - slopeBlendFactor);
             _walkabilityGrid[cell] = Mathf.Clamp01(weight);
-
             _heightGrid[cell] = (cellMinY[cell] + cellMaxY[cell]) * 0.5f;
+
+            if (weight < impassableThreshold)
+                _walkableSet.Add(cell);
         }
 
         IsReady = true;
-        Debug.Log($"TerrainAnalyzer: Grid built with {_walkabilityGrid.Count} cells. " +
+        Debug.Log($"TerrainAnalyzer: Grid built — {_walkabilityGrid.Count} total cells, " +
+                  $"{_walkableSet.Count} walkable (threshold {impassableThreshold}). " +
                   $"OBJ bounds X[{_objMinX:F2},{_objMaxX:F2}] Z[{_objMinZ:F2},{_objMaxZ:F2}]");
     }
 
