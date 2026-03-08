@@ -1,7 +1,7 @@
 {
   "dependencies": {
     "com.magicleap.unitysdk": {
-      "version": "file:/Users/ericaz./MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
+      "version": "file:/Users/admin/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
       "depth": 0,
       "source": "local-tarball",
       "dependencies": {
