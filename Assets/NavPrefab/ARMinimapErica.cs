@@ -1,26 +1,24 @@
 using UnityEngine;
 using UnityEngine.UI;
+using System.Collections.Generic;
+
 public class ARMinimapErica : MonoBehaviour
 {
     public RectTransform minimapRect;
     public RectTransform playerIcon;
     public RectTransform pathContainer;
-    public GameObject trailDotPrefab;
-    
+    public GameObject pathDotPrefab;
+
     public float worldToMapScale = 8f;
-    public float recordDistance = 0.25f;
 
-    private Vector3 lastRecordedPos;
+    private List<GameObject> _pathDots = new List<GameObject>();
 
-    void Start()
-    {
-        lastRecordedPos = Camera.main.transform.position;
-    }
+    void Start() { }
 
     void Update()
     {
         UpdatePlayerIcon();
-        RecordTrail();
+        // RecordTrail() removed
     }
 
     void UpdatePlayerIcon()
@@ -35,16 +33,28 @@ public class ARMinimapErica : MonoBehaviour
         playerIcon.localEulerAngles = new Vector3(0, 0, -Camera.main.transform.eulerAngles.y);
     }
 
-    void RecordTrail()
+    public void DrawPathOnMinimap(HashSet<Vector2Int> pathCells)
     {
-        Vector3 currentPos = Camera.main.transform.position;
-        if (Vector3.Distance(currentPos, lastRecordedPos) > recordDistance)
+        foreach (GameObject dot in _pathDots)
+            if (dot) Destroy(dot);
+        _pathDots.Clear();
+
+        foreach (Vector2Int cell in pathCells)
         {
-            Vector2 mapPos = new Vector2(currentPos.x, currentPos.z) * worldToMapScale;
-            GameObject dot = Instantiate(trailDotPrefab, pathContainer);
+            float worldX = cell.x * TileManager.TILE_SIZE;
+            float worldZ = cell.y * TileManager.TILE_SIZE;
+
+            Vector2 mapPos = new Vector2(worldX, worldZ) * worldToMapScale;
+            mapPos.x = Mathf.Clamp(mapPos.x, -minimapRect.sizeDelta.x / 2, minimapRect.sizeDelta.x / 2);
+            mapPos.y = Mathf.Clamp(mapPos.y, -minimapRect.sizeDelta.y / 2, minimapRect.sizeDelta.y / 2);
+
+            GameObject dot = Instantiate(pathDotPrefab, pathContainer);
             dot.GetComponent<RectTransform>().anchoredPosition = mapPos;
-            lastRecordedPos = currentPos;
+
+            var img = dot.GetComponent<Image>();
+            if (img) img.color = new Color(0.2f, 0.5f, 1.0f, 0.9f);
+
+            _pathDots.Add(dot);
         }
     }
 }
-

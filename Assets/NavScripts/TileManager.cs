@@ -189,6 +189,11 @@ public class TileManager : MonoBehaviour
         }
 
         _pathCells = newPathCells;
+
+        // Draw path on minimap
+        ARMinimapErica minimap = FindObjectOfType<ARMinimapErica>();
+        if (minimap != null) minimap.DrawPathOnMinimap(newPathCells);
+
     }
 
     static Dictionary<string, object> GetNestedDict(Dictionary<string, object> source, string key)
