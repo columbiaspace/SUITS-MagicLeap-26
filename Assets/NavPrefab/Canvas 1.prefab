@@ -297,7 +297,7 @@ GameObject:
   - component: {fileID: 6969810720149958986}
   - component: {fileID: 5315060007360889536}
   m_Layer: 5
-  m_Name: Canvas
+  m_Name: Canvas 1
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -507,7 +507,7 @@ MonoBehaviour:
   m_OnClick:
     m_PersistentCalls:
       m_Calls:
-      - m_Target: {fileID: 6833889431671823330}
+      - m_Target: {fileID: 0}
         m_TargetAssemblyTypeName: MinimapToggle, Assembly-CSharp
         m_MethodName: Toggle
         m_Mode: 1
@@ -530,7 +530,7 @@ GameObject:
   - component: {fileID: 288780392249999870}
   - component: {fileID: 8449005986106409856}
   - component: {fileID: 8119472018397929490}
-  - component: {fileID: 6833889431671823330}
+  - component: {fileID: 2560205440773168602}
   m_Layer: 5
   m_Name: MinimapBackground
   m_TagString: Untagged
@@ -588,7 +588,7 @@ MonoBehaviour:
   m_OnCullStateChanged:
     m_PersistentCalls:
       m_Calls: []
-  m_Sprite: {fileID: 21300000, guid: 36c4e7259454c452e84aa74632c4787a, type: 3}
+  m_Sprite: {fileID: 21300000, guid: 3e717501633d84f4aa9a9722636abbaf, type: 3}
   m_Type: 0
   m_PreserveAspect: 0
   m_FillCenter: 1
@@ -598,7 +598,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &6833889431671823330
+--- !u!114 &2560205440773168602
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -607,12 +607,11 @@ MonoBehaviour:
   m_GameObject: {fileID: 4601020366314969141}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 732c5e0aeb4eb44dea8806a1160ed1ca, type: 3}
+  m_Script: {fileID: 11500000, guid: f5bec82ec592540aab90e546219d13cf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  mapRect: {fileID: 0}
-  smallSize: {x: 200, y: 200}
-  bigSize: {x: 700, y: 700}
-  smallPos: {x: 20, y: -20}
-  bigPos: {x: 0, y: 0}
-  speed: 8
+  minimapRect: {fileID: 288780392249999870}
+  playerIcon: {fileID: 7335847300331383376}
+  pathContainer: {fileID: 5499344920401351179}
+  pathDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
+  worldToMapScale: 8

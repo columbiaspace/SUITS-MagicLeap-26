@@ -11,7 +11,7 @@ GameObject:
   - component: {fileID: 2628303728258307630}
   - component: {fileID: 579928214257659267}
   - component: {fileID: 1044384374264351561}
-  - component: {fileID: 9085169182504229512}
+  - component: {fileID: 1709065209346820025}
   m_Layer: 5
   m_Name: Player
   m_TagString: Untagged
@@ -76,7 +76,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &9085169182504229512
+--- !u!114 &1709065209346820025
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -85,17 +85,14 @@ MonoBehaviour:
   m_GameObject: {fileID: 2939888400988654323}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 018f8e32e720349d2ba089b2742965dc, type: 3}
+  m_Script: {fileID: 11500000, guid: f5bec82ec592540aab90e546219d13cf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  playerCamera: {fileID: 0}
-  mapOrigin: {fileID: 5319444210091007238}
+  minimapRect: {fileID: 2626901015357841970}
   playerIcon: {fileID: 2628303728258307630}
-  mapPanel: {fileID: 0}
-  mapScale: 10
-  smallPosition: {x: 0, y: 0}
-  largeScale: {x: 3, y: 3, z: 1}
-  transitionSpeed: 10
+  pathContainer: {fileID: 2626901015357841970}
+  pathDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
+  worldToMapScale: 8
 --- !u!1 &3155348985365556274
 GameObject:
   m_ObjectHideFlags: 0
@@ -384,7 +381,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 1
+  m_PresetInfoIsWorld: 0
 --- !u!114 &2618427457071823549
 MonoBehaviour:
   m_ObjectHideFlags: 0
