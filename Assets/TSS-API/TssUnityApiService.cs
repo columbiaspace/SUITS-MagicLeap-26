@@ -238,6 +238,29 @@ namespace TssApi
             return new Dictionary<string, object> { { "procedures", results } };
         }
 
+        public List<Dictionary<string, object>> GetLtvErrorProcedures()
+        {
+            List<Dictionary<string, object>> result = new List<Dictionary<string, object>>();
+            object rawList = GetPath(_ltv, "error_procedures", null);
+            List<object> procedures = rawList as List<object>;
+
+            if (procedures == null)
+            {
+                return result;
+            }
+
+            for (int i = 0; i < procedures.Count; i++)
+            {
+                Dictionary<string, object> entry = procedures[i] as Dictionary<string, object>;
+                if (entry != null)
+                {
+                    result.Add(DeepCopyDict(entry));
+                }
+            }
+
+            return result;
+        }
+
         public Dictionary<string, object> GetLtvProcedure(string procedureId)
         {
             Dictionary<string, object> ltv = GetNestedDict(_procedures, "ltv");
