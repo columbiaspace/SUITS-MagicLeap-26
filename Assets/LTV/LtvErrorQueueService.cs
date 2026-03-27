@@ -14,12 +14,16 @@ public class LtvErrorQueueService : MonoBehaviour
     [SerializeField] private float verificationPollSeconds = 1.0f;
     [SerializeField] private float verificationTimeoutSeconds = 10.0f;
 
+    [Header("Retry")]
+    [SerializeField] private int maxRetries = 3;
+
     [Header("Debug")]
     [SerializeField] private bool enableDebugLogs = true;
 
     public event Action<LtvError, int> StepChanged;
     public event Action<LtvError> ErrorChanged;
     public event Action<LtvError> ResolutionFailed;
+    public event Action<LtvError> MaxRetriesExceeded;
     public event Action AllErrorsResolved;
 
     private MaxHeap<LtvError> errorHeap = new MaxHeap<LtvError>();
@@ -267,8 +271,13 @@ public class LtvErrorQueueService : MonoBehaviour
 
     private void StartVerification()
     {
+        if (verificationCoroutine != null)
+        {
+            StopCoroutine(verificationCoroutine);
+            verificationCoroutine = null;
+        }
+
         verifying = true;
-        StopVerification();
         verificationCoroutine = StartCoroutine(VerifyResolution());
     }
 
@@ -285,23 +294,24 @@ public class LtvErrorQueueService : MonoBehaviour
 
     private IEnumerator VerifyResolution()
     {
+        LtvError errorToVerify = currentError;
         float elapsed = 0f;
         WaitForSeconds wait = new WaitForSeconds(verificationPollSeconds);
 
         while (elapsed < verificationTimeoutSeconds)
         {
-            if (tssApi == null)
+            if (tssApi == null || errorToVerify == null)
             {
                 break;
             }
 
-            bool stillActive = IsErrorStillActive(currentError);
+            bool stillActive = IsErrorStillActive(errorToVerify);
 
             if (!stillActive)
             {
                 if (enableDebugLogs)
                 {
-                    Debug.Log($"[LTV-Queue] Error {currentError.Code} verified resolved by TSS.");
+                    Debug.Log($"[LTV-Queue] Error {errorToVerify.Code} verified resolved by TSS.");
                 }
 
                 verifying = false;
@@ -310,8 +320,8 @@ public class LtvErrorQueueService : MonoBehaviour
                 yield break;
             }
 
-            elapsed += verificationPollSeconds;
             yield return wait;
+            elapsed += verificationPollSeconds;
         }
 
         verifying = false;
@@ -321,13 +331,33 @@ public class LtvErrorQueueService : MonoBehaviour
 
     private void HandleResolutionFailed()
     {
+        if (currentError == null)
+        {
+            return;
+        }
+
         retryCount++;
+
+        if (retryCount > maxRetries)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.LogError(
+                    $"[LTV-Queue] Error {currentError.Code} exceeded max retries ({maxRetries}). " +
+                    "Skipping to next error."
+                );
+            }
+
+            MaxRetriesExceeded?.Invoke(currentError);
+            PopNextError();
+            return;
+        }
 
         if (enableDebugLogs)
         {
             Debug.LogWarning(
                 $"[LTV-Queue] Error {currentError.Code} NOT resolved after completing all steps. " +
-                $"Retry #{retryCount}. Re-showing all instructions."
+                $"Retry {retryCount}/{maxRetries}. Re-showing all instructions."
             );
         }
 
@@ -340,24 +370,44 @@ public class LtvErrorQueueService : MonoBehaviour
     {
         if (tssApi == null || error == null)
         {
-            return false;
+            if (enableDebugLogs)
+            {
+                Debug.LogWarning("[LTV-Queue] Cannot verify error: TSS or error is null. Assuming still active.");
+            }
+
+            return true;
         }
 
         string errorKey = MapCodeToErrorKey(error.Code);
         if (string.IsNullOrEmpty(errorKey))
         {
-            return false;
+            if (enableDebugLogs)
+            {
+                Debug.LogWarning($"[LTV-Queue] No TSS key mapping for code {error.Code}. Assuming still active.");
+            }
+
+            return true;
         }
 
         Dictionary<string, object> errors = tssApi.GetLtvErrors();
         if (errors == null)
         {
-            return false;
+            if (enableDebugLogs)
+            {
+                Debug.LogWarning("[LTV-Queue] TSS returned null errors. Assuming still active.");
+            }
+
+            return true;
         }
 
         if (!errors.TryGetValue(errorKey, out object value))
         {
-            return false;
+            if (enableDebugLogs)
+            {
+                Debug.LogWarning($"[LTV-Queue] TSS errors missing key '{errorKey}'. Assuming still active.");
+            }
+
+            return true;
         }
 
         return ToBool(value);
@@ -379,6 +429,8 @@ public class LtvErrorQueueService : MonoBehaviour
             case "2130": return "nav_system";
             case "2131": return "lidar_system";
             case "2132": return "comms";
+            case "3700": return "electronic_heater";
+            case "2900": return "power_subsystem_bus";
             default: return string.Empty;
         }
     }
