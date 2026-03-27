@@ -10,6 +10,7 @@ Priority = criticality * 10 + subsystem
 ```
 - Higher criticality + higher subsystem = fix first
 - Error identifiers (last 2 digits) are NOT priority-relevant
+- Equal criticality: higher subsystem wins (2700 before 2600)
 
 ## Files
 | File | Purpose |
@@ -18,6 +19,21 @@ Priority = criticality * 10 + subsystem
 | `Assets/LTV/MaxHeap.cs` | Generic max-heap for priority queue |
 | `Assets/LTV/LtvErrorQueueService.cs` | MonoBehaviour orchestrator: queue, pop, step, verify, retry |
 | `Assets/TSS-API/TssUnityApiService.cs` | Added `GetLtvErrorProcedures()` to parse TSS response |
+
+## Error Code to TSS Key Mapping
+| Code | TSS Error Key | Description |
+|------|---------------|-------------|
+| 0000 | recovery_mode | Recovery Mode |
+| 4155 | power_distribution | Main Power Bus Error |
+| 4761 | dust_sensor | Dust Sensor Error |
+| 2129 | fuse | Backup Fuse Error |
+| 2130 | nav_system | Nav System Error |
+| 2131 | lidar_system | Lidar System Error |
+| 2132 | comms | Comms System Error |
+| 3700 | electronic_heater | Heat Generating Reaction Error |
+| 2900 | power_subsystem_bus | Power Subsystem Bus Error |
+
+> **Note**: Codes 3700 and 2900 are placeholders. Update in `MapCodeToErrorKey()` once NASA confirms actual codes.
 
 ## Phases
 
@@ -36,54 +52,34 @@ Priority = criticality * 10 + subsystem
 - [x] `PopNextError()` — extract max priority, set as current
 - [x] `AdvanceStep()` — move through instructions one by one
 - [x] TSS verification gate after all steps complete (coroutine polling)
-- [x] Retry logic: if TSS says error still active → ResolutionFailed event, reset step to 0
-- [x] Events: ErrorChanged, StepChanged, ResolutionFailed, AllErrorsResolved
+- [x] Retry logic: if TSS says error still active, ResolutionFailed event, reset step to 0
+- [x] Max retry cap (default 3) with MaxRetriesExceeded event, skips to next error
+- [x] Events: ErrorChanged, StepChanged, ResolutionFailed, MaxRetriesExceeded, AllErrorsResolved
 - [x] `GetCurrentSnapshot()` — dictionary for UI consumption
 - [x] `StopDiagnosis()` — cleanup
-- [x] Error code → TSS error key mapping (`MapCodeToErrorKey`)
+- [x] Error code to TSS error key mapping (`MapCodeToErrorKey`)
 
 ### Phase 4: TSS Integration
 - [x] `GetLtvErrorProcedures()` added to TssUnityApiService
 - [x] Parses `error_procedures` array from LTV TSS response
 
-## API Reference
+## Changelog
 
-### LtvErrorQueueService
+### 2026-03-27 — Initial Implementation
+- Created LtvError, MaxHeap, LtvErrorQueueService
+- Added GetLtvErrorProcedures() to TssUnityApiService
 
-**Properties:**
-- `CurrentError` — the LtvError currently being worked on
-- `CurrentStepIndex` — index into current error's procedures list
-- `IsDiagnosisActive` — true while diagnosis session is running
-- `IsVerifying` — true while waiting for TSS to confirm resolution
-- `RemainingErrors` — count of errors still in the heap
-- `RetryCount` — how many times current error failed verification
-
-**Methods:**
-- `StartDiagnosis(List<Dict> errorProceduresRaw)` — parse and queue errors, begin
-- `StartDiagnosisFromTss()` — fetch from TSS, then StartDiagnosis
-- `AdvanceStep()` — move to next instruction; triggers verification when last step reached
-- `StopDiagnosis()` — abort and clear state
-- `GetCurrentSnapshot()` — dictionary snapshot for UI
-
-**Events:**
-- `ErrorChanged(LtvError)` — fired when popping a new error from heap
-- `StepChanged(LtvError, int stepIndex)` — fired on each step advance
-- `ResolutionFailed(LtvError)` — fired when TSS says error NOT resolved after all steps
-- `AllErrorsResolved()` — fired when heap is empty and last error is resolved
-
-### Flow
-```
-StartDiagnosis → PopNextError → StepChanged(0)
-  → AdvanceStep → StepChanged(1)
-  → AdvanceStep → StepChanged(2)
-  → ...
-  → AdvanceStep (last step) → VerifyResolution (poll TSS)
-    → Resolved? → PopNextError (or AllErrorsResolved)
-    → NOT Resolved? → ResolutionFailed, reset to step 0, re-show all
-```
+### 2026-03-27 — Critical Safety Fixes (code review)
+- **IsErrorStillActive fail-safe**: Now returns `true` (assume active) when TSS unavailable, error key unmapped, or data missing. Prevents falsely declaring errors resolved during connectivity loss.
+- **StartVerification race condition**: Fixed sequence where `verifying` flag was immediately reset to false by `StopVerification()` call. Now stops old coroutine without touching the flag.
+- **Missing error key mappings**: Added `electronic_heater` (3700) and `power_subsystem_bus` (2900).
+- **Max retry cap**: Added `maxRetries = 3` (configurable in Inspector). After exceeding, fires `MaxRetriesExceeded` event and skips to next error.
+- **Null guard**: `HandleResolutionFailed` now checks `currentError != null`.
+- **Coroutine capture**: `VerifyResolution` captures local ref to `currentError` to avoid field mutation during yield.
+- **Verification timing**: `yield return wait` now happens before incrementing `elapsed` so timeout matches wall time.
 
 ## Status
 - **Started**: 2026-03-27
-- **Current Phase**: All phases complete (initial implementation)
+- **Current Phase**: All phases complete, safety fixes applied
 - **Last Updated**: 2026-03-27
-- **Next**: AIA integration (on hold per user), UI hookup
+- **Next**: AIA integration (on hold), frontend UI hookup
