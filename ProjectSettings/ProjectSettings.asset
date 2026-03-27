@@ -158,11 +158,7 @@ PlayerSettings:
   androidMaxAspectRatio: 2.1
   applicationIdentifier:
     Android: com.CSISUITS.SUITS2026
-<<<<<<< HEAD
-    Standalone: com.DefaultCompany.2026SUITS
-=======
     Standalone: com.CSISUITS.SUITS2026
->>>>>>> e5ce9a5b4493d1c2af2bea7bc102c62d9426456d
   buildNumber:
     Standalone: 0
     VisionOS: 0
