@@ -1,0 +1,5 @@
+{
+  "name": "luna-vercel-proxy",
+  "private": true,
+  "type": "module"
+}
