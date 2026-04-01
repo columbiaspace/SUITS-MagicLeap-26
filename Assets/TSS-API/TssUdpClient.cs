@@ -80,13 +80,7 @@ namespace TssApi
                 return null;
             }
 
-            // TSS2026 sends raw JSON starting at '{'. Older builds may prefix an 8-byte header.
-            int payloadOffset = FindJsonObjectStart(raw);
-            if (payloadOffset < 0)
-            {
-                return null;
-            }
-
+            int payloadOffset = raw.Length > 8 ? 8 : 0;
             string json = Encoding.UTF8
                 .GetString(raw, payloadOffset, raw.Length - payloadOffset)
                 .TrimEnd('\0', ' ', '\n', '\r', '\t');
@@ -98,25 +92,6 @@ namespace TssApi
 
             object parsed = MiniJson.Deserialize(json);
             return parsed as Dictionary<string, object>;
-        }
-
-        private static int FindJsonObjectStart(byte[] raw)
-        {
-            for (int i = 0; i < raw.Length; i++)
-            {
-                byte b = raw[i];
-                if (b == (byte)'{')
-                {
-                    return i;
-                }
-
-                if (b != (byte)' ' && b != (byte)'\t' && b != (byte)'\r' && b != (byte)'\n')
-                {
-                    break;
-                }
-            }
-
-            return raw.Length > 8 ? 8 : 0;
         }
 
         private static void WriteUIntBigEndian(byte[] buffer, int offset, uint value)
