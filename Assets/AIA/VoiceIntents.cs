@@ -308,6 +308,37 @@ public class VoiceIntents : MonoBehaviour
         responseTextBox.text = text;
     }
 
+    public void SetResponseStatus(string text)
+    {
+        UpdateResponseTextBox(text);
+    }
+
+    public void SubmitPromptFromText(string prompt)
+    {
+        if (!sendVoicePromptToAi)
+        {
+            Debug.LogWarning("Text prompt received but AI forwarding is disabled.");
+            UpdateResponseTextBox("Luna AI forwarding is disabled.");
+            return;
+        }
+
+        string trimmedPrompt = prompt?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedPrompt))
+        {
+            Debug.LogWarning("[Luna] Ignoring empty text prompt.");
+            UpdateResponseTextBox("Luna could not hear a question.");
+            return;
+        }
+
+        if (logAiResponse)
+        {
+            Debug.Log($"[Whisper->Gemma] Prompt: {trimmedPrompt}");
+        }
+
+        UpdateResponseTextBox("Luna heard your question.");
+        QueueAiRequest(trimmedPrompt);
+    }
+
     /// <summary>
     /// Extracts the value of a named slot from the voice event.
     /// This is the only reliable way to get user-spoken content from
