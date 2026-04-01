@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
 
 public class VoiceIntents : MonoBehaviour
@@ -28,6 +29,7 @@ public class VoiceIntents : MonoBehaviour
     [SerializeField] private string aiModel = "gemma3:27b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
+    [SerializeField] private Text responseTextBox;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -75,6 +77,7 @@ public class VoiceIntents : MonoBehaviour
     private void Start()
     {
         ApplyOllamaIpOverrideFromEnvironment();
+        TryResolveResponseTextBox();
         MLPermissions.RequestPermission(MLPermission.VoiceInput, permissionCallbacks);
         InitializeTextToSpeech();
     }
@@ -267,7 +270,41 @@ public class VoiceIntents : MonoBehaviour
             Debug.Log($"[Luna->Gemma] Prompt: {prompt}");
         }
 
+        UpdateResponseTextBox("Hi, I am Luna!");
         QueueAiRequest(prompt);
+    }
+
+    private void TryResolveResponseTextBox()
+    {
+        if (responseTextBox != null)
+        {
+            return;
+        }
+
+        GameObject responseTextObject = GameObject.Find("AIAResponseText");
+        if (responseTextObject == null)
+        {
+            return;
+        }
+
+        responseTextBox = responseTextObject.GetComponent<Text>();
+    }
+
+    private void UpdateResponseTextBox(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        TryResolveResponseTextBox();
+        if (responseTextBox == null)
+        {
+            Debug.LogWarning("[Luna] Could not find AIAResponseText to update.");
+            return;
+        }
+
+        responseTextBox.text = text;
     }
 
     /// <summary>
