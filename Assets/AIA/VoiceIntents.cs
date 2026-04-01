@@ -25,8 +25,8 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://10.206.51.36:11434/api/generate";
-    [SerializeField] private string aiModel = "gemma3:27b";
+    [SerializeField] private string aiGenerateUrl = "http://10.206.126.34:11434/api/generate";
+    [SerializeField] private string aiModel = "gemma3:27b-it-qat";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
     [SerializeField] private Text responseTextBox;
@@ -254,6 +254,7 @@ public class VoiceIntents : MonoBehaviour
         if (!sendVoicePromptToAi)
         {
             Debug.LogWarning("Ask Luna intent detected but AI forwarding is disabled.");
+            UpdateResponseTextBox("Luna AI forwarding is disabled.");
             return;
         }
 
@@ -270,7 +271,7 @@ public class VoiceIntents : MonoBehaviour
             Debug.Log($"[Luna->Gemma] Prompt: {prompt}");
         }
 
-        UpdateResponseTextBox("Hi, I am Luna!");
+        UpdateResponseTextBox("Luna heard your question.");
         QueueAiRequest(prompt);
     }
 
@@ -399,6 +400,7 @@ public class VoiceIntents : MonoBehaviour
             Debug.Log($"[Gemma] Sending request to {aiGenerateUrl} " +
                       $"model='{aiModel}' prompt='{prompt}'");
         }
+        UpdateResponseTextBox("Sending request to Luna...");
 
         using (var request = new UnityWebRequest(aiGenerateUrl, UnityWebRequest.kHttpVerbPOST))
         {
@@ -407,6 +409,7 @@ public class VoiceIntents : MonoBehaviour
             request.SetRequestHeader("Content-Type", "application/json");
             request.timeout = AiRequestTimeoutSeconds;
 
+            UpdateResponseTextBox("Waiting for Luna response...");
             yield return request.SendWebRequest();
 
             if (request.result != UnityWebRequest.Result.Success)
@@ -414,6 +417,7 @@ public class VoiceIntents : MonoBehaviour
                 Debug.LogError(
                     $"[Gemma] Request failed (HTTP {request.responseCode}): {request.error}. " +
                     $"Body: {request.downloadHandler?.text}");
+                UpdateResponseTextBox("Luna request failed.");
             }
             else
             {
@@ -437,8 +441,13 @@ public class VoiceIntents : MonoBehaviour
                 else
                 {
                     Debug.LogWarning("[Gemma] Response parsed but 'response' field was null or empty.");
+                    UpdateResponseTextBox("Luna returned an empty response.");
                 }
 
+                if (!string.IsNullOrWhiteSpace(responseText))
+                {
+                    UpdateResponseTextBox(responseText);
+                }
                 SpeakText(responseText);
             }
         }

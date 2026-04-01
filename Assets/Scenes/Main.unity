@@ -515,6 +515,14 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   VoiceIntentsConfiguration: {fileID: 11400000, guid: bc0d55f56ba294532829093db7f9abb8, type: 2}
   targetObject: {fileID: 0}
+  rotationSpeed: 50
+  sendVoicePromptToAi: 1
+  aiGenerateUrl: http://10.206.126.34:11434/api/generate
+  aiModel: gemma3:27b-it-qat
+  logAiResponse: 1
+  speakAiResponse: 1
+  responseTextBox: {fileID: 0}
+  verboseVoiceLogging: 1
 --- !u!1 &455361019
 GameObject:
   m_ObjectHideFlags: 0
@@ -1942,3 +1950,4 @@ SceneRoots:
   - {fileID: 2032274387}
   - {fileID: 932304026}
   - {fileID: 260000901}
+  - {fileID: 401001001}
