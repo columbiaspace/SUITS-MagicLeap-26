@@ -12,6 +12,7 @@ public class VoiceIntents : MonoBehaviour
     private const string AskLunaSlotName = "query";
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
+    private const string CriticalReturnMessage = "Critical oxygen level. Return immediately.";
 
     private const string DefaultLunaPrompt =
         "Respond with your name as Luna Assistant and a description of your base model.";
@@ -31,6 +32,10 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
+
+    [Header("Safety Override")]
+    [SerializeField] private bool enforceCriticalOxygenOverride = true;
+    [SerializeField] private float criticalVoiceRepeatCooldownSeconds = 8f;
 
     // Dynamic Prompting Plan (Streaming Test)
     //
@@ -57,6 +62,7 @@ public class VoiceIntents : MonoBehaviour
     private AndroidJavaObject textToSpeech;
     private volatile bool textToSpeechReady;
     private bool isVoiceEventSubscribed;
+    private float lastCriticalVoiceAlertTime = -999f;
 
     [Serializable]
     private class AiGenerateRequest
@@ -103,6 +109,7 @@ public class VoiceIntents : MonoBehaviour
         permissionCallbacks.OnPermissionGranted += OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied += OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain += OnPermissionDenied;
+        TssVitalsOxygenMonitor.CriticalOxygenEntered += OnCriticalOxygenEntered;
     }
 
     private void OnDestroy()
@@ -110,6 +117,7 @@ public class VoiceIntents : MonoBehaviour
         permissionCallbacks.OnPermissionGranted -= OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnPermissionDenied;
+        TssVitalsOxygenMonitor.CriticalOxygenEntered -= OnCriticalOxygenEntered;
         if (isVoiceEventSubscribed)
         {
             MLVoice.OnVoiceEvent -= MLVoiceOnVoiceEvent;
@@ -199,6 +207,14 @@ public class VoiceIntents : MonoBehaviour
             return;
         }
 
+        if (enforceCriticalOxygenOverride && TssVitalsOxygenMonitor.IsCriticalOxygenLow)
+        {
+            Debug.LogWarning(
+                "[Safety] Critical oxygen lock is active. Bypassing non-emergency voice command/conversation.");
+            SpeakCriticalReturnMessage();
+            return;
+        }
+
         switch (voiceEvent.EventID)
         {
             case 101:
@@ -248,6 +264,13 @@ public class VoiceIntents : MonoBehaviour
 
     private void TrySendAskLunaPromptToAi(MLVoice.IntentEvent voiceEvent)
     {
+        if (enforceCriticalOxygenOverride && TssVitalsOxygenMonitor.IsCriticalOxygenLow)
+        {
+            Debug.LogWarning("[Safety] Ask Luna blocked due to critical oxygen state.");
+            SpeakCriticalReturnMessage();
+            return;
+        }
+
         if (!sendVoicePromptToAi)
         {
             Debug.LogWarning("Ask Luna intent detected but AI forwarding is disabled.");
@@ -407,6 +430,30 @@ public class VoiceIntents : MonoBehaviour
         }
 
         aiRequestCoroutine = null;
+    }
+
+    private void OnCriticalOxygenEntered(float oxygenPercent)
+    {
+        if (!enforceCriticalOxygenOverride)
+        {
+            return;
+        }
+
+        Debug.LogWarning($"[Safety] Critical oxygen detected at {oxygenPercent:F1}%.");
+        SpeakCriticalReturnMessage();
+    }
+
+    private void SpeakCriticalReturnMessage()
+    {
+        float cooldown = Mathf.Max(1f, criticalVoiceRepeatCooldownSeconds);
+        float now = Time.unscaledTime;
+        if (now - lastCriticalVoiceAlertTime < cooldown)
+        {
+            return;
+        }
+
+        lastCriticalVoiceAlertTime = now;
+        SpeakText(CriticalReturnMessage);
     }
 
     private void InitializeTextToSpeech()
