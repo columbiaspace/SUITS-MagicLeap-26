@@ -13,14 +13,15 @@ public class LtvInstructionDebugPanel : MonoBehaviour
     [SerializeField] private LtvInstructionService ltvService;
 
     [Header("Layout")]
-    [SerializeField] private Vector2 panelSize = new Vector2(720f, 260f);
+    [SerializeField] private Vector2 panelSize = new Vector2(720f, 300f);
     [SerializeField] private Vector2 panelOffset = new Vector2(16f, 16f);
 
     private Text titleText;
     private Text instructionText;
     private Text statusText;
-    private Button markDoneButton;
-    private Button refreshButton;
+    private Button startButton;
+    private Button nextStepButton;
+    private Button stopButton;
 
     private LtvInstructionService subscribedService;
 
@@ -64,6 +65,7 @@ public class LtvInstructionDebugPanel : MonoBehaviour
     {
         if (ltvService != null)
         {
+            UpdateButtonStates();
             return;
         }
 
@@ -118,7 +120,18 @@ public class LtvInstructionDebugPanel : MonoBehaviour
         RenderSnapshot(ltvService.GetCurrentInstruction());
     }
 
-    private void OnMarkDonePressed()
+    private void OnStartPressed()
+    {
+        if (ltvService == null)
+        {
+            SetDisconnectedState();
+            return;
+        }
+
+        ltvService.StartDiagnosisFromTss();
+    }
+
+    private void OnNextStepPressed()
     {
         if (ltvService == null)
         {
@@ -128,67 +141,85 @@ public class LtvInstructionDebugPanel : MonoBehaviour
 
         bool ok = ltvService.MarkCurrentStepDone();
         statusText.text = ok
-            ? "Step marked complete."
-            : "Step is telemetry-gated or no active step.";
-
-        RefreshFromService();
+            ? "Step advanced."
+            : "No active step or verifying.";
     }
 
-    private void OnRefreshPressed()
+    private void OnStopPressed()
     {
         if (ltvService == null)
         {
-            TryBindService();
+            SetDisconnectedState();
+            return;
         }
 
-        if (ltvService != null)
-        {
-            ltvService.RefreshNow();
-            RenderSnapshot(ltvService.GetCurrentInstruction());
-        }
-        else
-        {
-            SetDisconnectedState();
-        }
+        ltvService.StopDiagnosis();
+        statusText.text = "Diagnosis stopped.";
     }
 
     private void RenderSnapshot(Dictionary<string, object> snapshot)
     {
         bool hasError = GetBool(snapshot, "has_active_error");
-        bool complete = GetBool(snapshot, "procedure_complete");
-        string error = GetString(snapshot, "error_key");
-        string procedure = GetString(snapshot, "procedure_id");
-        string stepId = GetString(snapshot, "next_step_id");
-        bool stepHasCriteria = GetBool(snapshot, "next_step_has_criteria");
-        string instruction = GetString(snapshot, "next_instruction");
-        string hint = GetString(snapshot, "hint");
+        bool isVerifying = GetBool(snapshot, "verifying");
+        string errorCode = GetString(snapshot, "error_code");
+        string errorDesc = GetString(snapshot, "error_description");
         int priority = GetInt(snapshot, "priority");
+        int stepIndex = GetInt(snapshot, "current_step_index");
+        int totalSteps = GetInt(snapshot, "total_steps");
+        int remaining = GetInt(snapshot, "remaining_errors");
+        int retries = GetInt(snapshot, "retry_count");
+        string instruction = GetString(snapshot, "next_instruction");
+        if (string.IsNullOrEmpty(instruction))
+        {
+            instruction = GetString(snapshot, "current_instruction");
+        }
 
         titleText.text = hasError
-            ? $"LTV Instruction ({procedure})"
-            : "LTV Instruction";
+            ? $"LTV Repair: Error {errorCode}"
+            : "LTV Repair";
 
         instructionText.text = string.IsNullOrEmpty(instruction)
             ? "No instruction available."
             : instruction;
 
-        if (!string.IsNullOrEmpty(hint))
+        string status = hasError
+            ? $"error={errorCode} ({errorDesc}) | priority={priority} | " +
+              $"step={stepIndex + 1}/{totalSteps} | remaining={remaining} | retries={retries}"
+            : "No active errors.";
+
+        if (isVerifying)
         {
-            instructionText.text += "\n\nHint: " + hint;
+            status += " | VERIFYING...";
         }
 
-        statusText.text =
-            $"error={error} | procedure={procedure} | step={stepId} | priority={priority} | complete={complete}";
+        statusText.text = status;
+        UpdateButtonStates();
+    }
 
-        markDoneButton.interactable = hasError && !complete && !string.IsNullOrEmpty(stepId) && !stepHasCriteria;
+    private void UpdateButtonStates()
+    {
+        if (ltvService == null)
+        {
+            return;
+        }
+
+        bool active = ltvService.IsDiagnosisActive;
+        bool verifying = ltvService.IsVerifying;
+        bool hasStep = ltvService.CurrentError != null;
+
+        startButton.interactable = !active;
+        nextStepButton.interactable = active && hasStep && !verifying;
+        stopButton.interactable = active;
     }
 
     private void SetDisconnectedState()
     {
-        titleText.text = "LTV Instruction (Disconnected)";
+        titleText.text = "LTV Repair (Disconnected)";
         instructionText.text = "LtvInstructionService not found in scene.";
         statusText.text = "Add LtvInstructionService to any active GameObject.";
-        markDoneButton.interactable = false;
+        startButton.interactable = false;
+        nextStepButton.interactable = false;
+        stopButton.interactable = false;
     }
 
     private void BuildUi()
@@ -217,11 +248,12 @@ public class LtvInstructionDebugPanel : MonoBehaviour
         RectTransform panel = CreatePanel(canvasGo.transform, panelSize, panelOffset);
 
         titleText = CreateText(panel, "Title", font, 24, FontStyle.Bold, TextAnchor.UpperLeft, new Vector2(16f, -12f), new Vector2(-16f, -44f));
-        instructionText = CreateText(panel, "Instruction", font, 19, FontStyle.Normal, TextAnchor.UpperLeft, new Vector2(16f, -52f), new Vector2(-16f, -116f));
-        statusText = CreateText(panel, "Status", font, 16, FontStyle.Italic, TextAnchor.UpperLeft, new Vector2(16f, -170f), new Vector2(-16f, -204f));
+        instructionText = CreateText(panel, "Instruction", font, 19, FontStyle.Normal, TextAnchor.UpperLeft, new Vector2(16f, -52f), new Vector2(-16f, -156f));
+        statusText = CreateText(panel, "Status", font, 16, FontStyle.Italic, TextAnchor.UpperLeft, new Vector2(16f, -164f), new Vector2(-16f, -198f));
 
-        markDoneButton = CreateButton(panel, font, "Mark Done", new Vector2(16f, 12f), new Vector2(170f, 42f), OnMarkDonePressed);
-        refreshButton = CreateButton(panel, font, "Refresh", new Vector2(196f, 12f), new Vector2(170f, 42f), OnRefreshPressed);
+        startButton = CreateButton(panel, font, "Start Diagnosis", new Vector2(16f, 12f), new Vector2(170f, 42f), OnStartPressed);
+        nextStepButton = CreateButton(panel, font, "Next Step", new Vector2(196f, 12f), new Vector2(140f, 42f), OnNextStepPressed);
+        stopButton = CreateButton(panel, font, "Stop", new Vector2(346f, 12f), new Vector2(100f, 42f), OnStopPressed);
     }
 
     private static RectTransform CreatePanel(Transform parent, Vector2 size, Vector2 offset)
