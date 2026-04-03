@@ -5,10 +5,9 @@ EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
   m_Scenes:
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/Main.unity
     guid: 9fc0d4010bbf28b4594072e72b8655ab
-<<<<<<< HEAD
   - enabled: 1
     path: Assets/Scenes/map_test.unity
 =======
@@ -16,9 +15,6 @@ EditorBuildSettings:
     path: Assets/map_test.unity
 >>>>>>> 617601703100188abc455c686be340898877317e
     guid: e1525998d6a5546bbb91be4e68070ea8
-  - enabled: 0
-    path: Assets/Samples/XR Interaction Toolkit/2.4.1/Hands Interaction Demo/Runtime/HandsDemoScene.unity
-    guid: 3ff35cecbcc52cc42945cf531638a60a
   m_configObjects:
     com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 81fe73fad731b4c30af147196646e16a, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: c761bc8a9a07b4bbd896483595753c2d, type: 2}
