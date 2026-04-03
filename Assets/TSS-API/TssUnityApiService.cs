@@ -32,6 +32,12 @@ namespace TssApi
         private bool _sourceOnline;
         private double _lastUpdatedUnix;
 
+        private string _udpInitError;
+        private bool _lastPollEvaUdpOk;
+        private bool _lastPollLtvUdpOk;
+        private string _lastPollEvaUdpError;
+        private string _lastPollLtvUdpError;
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -42,7 +48,29 @@ namespace TssApi
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            ApplyHostFromEnvironment();
             LoadProcedures();
+        }
+
+        /// <summary>
+        /// Optional: set process env <c>SUITS_TSS_HOST</c> to override the Inspector <see cref="tssHost"/> (builds, CI, device).
+        /// </summary>
+        private void ApplyHostFromEnvironment()
+        {
+            string env = Environment.GetEnvironmentVariable("SUITS_TSS_HOST");
+            if (string.IsNullOrWhiteSpace(env))
+            {
+                return;
+            }
+
+            string trimmed = env.Trim();
+            if (trimmed == tssHost)
+            {
+                return;
+            }
+
+            Debug.Log($"TssUnityApiService: SUITS_TSS_HOST overrides serialized tssHost \"{tssHost}\" → \"{trimmed}\"");
+            tssHost = trimmed;
         }
 
         private void OnEnable()
@@ -76,6 +104,25 @@ namespace TssApi
                 { "ok", true },
                 { "source_online", _sourceOnline },
                 { "last_updated_unix", _sourceOnline ? _lastUpdatedUnix : 0.0d }
+            };
+        }
+
+        /// <summary>
+        /// Last UDP poll results: use to tell connection/decode errors from JSON schema issues.
+        /// </summary>
+        public Dictionary<string, object> GetPollDiagnostics()
+        {
+            return new Dictionary<string, object>
+            {
+                { "source_online", _sourceOnline },
+                { "tss_host", tssHost },
+                { "tss_port", tssPort },
+                { "udp_initialized", _udp != null },
+                { "udp_init_error", _udpInitError ?? string.Empty },
+                { "eva_udp_ok", _lastPollEvaUdpOk },
+                { "ltv_udp_ok", _lastPollLtvUdpOk },
+                { "eva_udp_error", _lastPollEvaUdpError ?? string.Empty },
+                { "ltv_udp_error", _lastPollLtvUdpError ?? string.Empty }
             };
         }
 
@@ -500,8 +547,27 @@ namespace TssApi
             WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
             while (true)
             {
-                Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
-                Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
+                Dictionary<string, object> evaRaw = null;
+                Dictionary<string, object> ltvRaw = null;
+
+                if (_udp == null)
+                {
+                    _lastPollEvaUdpOk = false;
+                    _lastPollLtvUdpOk = false;
+                    string e = string.IsNullOrEmpty(_udpInitError) ? "udp_not_initialized" : _udpInitError;
+                    _lastPollEvaUdpError = e;
+                    _lastPollLtvUdpError = e;
+                }
+                else
+                {
+                    evaRaw = _udp.RequestJson(UdpGetEva);
+                    _lastPollEvaUdpOk = evaRaw != null;
+                    _lastPollEvaUdpError = _lastPollEvaUdpOk ? string.Empty : (_udp.LastRequestError ?? "eva_request_failed");
+
+                    ltvRaw = _udp.RequestJson(UdpGetLtv);
+                    _lastPollLtvUdpOk = ltvRaw != null;
+                    _lastPollLtvUdpError = _lastPollLtvUdpOk ? string.Empty : (_udp.LastRequestError ?? "ltv_request_failed");
+                }
 
                 if (evaRaw != null)
                 {
@@ -534,11 +600,13 @@ namespace TssApi
             try
             {
                 _udp = new TssUdpClient(tssHost, tssPort, udpTimeoutMs, udpRetries);
+                _udpInitError = null;
             }
             catch (Exception e)
             {
                 Debug.LogError($"TssUnityApiService UDP init failed: {e.Message}");
                 _udp = null;
+                _udpInitError = e.Message;
             }
         }
 

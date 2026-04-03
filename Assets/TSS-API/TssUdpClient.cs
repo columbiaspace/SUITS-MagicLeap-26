@@ -14,6 +14,9 @@ namespace TssApi
         private readonly object _lock = new object();
         private UdpClient _udpClient;
 
+        /// <summary>Set on every <see cref="RequestJson"/> call: null on success, otherwise why the dict was not returned.</summary>
+        public string LastRequestError { get; private set; }
+
         public TssUdpClient(string host, int port, int timeoutMs, int retries)
         {
             _retries = Mathf.Max(1, retries);
@@ -35,8 +38,11 @@ namespace TssApi
 
         public Dictionary<string, object> RequestJson(int command)
         {
+            LastRequestError = null;
+
             if (_udpClient == null)
             {
+                LastRequestError = "udp_client_null";
                 return null;
             }
 
@@ -53,37 +59,57 @@ namespace TssApi
                         _udpClient.Send(_requestBuffer, _requestBuffer.Length);
                         IPEndPoint sender = null;
                         byte[] raw = _udpClient.Receive(ref sender);
-                        return DecodeResponse(raw);
+                        if (TryDecodeResponse(raw, out Dictionary<string, object> dict, out string decodeErr))
+                        {
+                            LastRequestError = null;
+                            return dict;
+                        }
+
+                        LastRequestError = decodeErr ?? "decode_failed";
+                        return null;
                     }
                 }
-                catch (SocketException)
+                catch (SocketException ex)
                 {
+                    LastRequestError = $"socket {ex.SocketErrorCode}: {ex.Message}";
                 }
                 catch (ObjectDisposedException)
                 {
+                    LastRequestError = "udp_client_disposed";
                     break;
                 }
                 catch (Exception e)
                 {
+                    LastRequestError = $"error: {e.Message}";
                     Debug.LogWarning($"TssUdpClient request failed: {e.Message}");
                     break;
                 }
             }
 
+            if (string.IsNullOrEmpty(LastRequestError))
+            {
+                LastRequestError = $"no_response_after_{_retries}_attempt(s)";
+            }
+
             return null;
         }
 
-        private static Dictionary<string, object> DecodeResponse(byte[] raw)
+        private static bool TryDecodeResponse(byte[] raw, out Dictionary<string, object> dict, out string error)
         {
+            dict = null;
+            error = null;
+
             if (raw == null || raw.Length == 0)
             {
-                return null;
+                error = "empty_udp_payload";
+                return false;
             }
 
             int payloadOffset = FindJsonObjectStart(raw);
             if (payloadOffset < 0)
             {
-                return null;
+                error = "no_json_object_prefix_in_payload";
+                return false;
             }
 
             string json = Encoding.UTF8
@@ -92,11 +118,29 @@ namespace TssApi
 
             if (string.IsNullOrEmpty(json))
             {
-                return null;
+                error = "json_trimmed_empty";
+                return false;
             }
 
-            object parsed = MiniJson.Deserialize(json);
-            return parsed as Dictionary<string, object>;
+            object parsed;
+            try
+            {
+                parsed = MiniJson.Deserialize(json);
+            }
+            catch (Exception ex)
+            {
+                error = $"mini_json: {ex.Message}";
+                return false;
+            }
+
+            dict = parsed as Dictionary<string, object>;
+            if (dict == null)
+            {
+                error = "json_root_not_object";
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
