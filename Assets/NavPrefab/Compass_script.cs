@@ -1,35 +1,94 @@
 using System.Collections;
 using System.Collections.Generic;
+using TssApi;
 using UnityEngine;
 
 public class Compass_script : MonoBehaviour
 {
-    
-    public Vector3 NorthDirection;
-    public Transform Player;
+    [Header("TSS")]
+    [SerializeField] private TssUnityApiService tssApi;
+    [Tooltip("Key inside the imu bucket — must match what TSS sends (e.g. ev1)")]
+    [SerializeField] private string evaId = "eva1";
+
+    [Header("Compass")]
     public RectTransform NorthArrow;
 
-    public float debugHeading; // This shows up as a box in the Inspector
+    [Header("Debug")]
+    [Tooltip("When true, shows live TSS heading. Disable to use the override below.")]
+    [SerializeField] private bool useTssHeading = true;
+    [SerializeField] private float debugHeading = 0f;
 
-    void Start()
+    private float _currentHeading = 0f;
+
+    private void Awake()
     {
-        // Turn on the device location service and compass
-        Input.location.Start();
-        Input.compass.enabled = true;
+        if (tssApi == null) tssApi = TssUnityApiService.Instance;
+        if (tssApi == null) tssApi = FindObjectOfType<TssUnityApiService>();
+
+        if (tssApi == null)
+            Debug.LogError("[Compass] No TssUnityApiService found — assign it in the Inspector.");
     }
-    
-    // Update is called once per frame
-    void Update()
+
+    private void Update()
     {
-        ChangeNorthDirection();
+        if (useTssHeading && tssApi != null)
+            _currentHeading = ReadTssHeading();
+        else
+            _currentHeading = debugHeading;
+
+        // TSS heading: 0 = North, 90 = East, 180 = South, 270 = West.
+        // Negate so the arrow rotates opposite to the heading
+        // (arrow points toward north as the player turns away from it).
+        if (NorthArrow != null)
+            NorthArrow.localEulerAngles = new Vector3(0f, 0f, -_currentHeading);
     }
 
-    public void ChangeNorthDirection()
+    private float ReadTssHeading()
     {
-        // Use the debugHeading while in the Editor, use real Compass on device
-        float currentHeading = Application.isEditor ? debugHeading : Input.compass.trueHeading;
+        // GetEva() → ["imu"] → [evaId] → ["heading"]
+        Dictionary<string, object> eva = tssApi.GetEva();
 
-        NorthDirection.z = -currentHeading; 
-        NorthArrow.localEulerAngles = NorthDirection;
+        Dictionary<string, object> imu = null;
+        if (eva != null && eva.TryGetValue("imu", out object imuObj))
+            imu = imuObj as Dictionary<string, object>;
+
+        Dictionary<string, object> imuEva = null;
+        if (imu != null && imu.TryGetValue(evaId, out object bucketObj))
+            imuEva = bucketObj as Dictionary<string, object>;
+
+        if (imuEva == null)
+        {
+            Debug.LogWarning($"[Compass] imu[\"{evaId}\"] not found — check evaId matches TSS. imu keys: {Keys(imu)}");
+            return _currentHeading; // hold last known value
+        }
+
+        if (!imuEva.TryGetValue("heading", out object raw) || raw == null)
+        {
+            Debug.LogWarning("[Compass] heading field missing from imu bucket.");
+            return _currentHeading;
+        }
+
+        return (float)ToDouble(raw);
+    }
+
+    private static string Keys(Dictionary<string, object> dict)
+    {
+        if (dict == null || dict.Count == 0) return "(empty)";
+        var k = new List<string>(dict.Keys);
+        k.Sort();
+        return "[" + string.Join(", ", k) + "]";
+    }
+
+    private static double ToDouble(object val)
+    {
+        if (val is double d)  return d;
+        if (val is float  f)  return f;
+        if (val is int    i)  return i;
+        if (val is long   l)  return l;
+        if (val is string s && double.TryParse(s,
+                System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out double p)) return p;
+        try   { return System.Convert.ToDouble(val, System.Globalization.CultureInfo.InvariantCulture); }
+        catch { return 0d; }
     }
 }
