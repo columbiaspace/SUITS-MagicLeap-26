@@ -273,7 +273,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 728ad7fae8e460a4ba41265c7308d757, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_AnchorPrefab: {fileID: 1166795026}
+  m_AnchorPrefab: {fileID: 0}
 --- !u!114 &369427053
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -286,9 +286,6 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 91f856aa705c145dc8c301b3ac5a3a22, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  moveSpeed: 5
-  lookSpeed: 2
-  sprintMultiplier: 3
 --- !u!1 &455361019
 GameObject:
   m_ObjectHideFlags: 0
@@ -520,7 +517,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 10.207.124.137
+  tssHost: 10.206.12.54
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -779,11 +776,6 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 4ff815b84f5544c9fa05a2188c20bb22, type: 3}
---- !u!1 &1166795026 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 4995099973755842962, guid: 4ff815b84f5544c9fa05a2188c20bb22, type: 3}
-  m_PrefabInstance: {fileID: 1166795025}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &1603098561
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -1218,9 +1210,16 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   xrOrigin: {fileID: 369427047}
   anchorManager: {fileID: 369427049}
-  tilePrefab: {fileID: 1166795026}
+  tilePrefab: {fileID: 0}
+  alignInitialPathToRig: 1
+  pathTilesFloorYOffset: 0.02
+  navTerrainMesh: {fileID: 0}
+  createTerrainAnalyzerIfMissing: 1
   pathColor: {r: 0.2, g: 0.5, b: 1, a: 0.9}
   evaId: eva1
+  showNavGridOverlay: 1
+  navGridMarginCells: 12
+  navGridMaxDisplayPx: 480
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

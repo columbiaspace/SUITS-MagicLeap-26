@@ -81,6 +81,35 @@ public static class NavPathfinder
         return new List<Vector2Int>();
     }
 
+    /// <summary>8-connected flood fill of <paramref name="walkableSet"/> from <paramref name="seed"/>.</summary>
+    public static HashSet<Vector2Int> WalkableComponentContaining(HashSet<Vector2Int> walkableSet, Vector2Int seed)
+    {
+        var comp = new HashSet<Vector2Int>();
+        if (walkableSet == null || walkableSet.Count == 0 || !walkableSet.Contains(seed))
+        {
+            return comp;
+        }
+
+        var q = new Queue<Vector2Int>();
+        q.Enqueue(seed);
+        comp.Add(seed);
+
+        while (q.Count > 0)
+        {
+            Vector2Int c = q.Dequeue();
+            for (int i = 0; i < Dirs.Length; i++)
+            {
+                Vector2Int n = c + Dirs[i];
+                if (walkableSet.Contains(n) && comp.Add(n))
+                {
+                    q.Enqueue(n);
+                }
+            }
+        }
+
+        return comp;
+    }
+
     private static float Heuristic(Vector2Int a, Vector2Int b)
     {
         float dx = a.x - b.x;

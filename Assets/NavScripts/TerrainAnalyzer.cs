@@ -1,6 +1,11 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Registers in OnEnable (not Awake) so the singleton is set when the object becomes active.
+/// Inactive objects never receive Awake/OnEnable at load, which leaves Instance null until enabled.
+/// </summary>
+[DefaultExecutionOrder(-500)]
 public class TerrainAnalyzer : MonoBehaviour
 {
     [Header("Terrain Source")]
@@ -16,11 +21,14 @@ public class TerrainAnalyzer : MonoBehaviour
     [SerializeField] private float dustScaleZ = 2.38f;
 
     [Header("Walkability Thresholds")]
-    [SerializeField] private float maxSlopeDegrees = 25f;
-    [SerializeField] private float maxHeightRange = 0.2f;
+    [Tooltip("Higher = allow steeper triangles before maxing difficulty.")]
+    [SerializeField] private float maxSlopeDegrees = 40f;
+    [Tooltip("Higher = more internal height variation allowed inside one cell.")]
+    [SerializeField] private float maxHeightRange = 0.45f;
     [Range(0f, 1f)]
     [SerializeField] private float slopeBlendFactor = 0.6f;
-    [SerializeField] private float impassableThreshold = 0.6f;
+    [Tooltip("Cells with difficulty strictly below this count as walkable. Higher = more walkable cells.")]
+    [SerializeField] private float impassableThreshold = 0.82f;
 
     public static TerrainAnalyzer Instance { get; private set; }
     public bool IsReady { get; private set; }
@@ -41,23 +49,34 @@ public class TerrainAnalyzer : MonoBehaviour
     public IEnumerable<Vector2Int> AllCells => _walkabilityGrid.Keys;
     public HashSet<Vector2Int> WalkableSet => _walkableSet;
 
-    private void Awake()
+    /// <summary>For runtime/bootstrap: assign mesh after AddComponent, before Start/BuildGrid.</summary>
+    public void SetTerrainMesh(Mesh mesh)
+    {
+        terrainMesh = mesh;
+    }
+
+    private void OnEnable()
     {
         if (Instance != null && Instance != this)
         {
             Destroy(this);
             return;
         }
+
         Instance = this;
         DontDestroyOnLoad(gameObject);
     }
 
+    private void OnDisable()
+    {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+    }
+
     private void Start()
     {
-        maxSlopeDegrees = 25f;
-        maxHeightRange = 0.2f;
-        slopeBlendFactor = 0.6f;
-        impassableThreshold = 0.6f;
         BuildGrid();
     }
 
