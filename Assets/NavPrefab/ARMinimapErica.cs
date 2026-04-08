@@ -42,8 +42,10 @@ public class ARMinimapErica : MonoBehaviour
 
     private void Update()
     {
-        UpdatePlayerIcon();
-        RecordTrail();
+        // Fetch once per frame — GetEva() does a deep copy each call
+        Dictionary<string, object> imuEva = GetImuBucket();
+        UpdatePlayerIcon(imuEva);
+        RecordTrail(imuEva);
     }
 
     private void UpdatePlayerIcon(Dictionary<string, object> imuEva)
