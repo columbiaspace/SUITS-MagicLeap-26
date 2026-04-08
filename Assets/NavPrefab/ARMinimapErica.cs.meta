@@ -7,7 +7,6 @@ MonoImporter:
   - minimapRect: {instanceID: 0}
   - playerIcon: {instanceID: 0}
   - pathContainer: {instanceID: 0}
-  - trailDotPrefab: {instanceID: 0}
   - pathDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
   executionOrder: 0
   icon: {instanceID: 0}

@@ -92,7 +92,7 @@ MonoBehaviour:
   playerIcon: {fileID: 2628303728258307630}
   pathContainer: {fileID: 2626901015357841970}
   pathDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
-  worldToMapScale: 8
+  worldUnitsVisible: 50
 --- !u!1 &3155348985365556274
 GameObject:
   m_ObjectHideFlags: 0
@@ -381,7 +381,7 @@ MonoBehaviour:
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
   m_DynamicPixelsPerUnit: 1
-  m_PresetInfoIsWorld: 0
+  m_PresetInfoIsWorld: 1
 --- !u!114 &2618427457071823549
 MonoBehaviour:
   m_ObjectHideFlags: 0

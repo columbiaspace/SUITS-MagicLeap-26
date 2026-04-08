@@ -1890,9 +1890,8 @@ MonoBehaviour:
   minimapRect: {fileID: 1691306746}
   playerIcon: {fileID: 1691306745}
   pathContainer: {fileID: 1691306744}
-  trailDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
+  pathDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
   worldToMapScale: 8
-  recordDistance: 0.25
 --- !u!1001 &1691306743
 PrefabInstance:
   m_ObjectHideFlags: 0
