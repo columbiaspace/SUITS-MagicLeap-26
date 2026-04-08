@@ -17,8 +17,11 @@ public class Compass_script : MonoBehaviour
     [Tooltip("When true, shows live TSS heading. Disable to use the override below.")]
     [SerializeField] private bool useTssHeading = true;
     [SerializeField] private float debugHeading = 0f;
+    [Tooltip("How often (seconds) to print the heading to the Console. 0 = every frame.")]
+    [SerializeField] private float logIntervalSeconds = 1f;
 
     private float _currentHeading = 0f;
+    private float _logTimer = 0f;
 
     private void Awake()
     {
@@ -41,6 +44,13 @@ public class Compass_script : MonoBehaviour
         // (arrow points toward north as the player turns away from it).
         if (NorthArrow != null)
             NorthArrow.localEulerAngles = new Vector3(0f, 0f, -_currentHeading);
+
+        _logTimer += Time.deltaTime;
+        if (_logTimer >= logIntervalSeconds)
+        {
+            _logTimer = 0f;
+            Debug.Log($"[Compass] heading={_currentHeading:F1}°  arrow_z={-_currentHeading:F1}°  source={(useTssHeading ? "TSS" : "debug")}");
+        }
     }
 
     private float ReadTssHeading()
