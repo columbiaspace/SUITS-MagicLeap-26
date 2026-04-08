@@ -204,8 +204,9 @@ GameObject:
   - component: {fileID: 455361020}
   - component: {fileID: 455361022}
   - component: {fileID: 455361021}
+  - component: {fileID: 857829564}
   m_Layer: 0
-  m_Name: Image
+  m_Name: UIAImage
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -227,8 +228,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: -180, y: 0}
-  m_SizeDelta: {x: 340, y: 500}
+  m_AnchoredPosition: {x: -192, y: 0}
+  m_SizeDelta: {x: 350, y: 350}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &455361021
 MonoBehaviour:
@@ -303,8 +304,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 180, y: 0}
-  m_SizeDelta: {x: 340, y: 283}
+  m_AnchoredPosition: {x: 192, y: 0}
+  m_SizeDelta: {x: 350, y: 350}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &455361031
 MonoBehaviour:
@@ -336,6 +337,14 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
+--- !u!222 &455361032
+CanvasRenderer:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 455361029}
+  m_CullTransparentMesh: 1
 --- !u!114 &455361034
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -358,14 +367,6 @@ MonoBehaviour:
   dcuCo2Texture: {fileID: 2800000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}
   tssApi: {fileID: 782628376}
   syncIntervalSeconds: 0.2
---- !u!222 &455361032
-CanvasRenderer:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 455361029}
-  m_CullTransparentMesh: 1
 --- !u!1 &505382992
 GameObject:
   m_ObjectHideFlags: 0
@@ -391,9 +392,9 @@ Transform:
   m_GameObject: {fileID: 505382992}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: 0, z: 1.2}
+  m_LocalPosition: {x: 0, y: -0.014, z: 1.2}
   m_LocalScale: {x: 1, y: 1, z: 1}
-  m_ConstrainProportionsScale: 0
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 857829563}
   m_Father: {fileID: 65284394}
@@ -555,7 +556,6 @@ GameObject:
   - component: {fileID: 857829567}
   - component: {fileID: 857829566}
   - component: {fileID: 857829565}
-  - component: {fileID: 857829564}
   m_Layer: 0
   m_Name: Canvas
   m_TagString: Untagged
@@ -590,13 +590,14 @@ MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 0}
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 857829562}
+  m_GameObject: {fileID: 455361019}
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: cfbb78863613d4672a9521bd7bdf6acf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   displayImage: {fileID: 455361021}
+  idleSlideIndexAfterComplete: -1
   slides:
   - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}

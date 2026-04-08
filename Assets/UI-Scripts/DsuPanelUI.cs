@@ -11,6 +11,8 @@ using UnityEngine.UI;
 /// Phase 2 – All UIA steps complete: walks through the ordered DCU procedure
 ///            images (battery → oxy → battery → fan → pump → co2), advancing
 ///            each step once the corresponding TSS API field reaches its target.
+/// Phase 3 – After the last DCU condition (CO₂ scrubber on) is true, returns to the
+///            default DCU overview image.
 /// </summary>
 [RequireComponent(typeof(Image))]
 public class DsuPanelUI : MonoBehaviour
@@ -163,7 +165,7 @@ public class DsuPanelUI : MonoBehaviour
             }
         }
 
-        // Count how many consecutive DCU advance-rules are satisfied.
+        // Count how many consecutive DCU advance-rules are satisfied (0…5).
         int completed = 0;
         for (int i = 0; i < DcuAdvancePaths.Length; i++)
         {
@@ -171,6 +173,14 @@ public class DsuPanelUI : MonoBehaviour
                 completed++;
             else
                 break;
+        }
+
+        // Full sequence shown only after all intermediate rules have passed; CO₂ on → idle overview.
+        bool sequenceThroughLastSlide = completed >= DcuAdvancePaths.Length;
+        if (sequenceThroughLastSlide && GetBool(eva, "dcu.eva1.co2", out bool co2On) && co2On)
+        {
+            ShowDefault();
+            return;
         }
 
         _dcuStep = Mathf.Clamp(completed, 0, 5);

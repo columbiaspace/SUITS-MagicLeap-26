@@ -5,6 +5,7 @@ using TssApi;
 using UnityEngine;
 using UnityEngine.UI;
 
+[RequireComponent(typeof(Image))]
 public class ImageCarouselUI : MonoBehaviour
 {
     private enum EvaField
@@ -51,6 +52,9 @@ public class ImageCarouselUI : MonoBehaviour
     [SerializeField] private Image displayImage;
     [SerializeField] private List<Sprite> slides = new List<Sprite>();
 
+    [Tooltip("After every step rule passes, show this slide (e.g. SUITS_UIA_PANEL). -1 = last entry in Slides.")]
+    [SerializeField] private int idleSlideIndexAfterComplete = -1;
+
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
 
@@ -64,6 +68,11 @@ public class ImageCarouselUI : MonoBehaviour
 
     private void Awake()
     {
+        if (displayImage == null)
+        {
+            displayImage = GetComponent<Image>();
+        }
+
         if (tssApi == null)
         {
             tssApi = TssUnityApiService.Instance;
@@ -142,9 +151,6 @@ public class ImageCarouselUI : MonoBehaviour
             return;
         }
 
-        object uiaEva1Power = GetPath(eva, "uia.eva1_power");
-        Debug.Log("[SYNC] uia.eva1_power = " + uiaEva1Power);
-
         AdvanceIfReady(eva);
     }
 
@@ -159,7 +165,18 @@ public class ImageCarouselUI : MonoBehaviour
             else break; // stop at first unmet (ordered procedure)
         }
 
-        index = Mathf.Clamp(completed, 0, slides.Count - 1);
+        // Procedure: slides advance with each satisfied rule (highlighter steps). When all rules pass,
+        // hold on the idle slide (default: last sprite — e.g. SUITS_UIA_PANEL again).
+        if (completed >= stepRules.Count)
+        {
+            int idle = idleSlideIndexAfterComplete >= 0 ? idleSlideIndexAfterComplete : slides.Count - 1;
+            index = Mathf.Clamp(idle, 0, slides.Count - 1);
+        }
+        else
+        {
+            index = Mathf.Clamp(completed, 0, slides.Count - 1);
+        }
+
         Refresh();
     }
 
