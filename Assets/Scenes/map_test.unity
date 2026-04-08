@@ -517,7 +517,6 @@ Transform:
   - {fileID: 1275575000}
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-<<<<<<< HEAD
 --- !u!1001 &970494993
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -579,13 +578,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 2460e4f8321f4d54d8c3445cdbaa7149, type: 3}
-=======
 --- !u!224 &995198643 stripped
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 5952609899152695321, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
   m_PrefabInstance: {fileID: 1691306743}
   m_PrefabAsset: {fileID: 0}
->>>>>>> 6782d49ded2ac811d5a61d95fb571e71e06b64b8
 --- !u!1 &1118109614
 GameObject:
   m_ObjectHideFlags: 0
