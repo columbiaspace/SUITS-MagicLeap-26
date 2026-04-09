@@ -506,6 +506,11 @@ namespace TssApi
                 if (evaRaw != null)
                 {
                     _eva = evaRaw;
+                    var telemetry = GetNestedDict(_eva, "telemetry");
+                    if (telemetry.TryGetValue("eva1.oxy_pri_storage", out var oxyPri))
+                    {
+                        Debug.Log($"Oxygen Primary Storage: {oxyPri}");
+                    }
                     EvaUpdated?.Invoke(GetEva());
                 }
 
