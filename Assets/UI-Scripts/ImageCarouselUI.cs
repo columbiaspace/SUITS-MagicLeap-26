@@ -55,6 +55,9 @@ public class ImageCarouselUI : MonoBehaviour
     [Tooltip("After every step rule passes, show this slide (e.g. SUITS_UIA_PANEL). -1 = last entry in Slides.")]
     [SerializeField] private int idleSlideIndexAfterComplete = -1;
 
+    [Tooltip("While the mission / first rule is still catching up, show this slide (usually index 1 = first UIA highlight).")]
+    [SerializeField] private int firstActiveSlideIndex = 1;
+
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
 
@@ -88,7 +91,7 @@ public class ImageCarouselUI : MonoBehaviour
             LoadDefaultEva1Rules();
         }
 
-        index = 0;
+        index = Mathf.Clamp(firstActiveSlideIndex, 0, Mathf.Max(0, slides.Count - 1));
         Refresh();
     }
 
@@ -174,7 +177,17 @@ public class ImageCarouselUI : MonoBehaviour
         }
         else
         {
-            index = Mathf.Clamp(completed, 0, slides.Count - 1);
+            // Show first highlight (e.g. slide 1) as soon as the sim runs; stay there until rule 0–1
+            // settle, then follow slide index with each additional satisfied rule.
+            int first = Mathf.Clamp(firstActiveSlideIndex, 0, slides.Count - 1);
+            if (completed <= 1)
+            {
+                index = first;
+            }
+            else
+            {
+                index = Mathf.Clamp(completed, 0, slides.Count - 1);
+            }
         }
 
         Refresh();

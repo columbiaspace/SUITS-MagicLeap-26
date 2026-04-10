@@ -83,12 +83,12 @@ namespace TssApi
         {
             return new Dictionary<string, object>
             {
-                { "status", GetNestedDict(_eva, "status") },
+                { "status", NormalizeStatusSectionForUi(_eva) },
                 { "telemetry", GetNestedDict(_eva, "telemetry") },
                 { "dcu", GetNestedDict(_eva, "dcu") },
                 { "error", GetNestedDict(_eva, "error") },
                 { "imu", GetNestedDict(_eva, "imu") },
-                { "uia", GetNestedDict(_eva, "uia") }
+                { "uia", NormalizeUiaSectionForUi(_eva) }
             };
         }
 
@@ -115,7 +115,7 @@ namespace TssApi
         public Dictionary<string, object> GetEvaUiaById(string evaId)
         {
             string normalizedEvaId = NormalizeEvaId(evaId);
-            Dictionary<string, object> uia = GetNestedDict(_eva, "uia");
+            Dictionary<string, object> uia = NormalizeUiaSectionForUi(_eva);
             string prefix = normalizedEvaId + "_";
 
             return new Dictionary<string, object>
@@ -635,6 +635,80 @@ namespace TssApi
             }
 
             return new Dictionary<string, object>();
+        }
+
+        /// <summary>
+        /// <see cref="ImageCarouselUI"/> expects <c>status.started</c>. Some TSS builds use other keys.
+        /// </summary>
+        private static Dictionary<string, object> NormalizeStatusSectionForUi(Dictionary<string, object> evaRoot)
+        {
+            Dictionary<string, object> st = GetNestedDict(evaRoot, "status");
+            if (st.ContainsKey("started"))
+            {
+                return st;
+            }
+
+            foreach (string key in new[] { "mission_started", "running", "active", "missionStarted" })
+            {
+                if (st.TryGetValue(key, out object v))
+                {
+                    st["started"] = v;
+                    break;
+                }
+            }
+
+            return st;
+        }
+
+        /// <summary>
+        /// UI expects flat UIA keys (<c>eva1_power</c>, <c>eva1_water_supply</c>, …) under <c>uia</c>.
+        /// TSS often sends <c>uia.eva1.power</c> / <c>supply</c> / <c>waste</c> or aliases like <c>eva1_supply</c>.
+        /// </summary>
+        private static Dictionary<string, object> NormalizeUiaSectionForUi(Dictionary<string, object> evaRoot)
+        {
+            if (evaRoot == null || !evaRoot.TryGetValue("uia", out object uObj) || !(uObj is Dictionary<string, object> uiaRaw))
+            {
+                return new Dictionary<string, object>();
+            }
+
+            Dictionary<string, object> uia = DeepCopyDict(uiaRaw);
+
+            static void EnsureCanonical(Dictionary<string, object> target, string canonical, Dictionary<string, object> src, params string[] keys)
+            {
+                if (target.ContainsKey(canonical))
+                {
+                    return;
+                }
+
+                foreach (string k in keys)
+                {
+                    if (src.TryGetValue(k, out object v) && v != null)
+                    {
+                        target[canonical] = v;
+                        return;
+                    }
+                }
+            }
+
+            if (uia.TryGetValue("eva1", out object eva1Obj) && eva1Obj is Dictionary<string, object> eva1)
+            {
+                EnsureCanonical(uia, "eva1_power", eva1, "power", "emu_power", "emu1_power");
+                EnsureCanonical(uia, "eva1_oxy", eva1, "oxy", "oxygen");
+                EnsureCanonical(uia, "eva1_water_supply", eva1, "water_supply", "supply", "ev1_supply");
+                EnsureCanonical(uia, "eva1_water_waste", eva1, "water_waste", "waste", "ev1_waste");
+            }
+
+            if (!uia.ContainsKey("eva1_water_supply") && uia.TryGetValue("eva1_supply", out object sup))
+            {
+                uia["eva1_water_supply"] = sup;
+            }
+
+            if (!uia.ContainsKey("eva1_water_waste") && uia.TryGetValue("eva1_waste", out object wast))
+            {
+                uia["eva1_water_waste"] = wast;
+            }
+
+            return uia;
         }
 
         private static List<object> GetNestedList(Dictionary<string, object> source, string key)

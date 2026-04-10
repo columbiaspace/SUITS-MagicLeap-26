@@ -598,6 +598,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   displayImage: {fileID: 455361021}
   idleSlideIndexAfterComplete: -1
+  firstActiveSlideIndex: 1
   slides:
   - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}

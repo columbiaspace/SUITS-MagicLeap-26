@@ -49,9 +49,10 @@ public class DsuPanelUI : MonoBehaviour
     // ── DCU step definitions ─────────────────────────────────────────────────
     // 6 slides; 5 advance-rules (one between each consecutive pair).
     // Once rule[i] is satisfied the panel moves from slide i to slide i+1.
+    // Rule 0 is special-cased: advance when EVA1 battery is active (lu or ps) per /api/v1/dcu/eva1 shape.
     private static readonly string[] DcuAdvancePaths =
     {
-        "dcu.eva1.batt",  // slide 0→1: battery switch set to UMB → advance
+        "dcu.eva1.batt",  // slide 0→1: batt.lu || batt.ps
         "dcu.eva1.oxy",   // slide 1→2: oxygen on → advance
         "dcu.eva1.batt",  // slide 2→3: battery switched to local (ps=true) → advance
         "dcu.eva1.fan",   // slide 3→4: fan on → advance
@@ -59,10 +60,10 @@ public class DsuPanelUI : MonoBehaviour
     };
 
     // Expected *bool* value of the TSS field that signals the step is done.
-    // batt rule 0 expects "lu" (umbilical) == true; batt rule 2 expects "ps" == true.
+    // Rule 0 uses Eva1BatteryActive(); batt rule 2 expects "ps" == true (local).
     private static readonly string[] DcuAdvanceSubKeys =
     {
-        "lu",  // dcu.eva1.batt.lu == true  → done with slide 0
+        null,  // unused — rule 0 handled in DcuAdvanceSatisfied
         null,  // dcu.eva1.oxy     == true  → done with slide 1
         "ps",  // dcu.eva1.batt.ps == true  → done with slide 2
         null,  // dcu.eva1.fan     == true  → done with slide 3
@@ -71,6 +72,7 @@ public class DsuPanelUI : MonoBehaviour
 
     private Sprite[] _slideSprites;   // 7 entries: [0]=default, [1‑6]=procedure steps
     private bool _uiaComplete;
+    private bool _pendingDcuBatteryIntro;
     private int _dcuStep;             // 0‑5 within the DCU procedure
     private Coroutine _syncCoroutine;
 
@@ -155,6 +157,11 @@ public class DsuPanelUI : MonoBehaviour
         {
             if (AllUiaStepsDone(eva))
             {
+                if (!_uiaComplete)
+                {
+                    _pendingDcuBatteryIntro = true;
+                }
+
                 _uiaComplete = true;
                 _dcuStep = 0;
             }
@@ -163,6 +170,18 @@ public class DsuPanelUI : MonoBehaviour
                 ShowDefault();
                 return;
             }
+        }
+
+        // Always land on dcu-battery when UIA finishes; leave when EVA1 battery is active (lu or ps).
+        if (_pendingDcuBatteryIntro)
+        {
+            ApplySlide(1);
+            if (Eva1BatteryActive(eva))
+            {
+                _pendingDcuBatteryIntro = false;
+            }
+
+            return;
         }
 
         // Count how many consecutive DCU advance-rules are satisfied (0…5).
@@ -215,11 +234,24 @@ public class DsuPanelUI : MonoBehaviour
 
     private static bool DcuAdvanceSatisfied(int ruleIndex, Dictionary<string, object> eva)
     {
+        if (ruleIndex == 0)
+        {
+            return Eva1BatteryActive(eva);
+        }
+
         string basePath = DcuAdvancePaths[ruleIndex];
         string subKey   = DcuAdvanceSubKeys[ruleIndex];
 
         string fullPath = subKey == null ? basePath : basePath + "." + subKey;
         return GetBool(eva, fullPath, out bool v) && v;
+    }
+
+    /// <summary>True when dcu.eva1.batt.lu or dcu.eva1.batt.ps is true (EVA1 battery path active).</summary>
+    private static bool Eva1BatteryActive(Dictionary<string, object> eva)
+    {
+        bool lu = GetBool(eva, "dcu.eva1.batt.lu", out bool l) && l;
+        bool ps = GetBool(eva, "dcu.eva1.batt.ps", out bool p) && p;
+        return lu || ps;
     }
 
     private static bool GetBool(Dictionary<string, object> source, string path, out bool value)
