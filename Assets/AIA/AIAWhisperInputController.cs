@@ -97,6 +97,35 @@ public class AIAWhisperInputController : MonoBehaviour
         }
     }
 
+    public void StartRecordingFromVoiceIntent()
+    {
+        if (!EnsureMicrophonePermission())
+        {
+            return;
+        }
+
+        if (isVoskInitializing)
+        {
+            UpdateStatus("Vosk is still initializing...");
+            return;
+        }
+
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            UpdateStatus("Already recording your question. Tap Stop Recording when finished.");
+            RefreshButtonVisuals();
+            return;
+        }
+
+        if (!isVoskInitialized)
+        {
+            InitializeVosk(startRecordingWhenReady: true);
+            return;
+        }
+
+        StartRecording();
+    }
+
     private void TryResolveReferences()
     {
         if (voiceIntents == null)

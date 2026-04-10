@@ -10,12 +10,8 @@ using UnityEngine.XR.MagicLeap;
 public class VoiceIntents : MonoBehaviour
 {
     private const uint AskLunaEventId = 105;
-    private const string AskLunaSlotName = "query";
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
-
-    private const string DefaultLunaPrompt =
-        "Respond with your name as Luna Assistant and a description of your base model.";
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     public MLVoiceIntentsConfiguration VoiceIntentsConfiguration;
@@ -30,30 +26,13 @@ public class VoiceIntents : MonoBehaviour
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
     [SerializeField] private Text responseTextBox;
+    [SerializeField] private AIAWhisperInputController aiaInputController;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
 
-    // Dynamic Prompting Plan (Streaming Test)
-    //
-    // Phase 1 (current): Predefined slot values in MLVoiceIntentsConfiguration.
-    //   The {query} slot lists common phrases the ASR can match.
-    //   When matched, the slot value is sent to Gemma as the prompt.
-    //   When no slot matches (bare "ask luna"), a default prompt is used.
-    //
-    // Phase 2 (future): Streaming via Ollama.
-    //   Set AiGenerateRequest.stream = true.
-    //   Parse newline-delimited JSON chunks from the response body
-    //   while the download is in progress (check downloadHandler.text
-    //   length each frame, parse new chunks, feed partial text to TTS).
-    //   This gives real-time spoken output instead of waiting for the
-    //   full generation to finish.
-    //
-    // Phase 3 (future): Android SpeechRecognizer for free-form input.
-    //   After the "ask luna" intent fires, start Android's native
-    //   SpeechRecognizer via AndroidJavaProxy to capture open-ended
-    //   speech. Once the recognizer returns a transcript, send that
-    //   to Gemma. This removes the slot-value limitation entirely.
+    // "Hey Luna" is only a wake phrase. It starts Vosk recording; the
+    // resulting transcript is sent to Gemma through SubmitPromptFromText.
 
     private Coroutine aiRequestCoroutine;
     private AndroidJavaObject textToSpeech;
@@ -78,6 +57,7 @@ public class VoiceIntents : MonoBehaviour
     {
         ApplyOllamaIpOverrideFromEnvironment();
         TryResolveResponseTextBox();
+        TryResolveAiaInputController();
         MLPermissions.RequestPermission(MLPermission.VoiceInput, permissionCallbacks);
         InitializeTextToSpeech();
     }
@@ -239,8 +219,8 @@ public class VoiceIntents : MonoBehaviour
                 break;
 
             case AskLunaEventId:
-                Debug.Log("Ask Luna intent detected");
-                TrySendAskLunaPromptToAi(voiceEvent);
+                Debug.Log("Hey Luna wake phrase detected");
+                StartAiaRecordingFromWakePhrase();
                 break;
 
             default:
@@ -249,30 +229,17 @@ public class VoiceIntents : MonoBehaviour
         }
     }
 
-    private void TrySendAskLunaPromptToAi(MLVoice.IntentEvent voiceEvent)
+    private void StartAiaRecordingFromWakePhrase()
     {
-        if (!sendVoicePromptToAi)
+        TryResolveAiaInputController();
+        if (aiaInputController == null)
         {
-            Debug.LogWarning("Ask Luna intent detected but AI forwarding is disabled.");
-            UpdateResponseTextBox("Luna AI forwarding is disabled.");
+            Debug.LogWarning("[Luna] Hey Luna detected, but AIA input controller was not found.");
+            UpdateResponseTextBox("Luna voice recording is unavailable.");
             return;
         }
 
-        string prompt = ExtractSlotPrompt(voiceEvent, AskLunaSlotName);
-
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            Debug.Log("[Luna] No slot text captured. Using default prompt.");
-            prompt = DefaultLunaPrompt;
-        }
-
-        if (logAiResponse)
-        {
-            Debug.Log($"[Luna->Gemma] Prompt: {prompt}");
-        }
-
-        UpdateResponseTextBox("Luna heard your question.");
-        QueueAiRequest(prompt);
+        aiaInputController.StartRecordingFromVoiceIntent();
     }
 
     private void TryResolveResponseTextBox()
@@ -289,6 +256,16 @@ public class VoiceIntents : MonoBehaviour
         }
 
         responseTextBox = responseTextObject.GetComponent<Text>();
+    }
+
+    private void TryResolveAiaInputController()
+    {
+        if (aiaInputController != null)
+        {
+            return;
+        }
+
+        aiaInputController = FindObjectOfType<AIAWhisperInputController>();
     }
 
     private void UpdateResponseTextBox(string text)
@@ -332,55 +309,11 @@ public class VoiceIntents : MonoBehaviour
 
         if (logAiResponse)
         {
-            Debug.Log($"[Whisper->Gemma] Prompt: {trimmedPrompt}");
+            Debug.Log($"[Vosk->Gemma] Prompt: {trimmedPrompt}");
         }
 
         UpdateResponseTextBox("Luna heard your question.");
         QueueAiRequest(trimmedPrompt);
-    }
-
-    /// <summary>
-    /// Extracts the value of a named slot from the voice event.
-    /// This is the only reliable way to get user-spoken content from
-    /// an MLVoice.IntentEvent - the struct has no free-text transcript field.
-    /// </summary>
-    private string ExtractSlotPrompt(MLVoice.IntentEvent voiceEvent, string slotName)
-    {
-        if (voiceEvent.EventSlotsUsed == null || voiceEvent.EventSlotsUsed.Count == 0)
-        {
-            if (verboseVoiceLogging)
-            {
-                Debug.Log("[VoiceDebug] No slots in this event.");
-            }
-            return string.Empty;
-        }
-
-        foreach (var slot in voiceEvent.EventSlotsUsed)
-        {
-            if (verboseVoiceLogging)
-            {
-                Debug.Log($"[VoiceDebug] Checking slot: name='{slot.SlotName}' value='{slot.SlotValue}'");
-            }
-
-            if (!string.Equals(slot.SlotName, slotName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(slot.SlotValue))
-            {
-                Debug.LogWarning($"[VoiceDebug] Slot '{slotName}' found but value is empty.");
-                return string.Empty;
-            }
-
-            return slot.SlotValue.Trim();
-        }
-
-        if (verboseVoiceLogging)
-        {
-            Debug.Log($"[VoiceDebug] Slot '{slotName}' not found in event slots.");
-        }
-        return string.Empty;
     }
 
     private void LogVoiceEvent(MLVoice.IntentEvent voiceEvent, bool wasSuccessful)
