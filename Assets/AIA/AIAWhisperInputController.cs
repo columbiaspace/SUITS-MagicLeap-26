@@ -1,34 +1,35 @@
 using System;
-using System.Threading.Tasks;
+using System.Collections;
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
-using Whisper;
-using Whisper.Utils;
 
 public class AIAWhisperInputController : MonoBehaviour
 {
     private const string ReadyButtonLabel = "Start Recording";
     private const string RecordingButtonLabel = "Stop Recording";
-    private const string BusyButtonLabel = "Transcribing...";
+    private const string BusyButtonLabel = "Loading Vosk...";
+    private const string DefaultVoskModelPath = "vosk-model-small-en-us-0.15.zip";
 
     [SerializeField] private VoiceIntents voiceIntents;
     [SerializeField] private Button recordButton;
     [SerializeField] private Text recordButtonText;
     [SerializeField] private Text responseTextBox;
-    [SerializeField] private WhisperManager whisperManager;
-    [SerializeField] private MicrophoneRecord microphoneRecord;
-    [SerializeField] private string whisperModelPath = "Whisper/ggml-tiny.bin";
-    [SerializeField] private bool whisperModelPathInStreamingAssets = true;
-    [SerializeField] private int maxRecordingLengthSeconds = 30;
-    [SerializeField] private int recordingFrequency = 16000;
+    [SerializeField] private VoskSpeechToText voskSpeechToText;
+    [SerializeField] private VoiceProcessor voiceProcessor;
+    [SerializeField] private string voskModelPath = DefaultVoskModelPath;
+    [SerializeField] private int maxAlternatives = 1;
+    [SerializeField] private float initializationTimeoutSeconds = 120f;
     [SerializeField] private bool logTranscripts = true;
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     private bool hasRecordPermission;
     private bool pendingStartAfterPermission;
+    private bool isVoskInitializing;
+    private bool isVoskInitialized;
     private bool isRecording;
-    private bool isBusy;
+    private Coroutine initializationTimeoutCoroutine;
 
     private void Awake()
     {
@@ -41,13 +42,7 @@ public class AIAWhisperInputController : MonoBehaviour
     {
         TryResolveReferences();
         EnsureRuntimeComponents();
-        ConfigureWhisperManager();
-        ConfigureMicrophone();
-
-        if (microphoneRecord != null)
-        {
-            microphoneRecord.OnRecordStop += HandleRecordingStopped;
-        }
+        ConfigureVosk();
 
         hasRecordPermission = MLPermissions.CheckPermission(MLPermission.RecordAudio).IsOk;
         RefreshButtonVisuals();
@@ -55,29 +50,44 @@ public class AIAWhisperInputController : MonoBehaviour
 
     private void OnDestroy()
     {
+        StopInitializationTimeout();
+
         permissionCallbacks.OnPermissionGranted -= OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnPermissionDenied;
 
-        if (microphoneRecord != null)
+        if (voskSpeechToText != null)
         {
-            microphoneRecord.OnRecordStop -= HandleRecordingStopped;
+            voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
+            voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
+        }
+
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            voiceProcessor.StopRecording();
         }
     }
 
     public void ToggleRecording()
     {
-        if (isBusy)
-        {
-            return;
-        }
-
         if (!EnsureMicrophonePermission())
         {
             return;
         }
 
-        if (isRecording)
+        if (isVoskInitializing)
+        {
+            UpdateStatus("Vosk is still initializing...");
+            return;
+        }
+
+        if (!isVoskInitialized)
+        {
+            InitializeVosk(startRecordingWhenReady: true);
+            return;
+        }
+
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
         {
             StopRecording();
         }
@@ -128,50 +138,35 @@ public class AIAWhisperInputController : MonoBehaviour
 
     private void EnsureRuntimeComponents()
     {
-        whisperManager ??= gameObject.GetComponent<WhisperManager>();
-        if (whisperManager == null)
+        voiceProcessor ??= gameObject.GetComponent<VoiceProcessor>();
+        if (voiceProcessor == null)
         {
-            whisperManager = gameObject.AddComponent<WhisperManager>();
+            voiceProcessor = gameObject.AddComponent<VoiceProcessor>();
         }
 
-        microphoneRecord ??= gameObject.GetComponent<MicrophoneRecord>();
-        if (microphoneRecord == null)
+        voskSpeechToText ??= gameObject.GetComponent<VoskSpeechToText>();
+        if (voskSpeechToText == null)
         {
-            microphoneRecord = gameObject.AddComponent<MicrophoneRecord>();
+            voskSpeechToText = gameObject.AddComponent<VoskSpeechToText>();
         }
     }
 
-    private void ConfigureWhisperManager()
+    private void ConfigureVosk()
     {
-        if (whisperManager == null)
+        if (voskSpeechToText == null)
         {
             return;
         }
 
-        if (!whisperManager.IsLoaded && !whisperManager.IsLoading)
-        {
-            whisperManager.ModelPath = whisperModelPath;
-            whisperManager.IsModelPathInStreamingAssets = whisperModelPathInStreamingAssets;
-        }
-
-        whisperManager.language = "en";
-        whisperManager.translateToEnglish = false;
-        whisperManager.noContext = true;
-    }
-
-    private void ConfigureMicrophone()
-    {
-        if (microphoneRecord == null)
-        {
-            return;
-        }
-
-        microphoneRecord.maxLengthSec = maxRecordingLengthSeconds;
-        microphoneRecord.loop = false;
-        microphoneRecord.frequency = recordingFrequency;
-        microphoneRecord.echo = false;
-        microphoneRecord.useVad = false;
-        microphoneRecord.vadStop = false;
+        voskSpeechToText.AutoStart = false;
+        voskSpeechToText.ModelPath = GetSafeVoskModelPath();
+        voskSpeechToText.MaxAlternatives = maxAlternatives;
+        voskSpeechToText.EmitResultsOnlyOnStop = true;
+        voskSpeechToText.VoiceProcessor = voiceProcessor;
+        voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
+        voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
+        voskSpeechToText.OnStatusUpdated += HandleVoskStatusUpdated;
+        voskSpeechToText.OnTranscriptionResult += HandleTranscriptionResult;
     }
 
     private bool EnsureMicrophonePermission()
@@ -183,7 +178,7 @@ public class AIAWhisperInputController : MonoBehaviour
         }
 
         pendingStartAfterPermission = true;
-        UpdateStatus("Microphone permission required for Whisper recording.");
+        UpdateStatus("Microphone permission required for Vosk recording.");
         MLPermissions.RequestPermission(MLPermission.RecordAudio, permissionCallbacks);
         return false;
     }
@@ -203,7 +198,7 @@ public class AIAWhisperInputController : MonoBehaviour
         }
 
         pendingStartAfterPermission = false;
-        StartRecording();
+        ToggleRecording();
     }
 
     private void OnPermissionDenied(string permission)
@@ -218,25 +213,59 @@ public class AIAWhisperInputController : MonoBehaviour
         RefreshButtonVisuals();
     }
 
-    private void StartRecording()
+    private void InitializeVosk(bool startRecordingWhenReady)
     {
-        if (microphoneRecord == null)
+        if (voskSpeechToText == null)
         {
-            UpdateStatus("Whisper microphone recorder is missing.");
+            UpdateStatus("Vosk speech recognizer is missing.");
             return;
         }
 
         try
         {
-            microphoneRecord.StartRecord();
-            isRecording = true;
+            isVoskInitializing = true;
+            UpdateStatus("Loading Vosk model...");
+            RefreshButtonVisuals();
+
+            string safeModelPath = GetSafeVoskModelPath();
+            Debug.Log($"[Vosk] AIA initializing model path: {safeModelPath}");
+            StartInitializationTimeout();
+
+            voskSpeechToText.StartVoskStt(
+                keyPhrases: new List<string>(),
+                modelPath: safeModelPath,
+                startMicrophone: startRecordingWhenReady,
+                maxAlternatives: maxAlternatives);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError($"[Vosk] Failed to initialize: {exception}");
+            isVoskInitializing = false;
+            StopInitializationTimeout();
+            UpdateStatus("Vosk initialization failed.");
+            RefreshButtonVisuals();
+        }
+    }
+
+    private void StartRecording()
+    {
+        if (voskSpeechToText == null)
+        {
+            UpdateStatus("Vosk speech recognizer is missing.");
+            return;
+        }
+
+        try
+        {
             UpdateStatus("Recording your question... Tap again to stop.");
+            voskSpeechToText.ToggleRecording();
+            isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             RefreshButtonVisuals();
         }
         catch (Exception exception)
         {
-            Debug.LogError($"[Whisper] Failed to start microphone recording: {exception}");
-            UpdateStatus("Failed to start microphone recording.");
+            Debug.LogError($"[Vosk] Failed to start recording: {exception}");
+            UpdateStatus("Failed to start Vosk recording.");
             isRecording = false;
             RefreshButtonVisuals();
         }
@@ -244,59 +273,67 @@ public class AIAWhisperInputController : MonoBehaviour
 
     private void StopRecording()
     {
-        if (microphoneRecord == null || !microphoneRecord.IsRecording)
+        if (voskSpeechToText == null || voiceProcessor == null || !voiceProcessor.IsRecording)
         {
             isRecording = false;
             RefreshButtonVisuals();
             return;
         }
 
-        isRecording = false;
-        isBusy = true;
         UpdateStatus("Processing your recording...");
+        voskSpeechToText.ToggleRecording();
+        isRecording = false;
         RefreshButtonVisuals();
-        microphoneRecord.StopRecord();
     }
 
-    private async void HandleRecordingStopped(AudioChunk recordedAudio)
+    private void HandleVoskStatusUpdated(string status)
+    {
+        if (string.Equals(status, "Initialized", StringComparison.OrdinalIgnoreCase))
+        {
+            isVoskInitializing = false;
+            isVoskInitialized = true;
+            isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
+            if (isRecording)
+            {
+                UpdateStatus("Recording your question... Tap again to stop.");
+            }
+            StopInitializationTimeout();
+        }
+        else if (!string.IsNullOrWhiteSpace(status))
+        {
+            UpdateStatus(status);
+        }
+
+        RefreshButtonVisuals();
+    }
+
+    private void HandleTranscriptionResult(string rawJson)
     {
         try
         {
-            if (recordedAudio.Data == null || recordedAudio.Data.Length == 0)
-            {
-                UpdateStatus("No audio was captured.");
-                return;
-            }
-
-            bool whisperReady = await EnsureWhisperModelReady();
-            if (!whisperReady)
+            var result = new RecognitionResult(rawJson);
+            if (result.Partial || result.Phrases == null || result.Phrases.Length == 0)
             {
                 return;
             }
 
-            UpdateStatus("Transcribing your question...");
-            WhisperResult result = await whisperManager.GetTextAsync(
-                recordedAudio.Data,
-                recordedAudio.Frequency,
-                recordedAudio.Channels);
-
-            string transcript = result?.Result?.Trim();
+            string transcript = result.Phrases[0]?.Text?.Trim();
             if (string.IsNullOrWhiteSpace(transcript))
             {
-                Debug.LogWarning("[Whisper] Transcription completed but transcript was empty.");
-                UpdateStatus("Whisper could not transcribe that recording.");
+                Debug.LogWarning($"[Vosk] Empty transcription result: {rawJson}");
+                UpdateStatus("Vosk could not transcribe that recording.");
                 return;
             }
 
             if (logTranscripts)
             {
-                Debug.Log($"[Whisper] Transcript: {transcript}");
+                Debug.Log($"[Vosk] Transcript: {transcript}");
             }
 
             if (voiceIntents == null)
             {
                 UpdateStatus(transcript);
-                Debug.LogWarning("[Whisper] VoiceIntents reference is missing, so transcript was not forwarded to Luna.");
+                Debug.LogWarning("[Vosk] VoiceIntents reference is missing, so transcript was not forwarded to Luna.");
                 return;
             }
 
@@ -304,44 +341,16 @@ public class AIAWhisperInputController : MonoBehaviour
         }
         catch (Exception exception)
         {
-            Debug.LogError($"[Whisper] Failed to transcribe recorded audio: {exception}");
-            UpdateStatus("Whisper transcription failed.");
+            Debug.LogError($"[Vosk] Failed to parse transcription result '{rawJson}': {exception}");
+            UpdateStatus("Vosk transcription failed.");
         }
-        finally
-        {
-            isBusy = false;
-            RefreshButtonVisuals();
-        }
-    }
-
-    private async Task<bool> EnsureWhisperModelReady()
-    {
-        if (whisperManager == null)
-        {
-            UpdateStatus("Whisper manager is missing.");
-            return false;
-        }
-
-        if (!whisperManager.IsLoaded)
-        {
-            UpdateStatus("Loading Whisper model...");
-            await whisperManager.InitModel();
-        }
-
-        if (whisperManager.IsLoaded)
-        {
-            return true;
-        }
-
-        UpdateStatus("Whisper failed to load. Check the model file.");
-        return false;
     }
 
     private void RefreshButtonVisuals()
     {
         if (recordButton != null)
         {
-            recordButton.interactable = !isBusy;
+            recordButton.interactable = !isVoskInitializing;
         }
 
         if (recordButtonText == null)
@@ -349,11 +358,11 @@ public class AIAWhisperInputController : MonoBehaviour
             return;
         }
 
-        if (isBusy)
+        if (isVoskInitializing)
         {
             recordButtonText.text = BusyButtonLabel;
         }
-        else if (isRecording)
+        else if (isRecording || (voiceProcessor != null && voiceProcessor.IsRecording))
         {
             recordButtonText.text = RecordingButtonLabel;
         }
@@ -382,6 +391,53 @@ public class AIAWhisperInputController : MonoBehaviour
             return;
         }
 
-        Debug.LogWarning($"[Whisper] Could not display status because no AIA text box was found. Status: {text}");
+        Debug.LogWarning($"[Vosk] Could not display status because no AIA text box was found. Status: {text}");
+    }
+
+    private string GetSafeVoskModelPath()
+    {
+        if (string.IsNullOrWhiteSpace(voskModelPath))
+        {
+            return DefaultVoskModelPath;
+        }
+
+        return voskModelPath.Trim();
+    }
+
+    private void StartInitializationTimeout()
+    {
+        StopInitializationTimeout();
+        if (initializationTimeoutSeconds <= 0f)
+        {
+            return;
+        }
+
+        initializationTimeoutCoroutine = StartCoroutine(InitializationTimeout());
+    }
+
+    private void StopInitializationTimeout()
+    {
+        if (initializationTimeoutCoroutine == null)
+        {
+            return;
+        }
+
+        StopCoroutine(initializationTimeoutCoroutine);
+        initializationTimeoutCoroutine = null;
+    }
+
+    private IEnumerator InitializationTimeout()
+    {
+        yield return new WaitForSeconds(initializationTimeoutSeconds);
+
+        if (!isVoskInitializing || isVoskInitialized)
+        {
+            yield break;
+        }
+
+        Debug.LogError("[Vosk] Initialization timed out before the recognizer reported Initialized.");
+        isVoskInitializing = false;
+        UpdateStatus("Vosk initialization timed out. Check model path and native library.");
+        RefreshButtonVisuals();
     }
 }

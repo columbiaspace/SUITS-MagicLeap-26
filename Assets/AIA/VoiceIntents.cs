@@ -25,8 +25,8 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://10.206.126.34:11434/api/generate";
-    [SerializeField] private string aiModel = "gemma3:27b-it-qat";
+    [SerializeField] private string aiGenerateUrl = "http://10.206.85.24:11434/api/generate";
+    [SerializeField] private string aiModel = "gemma4:26b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
     [SerializeField] private Text responseTextBox;
