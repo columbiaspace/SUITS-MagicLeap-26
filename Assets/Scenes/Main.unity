@@ -732,7 +732,7 @@ MonoBehaviour:
     m_PersistentCalls:
       m_Calls:
       - m_Target: {fileID: 260000906}
-        m_TargetAssemblyTypeName: AIAWhisperInputController, Assembly-CSharp
+        m_TargetAssemblyTypeName: AIAVoskInputController, Assembly-CSharp
         m_MethodName: ToggleRecording
         m_Mode: 1
         m_Arguments:

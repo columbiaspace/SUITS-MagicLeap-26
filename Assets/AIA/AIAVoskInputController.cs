@@ -5,7 +5,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
 
-public class AIAWhisperInputController : MonoBehaviour
+public class AIAVoskInputController : MonoBehaviour
 {
     private const string ReadyButtonLabel = "Start Recording";
     private const string RecordingButtonLabel = "Stop Recording";

@@ -26,7 +26,7 @@ public class VoiceIntents : MonoBehaviour
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
     [SerializeField] private Text responseTextBox;
-    [SerializeField] private AIAWhisperInputController aiaInputController;
+    [SerializeField] private AIAVoskInputController aiaInputController;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -265,7 +265,7 @@ public class VoiceIntents : MonoBehaviour
             return;
         }
 
-        aiaInputController = FindObjectOfType<AIAWhisperInputController>();
+        aiaInputController = FindObjectOfType<AIAVoskInputController>();
     }
 
     private void UpdateResponseTextBox(string text)
