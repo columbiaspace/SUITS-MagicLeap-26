@@ -56,6 +56,9 @@ public class VoskSpeechToText : MonoBehaviour
 	//Called after the user is done speaking and vosk processes the audio.
 	public Action<string> OnTranscriptionResult;
 
+	//Called while the user is speaking. Partial results are display-only.
+	public Action<string> OnPartialTranscriptionResult;
+
 	//The absolute path to the decompressed model folder.
 	private string _decompressedModelPath;
 
@@ -82,6 +85,8 @@ public class VoskSpeechToText : MonoBehaviour
 
 	//Thread safe queue of resuts
 	private readonly ConcurrentQueue<string> _threadedResultQueue = new ConcurrentQueue<string>();
+	private readonly ConcurrentQueue<string> _threadedPartialResultQueue = new ConcurrentQueue<string>();
+	private string _lastPartialResult = "";
 
 
 
@@ -380,8 +385,9 @@ public class VoskSpeechToText : MonoBehaviour
 			}
 
 			_running = true;
+			_lastPartialResult = "";
 			VoiceProcessor.StartRecording();
-    	                Task.Run(ThreadedWork).ConfigureAwait(false);
+			Task.Run(ThreadedWork).ConfigureAwait(false);
 		}
 		else
 		{
@@ -396,7 +402,12 @@ public class VoskSpeechToText : MonoBehaviour
 	{
 		if (_threadedResultQueue.TryDequeue(out string voiceResult))
 		{
-		    OnTranscriptionResult?.Invoke(voiceResult);
+			OnTranscriptionResult?.Invoke(voiceResult);
+		}
+
+		if (_threadedPartialResultQueue.TryDequeue(out string partialResult))
+		{
+			OnPartialTranscriptionResult?.Invoke(partialResult);
 		}
 	}
 
@@ -433,11 +444,20 @@ public class VoskSpeechToText : MonoBehaviour
 						{
 							result = _recognizer.Result();
 						}
+						else if (!hasResult)
+						{
+							result = _recognizer.PartialResult();
+						}
 					}
 
-					if (!string.IsNullOrWhiteSpace(result))
+					if (hasResult && !string.IsNullOrWhiteSpace(result))
 					{
 						_threadedResultQueue.Enqueue(result);
+					}
+					else if (!hasResult && !string.IsNullOrWhiteSpace(result) && result != _lastPartialResult)
+					{
+						_lastPartialResult = result;
+						_threadedPartialResultQueue.Enqueue(result);
 					}
 				}
 				else
@@ -474,6 +494,7 @@ public class VoskSpeechToText : MonoBehaviour
 				_recognizer.Dispose();
 				_recognizer = null;
 				_recognizerReady = false;
+				_lastPartialResult = "";
 			}
 
 			Debug.Log($"[Vosk] Final result: {finalResult}");

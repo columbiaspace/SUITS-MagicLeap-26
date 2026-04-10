@@ -60,6 +60,7 @@ public class AIAVoskInputController : MonoBehaviour
         {
             voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
             voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
+            voskSpeechToText.OnPartialTranscriptionResult -= HandlePartialTranscriptionResult;
         }
 
         if (voiceProcessor != null && voiceProcessor.IsRecording)
@@ -194,8 +195,10 @@ public class AIAVoskInputController : MonoBehaviour
         voskSpeechToText.VoiceProcessor = voiceProcessor;
         voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
+        voskSpeechToText.OnPartialTranscriptionResult -= HandlePartialTranscriptionResult;
         voskSpeechToText.OnStatusUpdated += HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult += HandleTranscriptionResult;
+        voskSpeechToText.OnPartialTranscriptionResult += HandlePartialTranscriptionResult;
     }
 
     private bool EnsureMicrophonePermission()
@@ -372,6 +375,35 @@ public class AIAVoskInputController : MonoBehaviour
         {
             Debug.LogError($"[Vosk] Failed to parse transcription result '{rawJson}': {exception}");
             UpdateStatus("Vosk transcription failed.");
+        }
+    }
+
+    private void HandlePartialTranscriptionResult(string rawJson)
+    {
+        if (voiceProcessor == null || !voiceProcessor.IsRecording)
+        {
+            return;
+        }
+
+        try
+        {
+            var result = new RecognitionResult(rawJson);
+            if (!result.Partial || result.Phrases == null || result.Phrases.Length == 0)
+            {
+                return;
+            }
+
+            string partialTranscript = result.Phrases[0]?.Text?.Trim();
+            if (string.IsNullOrWhiteSpace(partialTranscript))
+            {
+                return;
+            }
+
+            UpdateStatus(partialTranscript);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"[Vosk] Failed to parse partial transcription result '{rawJson}': {exception}");
         }
     }
 
