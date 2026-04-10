@@ -6,7 +6,7 @@ using LtvDiagnostics;
 public class LtvHudController : MonoBehaviour
 {
     [Header("Backend Service")]
-    public LtvErrorQueueService queueService;
+    public LtvInstructionService queueService;
 
     [Header("UI Elements")]
     public TextMeshProUGUI errorCodeText;   // The left box (formerly "AG NAV")
@@ -21,9 +21,6 @@ public class LtvHudController : MonoBehaviour
             queueService.StepChanged += OnStepChanged;
             queueService.ErrorChanged += OnErrorChanged;
             queueService.AllErrorsResolved += OnAllResolved;
-            
-            // Listen for button clicks
-            checkmarkButton.onClick.AddListener(OnCheckmarkClicked);
         }
     }
 
@@ -35,8 +32,6 @@ public class LtvHudController : MonoBehaviour
             queueService.StepChanged -= OnStepChanged;
             queueService.ErrorChanged -= OnErrorChanged;
             queueService.AllErrorsResolved -= OnAllResolved;
-            
-            checkmarkButton.onClick.RemoveListener(OnCheckmarkClicked);
         }
     }
 
@@ -51,7 +46,7 @@ public class LtvHudController : MonoBehaviour
     }
 
     // 3. When the right-hand button is clicked...
-    private void OnCheckmarkClicked()
+    public void OnCheckmarkClicked()
     {
         // Only advance if a diagnosis is active and we aren't waiting on TSS verification
         if (queueService != null && queueService.IsDiagnosisActive && !queueService.IsVerifying)
