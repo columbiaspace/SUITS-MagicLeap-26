@@ -28,7 +28,6 @@ Meet our stellar crew navigating the NASA SUITS challenge:
 - Grace :)
 - Hiba
 - Grace C.
-- add your names here
 - Andrew (B)
 - Ava
 - Thea
