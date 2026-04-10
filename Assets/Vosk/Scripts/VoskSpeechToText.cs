@@ -34,6 +34,12 @@ public class VoskSpeechToText : MonoBehaviour
 	[Tooltip("Only emit transcription text when recording is explicitly stopped.")]
 	public bool EmitResultsOnlyOnStop = true;
 
+	[Tooltip("Automatically stop recording after Vosk detects a pause in speech.")]
+	public bool AutoStopRecordingOnSilence = false;
+
+	[Tooltip("Seconds of silence to wait before automatically stopping recording.")]
+	public float SilenceTimeoutSeconds = 2f;
+
 	[Tooltip("The phrases that will be detected. If left empty, all words will be detected.")]
 	public List<string> KeyPhrases = new List<string>();
 
@@ -172,7 +178,8 @@ public class VoskSpeechToText : MonoBehaviour
 		if (startMicrophone)
 		{
 			_running = true;
-			VoiceProcessor.StartRecording();
+			ConfigureVoiceProcessorSilenceDetection();
+			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
 			if (!VoiceProcessor.IsRecording)
 			{
 				Debug.LogError("[Vosk] Failed to start microphone recording.");
@@ -386,7 +393,8 @@ public class VoskSpeechToText : MonoBehaviour
 
 			_running = true;
 			_lastPartialResult = "";
-			VoiceProcessor.StartRecording();
+			ConfigureVoiceProcessorSilenceDetection();
+			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
 			Task.Run(ThreadedWork).ConfigureAwait(false);
 		}
 		else
@@ -417,10 +425,17 @@ public class VoskSpeechToText : MonoBehaviour
                 _threadedBufferQueue.Enqueue(samples);
 	}
 
+	private void ConfigureVoiceProcessorSilenceDetection()
+	{
+		VoiceProcessor.SilenceTimer = SilenceTimeoutSeconds;
+		VoiceProcessor.StopRecordingAfterSilence = AutoStopRecordingOnSilence;
+	}
+
 	//Callback from the voice processor when recording stops
 	private void VoiceProcessorOnOnRecordingStop()
 	{
 		Debug.Log("Stopped");
+		_running = false;
 		EmitFinalResult();
 	}
 

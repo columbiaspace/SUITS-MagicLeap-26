@@ -103,6 +103,14 @@ public class VoiceProcessor : MonoBehaviour
     [SerializeField, Tooltip("Auto detect speech using the volume threshold.")]
     private bool _autoDetect;
 
+    public float SilenceTimer
+    {
+        get { return _silenceTimer; }
+        set { _silenceTimer = Mathf.Max(0f, value); }
+    }
+
+    public bool StopRecordingAfterSilence { get; set; }
+
     private float _timeAtSilenceBegan;
     private bool _audioDetected;
     private bool _didDetect;
@@ -207,6 +215,10 @@ public class VoiceProcessor : MonoBehaviour
 
         SampleRate = sampleRate;
         FrameLength = frameSize;
+        _audioDetected = false;
+        _didDetect = false;
+        _transmit = false;
+        _timeAtSilenceBegan = Time.time;
 
         _audioClip = Microphone.Start(CurrentDeviceName, true, 1, sampleRate);
 
@@ -334,6 +346,12 @@ public class VoiceProcessor : MonoBehaviour
             {
                 if (_didDetect)
                 {
+                    if (StopRecordingAfterSilence)
+                    {
+                        StopRecording();
+                        yield break;
+                    }
+
                     if (OnRecordingStop != null)
                         OnRecordingStop.Invoke();
                     _didDetect = false;

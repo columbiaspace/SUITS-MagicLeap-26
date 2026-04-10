@@ -21,6 +21,7 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
+    [SerializeField] private float silenceStopSeconds = 2f;
     [SerializeField] private bool logTranscripts = true;
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
@@ -61,6 +62,11 @@ public class AIAVoskInputController : MonoBehaviour
             voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
             voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
             voskSpeechToText.OnPartialTranscriptionResult -= HandlePartialTranscriptionResult;
+        }
+
+        if (voiceProcessor != null)
+        {
+            voiceProcessor.OnRecordingStop -= HandleVoiceRecordingStop;
         }
 
         if (voiceProcessor != null && voiceProcessor.IsRecording)
@@ -192,6 +198,8 @@ public class AIAVoskInputController : MonoBehaviour
         voskSpeechToText.ModelPath = GetSafeVoskModelPath();
         voskSpeechToText.MaxAlternatives = maxAlternatives;
         voskSpeechToText.EmitResultsOnlyOnStop = true;
+        voskSpeechToText.AutoStopRecordingOnSilence = true;
+        voskSpeechToText.SilenceTimeoutSeconds = silenceStopSeconds;
         voskSpeechToText.VoiceProcessor = voiceProcessor;
         voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
@@ -199,6 +207,12 @@ public class AIAVoskInputController : MonoBehaviour
         voskSpeechToText.OnStatusUpdated += HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult += HandleTranscriptionResult;
         voskSpeechToText.OnPartialTranscriptionResult += HandlePartialTranscriptionResult;
+
+        if (voiceProcessor != null)
+        {
+            voiceProcessor.OnRecordingStop -= HandleVoiceRecordingStop;
+            voiceProcessor.OnRecordingStop += HandleVoiceRecordingStop;
+        }
     }
 
     private bool EnsureMicrophonePermission()
@@ -289,7 +303,7 @@ public class AIAVoskInputController : MonoBehaviour
 
         try
         {
-            UpdateStatus("Recording your question... Tap again to stop.");
+            UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
             voskSpeechToText.ToggleRecording();
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             RefreshButtonVisuals();
@@ -327,7 +341,7 @@ public class AIAVoskInputController : MonoBehaviour
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             if (isRecording)
             {
-                UpdateStatus("Recording your question... Tap again to stop.");
+                UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
             }
             StopInitializationTimeout();
         }
@@ -336,6 +350,17 @@ public class AIAVoskInputController : MonoBehaviour
             UpdateStatus(status);
         }
 
+        RefreshButtonVisuals();
+    }
+
+    private void HandleVoiceRecordingStop()
+    {
+        if (isRecording)
+        {
+            UpdateStatus("Processing your recording...");
+        }
+
+        isRecording = false;
         RefreshButtonVisuals();
     }
 
