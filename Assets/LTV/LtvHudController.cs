@@ -205,7 +205,7 @@ public class LtvHudController : MonoBehaviour
             checkmarkButton.interactable = false;
     }
 
-    private void OnCheckmarkClicked()
+    public void OnCheckmarkClicked()
     {
         if (instructionService != null && instructionService.IsDiagnosisActive && !instructionService.IsVerifying)
             instructionService.AdvanceStep();
