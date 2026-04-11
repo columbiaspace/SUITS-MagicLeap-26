@@ -21,7 +21,7 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://10.206.85.24:11434/api/generate";
+    [SerializeField] private string aiGenerateUrl = "http://10.206.85.24:13853/chat";
     [SerializeField] private string aiModel = "gemma4:26b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
@@ -36,21 +36,38 @@ public class VoiceIntents : MonoBehaviour
 
     private Coroutine aiRequestCoroutine;
     private AndroidJavaObject textToSpeech;
+    private AndroidJavaObject unityActivity;
     private volatile bool textToSpeechReady;
     private bool isVoiceEventSubscribed;
 
     [Serializable]
-    private class AiGenerateRequest
+    private class AiChatMessage
     {
-        public string model;
-        public string prompt;
+        public string role;
+        public string content;
+    }
+
+    [Serializable]
+    private class AiChatRequest
+    {
+        public AiChatMessage[] messages;
         public bool stream;
     }
 
     [Serializable]
-    private class AiGenerateResponse
+    private class AiChatResponseMessage
     {
+        public string role;
+        public string content;
+    }
+
+    [Serializable]
+    private class AiChatResponse
+    {
+        public AiChatResponseMessage message;
+        public string prompt;
         public string response;
+        public bool stream;
     }
 
     private void Start()
@@ -70,7 +87,7 @@ public class VoiceIntents : MonoBehaviour
             return;
         }
 
-        aiGenerateUrl = $"http://{ollamaIp.Trim()}:11434/api/generate";
+        aiGenerateUrl = $"http://{ollamaIp.Trim()}:13853/chat";
     }
 
     void Update()
@@ -351,10 +368,16 @@ public class VoiceIntents : MonoBehaviour
 
     private IEnumerator SendPromptToAi(string prompt)
     {
-        var requestBody = new AiGenerateRequest
+        var requestBody = new AiChatRequest
         {
-            model = aiModel,
-            prompt = prompt,
+            messages = new[]
+            {
+                new AiChatMessage
+                {
+                    role = "user",
+                    content = prompt
+                }
+            },
             stream = false
         };
 
@@ -362,7 +385,7 @@ public class VoiceIntents : MonoBehaviour
         if (logAiResponse)
         {
             Debug.Log($"[Gemma] Sending request to {aiGenerateUrl} " +
-                      $"model='{aiModel}' prompt='{prompt}'");
+                      $"messages=1 prompt='{prompt}'");
         }
         UpdateResponseTextBox("Sending request to Luna...");
 
@@ -391,32 +414,125 @@ public class VoiceIntents : MonoBehaviour
                     Debug.Log($"[Gemma] Raw response ({rawResponse?.Length ?? 0} chars): {rawResponse}");
                 }
 
-                var parsedResponse = JsonUtility.FromJson<AiGenerateResponse>(rawResponse);
-                string responseText = string.Empty;
+                string responseText = ExtractAssistantResponseText(rawResponse);
 
-                if (parsedResponse != null && !string.IsNullOrWhiteSpace(parsedResponse.response))
+                if (string.IsNullOrWhiteSpace(responseText))
                 {
-                    responseText = parsedResponse.response.Trim();
-                    if (logAiResponse)
-                    {
-                        Debug.Log($"[Gemma] Parsed response: {responseText}");
-                    }
+                    Debug.LogWarning("[Gemma] Response parsed but no assistant text field was found.");
+                    UpdateResponseTextBox("Luna returned an empty response.");
                 }
                 else
                 {
-                    Debug.LogWarning("[Gemma] Response parsed but 'response' field was null or empty.");
-                    UpdateResponseTextBox("Luna returned an empty response.");
-                }
-
-                if (!string.IsNullOrWhiteSpace(responseText))
-                {
                     UpdateResponseTextBox(responseText);
                 }
+
                 SpeakText(responseText);
             }
         }
 
         aiRequestCoroutine = null;
+    }
+
+    private string ExtractAssistantResponseText(string rawResponse)
+    {
+        if (string.IsNullOrWhiteSpace(rawResponse))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            JSONNode root = JSONNode.Parse(rawResponse);
+
+            string responseText = GetJsonString(root["message"]?["content"]);
+            if (!string.IsNullOrWhiteSpace(responseText))
+            {
+                LogParsedResponse("message.content", responseText);
+                return responseText;
+            }
+
+            responseText = GetJsonString(root["response"]);
+            if (!string.IsNullOrWhiteSpace(responseText))
+            {
+                LogParsedResponse("response", responseText);
+                return responseText;
+            }
+
+            responseText = GetJsonString(root["content"]);
+            if (!string.IsNullOrWhiteSpace(responseText))
+            {
+                LogParsedResponse("content", responseText);
+                return responseText;
+            }
+
+            JSONNode choices = root["choices"];
+            if (choices != null && choices.Count > 0)
+            {
+                responseText = GetJsonString(choices[0]?["message"]?["content"]);
+                if (!string.IsNullOrWhiteSpace(responseText))
+                {
+                    LogParsedResponse("choices[0].message.content", responseText);
+                    return responseText;
+                }
+
+                responseText = GetJsonString(choices[0]?["text"]);
+                if (!string.IsNullOrWhiteSpace(responseText))
+                {
+                    LogParsedResponse("choices[0].text", responseText);
+                    return responseText;
+                }
+            }
+
+            JSONNode messages = root["messages"];
+            if (messages != null && messages.Count > 0)
+            {
+                for (int i = messages.Count - 1; i >= 0; i--)
+                {
+                    string role = GetJsonString(messages[i]?["role"]);
+                    string content = GetJsonString(messages[i]?["content"]);
+                    if (string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(content))
+                    {
+                        LogParsedResponse($"messages[{i}].content", content);
+                        return content;
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"[Gemma] Failed to parse JSON response: {exception.Message}");
+        }
+
+        string trimmedResponse = rawResponse.Trim();
+        if (!trimmedResponse.StartsWith("{", StringComparison.Ordinal) &&
+            !trimmedResponse.StartsWith("[", StringComparison.Ordinal))
+        {
+            LogParsedResponse("raw-text", trimmedResponse);
+            return trimmedResponse;
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetJsonString(JSONNode node)
+    {
+        if (node == null || node.IsNull)
+        {
+            return string.Empty;
+        }
+
+        return node.Value?.Trim() ?? string.Empty;
+    }
+
+    private void LogParsedResponse(string sourcePath, string responseText)
+    {
+        if (!logAiResponse)
+        {
+            return;
+        }
+
+        Debug.Log($"[Gemma] Parsed response from {sourcePath}: {responseText}");
     }
 
     private void InitializeTextToSpeech()
@@ -426,10 +542,10 @@ public class VoiceIntents : MonoBehaviour
         {
             using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
             {
-                AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                unityActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
                 textToSpeech = new AndroidJavaObject(
                     "android.speech.tts.TextToSpeech",
-                    activity,
+                    unityActivity,
                     new TextToSpeechInitListener(this));
             }
         }
@@ -455,9 +571,18 @@ public class VoiceIntents : MonoBehaviour
             if (ready && textToSpeech != null)
             {
                 using (var localeClass = new AndroidJavaClass("java.util.Locale"))
+                using (var ttsClass = new AndroidJavaClass("android.speech.tts.TextToSpeech"))
                 {
                     AndroidJavaObject locale = localeClass.GetStatic<AndroidJavaObject>("US");
-                    textToSpeech.Call<int>("setLanguage", locale);
+                    int languageResult = textToSpeech.Call<int>("setLanguage", locale);
+                    int langMissingData = ttsClass.GetStatic<int>("LANG_MISSING_DATA");
+                    int langNotSupported = ttsClass.GetStatic<int>("LANG_NOT_SUPPORTED");
+
+                    Debug.Log($"Text-to-speech language result={languageResult}.");
+                    if (languageResult == langMissingData || languageResult == langNotSupported)
+                    {
+                        Debug.LogWarning("Text-to-speech US locale is missing or not supported on device.");
+                    }
                 }
                 Debug.Log("Text-to-speech initialized successfully.");
             }
@@ -478,12 +603,19 @@ public class VoiceIntents : MonoBehaviour
 
     private void SpeakText(string text)
     {
-        if (!speakAiResponse || string.IsNullOrWhiteSpace(text))
+        if (!speakAiResponse)
         {
             return;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        string normalizedText = NormalizeTextForSpeech(text);
+        if (string.IsNullOrWhiteSpace(normalizedText))
+        {
+            Debug.LogWarning("Skipping spoken response because normalized TTS text is empty.");
+            return;
+        }
+
         if (!textToSpeechReady || textToSpeech == null)
         {
             Debug.LogWarning("Skipping spoken response because TTS is not ready yet.");
@@ -492,11 +624,44 @@ public class VoiceIntents : MonoBehaviour
 
         try
         {
-            using (var ttsClass = new AndroidJavaClass("android.speech.tts.TextToSpeech"))
+            Debug.Log($"[TTS] Speaking {normalizedText.Length} characters: '{TruncateForLog(normalizedText, 160)}'");
+
+            Action speakAction = () =>
             {
-                int queueFlush = ttsClass.GetStatic<int>("QUEUE_FLUSH");
-                textToSpeech.Call<int>("speak", text, queueFlush, null,
-                    $"ai-response-{Time.frameCount}");
+                try
+                {
+                    using (var ttsClass = new AndroidJavaClass("android.speech.tts.TextToSpeech"))
+                    {
+                        int queueFlush = ttsClass.GetStatic<int>("QUEUE_FLUSH");
+                        int errorCode = ttsClass.GetStatic<int>("ERROR");
+                        int speakResult = textToSpeech.Call<int>(
+                            "speak",
+                            normalizedText,
+                            queueFlush,
+                            null,
+                            $"ai-response-{Time.frameCount}");
+
+                        Debug.Log($"[TTS] speak() result={speakResult}");
+                        if (speakResult == errorCode)
+                        {
+                            Debug.LogWarning("[TTS] Android TextToSpeech returned ERROR from speak().");
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"Failed to speak AI response on UI thread: {exception.Message}");
+                }
+            };
+
+            if (unityActivity != null)
+            {
+                unityActivity.Call("runOnUiThread", new AndroidJavaRunnable(() => speakAction()));
+            }
+            else
+            {
+                Debug.LogWarning("[TTS] Unity activity reference was null. Speaking off UI thread.");
+                speakAction();
             }
         }
         catch (Exception exception)
@@ -526,8 +691,40 @@ public class VoiceIntents : MonoBehaviour
         }
 
         textToSpeech = null;
+        unityActivity = null;
         textToSpeechReady = false;
 #endif
+    }
+
+    private static string NormalizeTextForSpeech(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        string normalized = text
+            .Replace("\r", " ")
+            .Replace("\n", " ")
+            .Replace("\t", " ")
+            .Trim();
+
+        while (normalized.Contains("  "))
+        {
+            normalized = normalized.Replace("  ", " ");
+        }
+
+        return normalized;
+    }
+
+    private static string TruncateForLog(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+        {
+            return text;
+        }
+
+        return text.Substring(0, maxLength) + "...";
     }
 
     private class TextToSpeechInitListener : AndroidJavaProxy

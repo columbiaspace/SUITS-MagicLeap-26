@@ -332,6 +332,7 @@ MonoBehaviour:
   voskModelPath: vosk-model-small-en-us-0.15.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
+  silenceStopSeconds: 2
   logTranscripts: 1
 --- !u!1 &260001000
 GameObject:
@@ -889,11 +890,12 @@ MonoBehaviour:
   targetObject: {fileID: 0}
   rotationSpeed: 50
   sendVoicePromptToAi: 1
-  aiGenerateUrl: http://10.206.85.24:11434/api/generate
+  aiGenerateUrl: http://10.206.85.24:13853/chat
   aiModel: gemma4:26b
   logAiResponse: 1
   speakAiResponse: 1
   responseTextBox: {fileID: 0}
+  aiaInputController: {fileID: 0}
   verboseVoiceLogging: 1
 --- !u!1 &455361019
 GameObject:
