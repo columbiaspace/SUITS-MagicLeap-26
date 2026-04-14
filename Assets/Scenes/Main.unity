@@ -834,37 +834,37 @@ MonoBehaviour:
   showDebugOverlay: 1
   stepRules:
   - name: Battery UMB
-    instruction: DCU Battery: set to UMB (lu = TRUE)
+    instruction: Switch DCU Battery to SUIT BATT
     field: 7
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: DCU Oxygen
-    instruction: "DCU Oxygen: switch to PRI (oxy = TRUE)"
+    instruction:  Switch DCU OXYGEN to PRI TANK
     field: 9
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: Battery Local
-    instruction: DCU Battery: switch to LOCAL (ps = TRUE)
+    instruction: Switch DCU BATTERY to PRI BATT
     field: 8
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: DCU Fan
-    instruction: "DCU Fan: switch to PRI (fan = TRUE)"
+    instruction: Switch DCU FAN to PRI FAN
     field: 10
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: DCU Pump
-    instruction: "DCU Pump: switch to OPEN (pump = TRUE)"
+    instruction: Switch DCU PUMP to OPEN
     field: 11
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: DCU CO2
-    instruction: "DCU CO2: turn Scrubber ON (co2 = TRUE)"
+    instruction: Switch DCU CO2 to Scrubber A
     field: 12
     comparison: 0
     targetValue: 0
@@ -1195,25 +1195,25 @@ MonoBehaviour:
   showDebugOverlay: 1
   stepRules:
   - name: EV1 Power
-    instruction: Switch EMU1 Power to ON (eva1_power = TRUE)
+    instruction: Switch EMU1 Power to ON 
     field: 1
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: EV1 Oxygen
-    instruction: Switch EV1 Oxygen to OPEN (eva1_oxy = TRUE)
+    instruction: Switch EV1 Oxygen to OPEN
     field: 2
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: EV1 Water Supply
-    instruction: Switch EV1 Water Supply to OPEN (eva1_water_supply = TRUE)
+    instruction: Switch EV1 Water Supply to OPEN
     field: 3
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: EV1 Water Waste
-    instruction: Switch EV1 Water Waste to OPEN (eva1_water_waste = TRUE)
+    instruction: Switch EV1 Water Waste to OPEN
     field: 4
     comparison: 0
     targetValue: 0
