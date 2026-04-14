@@ -496,44 +496,127 @@ MonoBehaviour:
   m_Name:
   m_EditorClassIdentifier:
   displayImage: {fileID: 110004004}
-  idleSlideIndexAfterComplete: -1
+  idleSlideIndexAfterComplete: 0
   firstActiveSlideIndex: 1
   slides:
   - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
+  - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
+  - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
+  - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
+  - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
+  - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
   - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
   - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
-  - {fileID: 21300000, guid: 50b05fbcf1d2e48b59aeb3ec8d2bb90e, type: 3}
-  - {fileID: 21300000, guid: b879001c78f4d46ff889585dfb9f6c71, type: 3}
-  - {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
+  - {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
   tssApi: {fileID: 110006003}
   statusText: {fileID: 110003003}
   autoProgressEnabled: 1
   stateSyncIntervalSeconds: 0.2
   showDebugOverlay: 1
   stepRules:
-  - name: EV1 Power
-    instruction: Switch EMU1 Power to ON
+  - name: Verify Umbilical
+    instruction: EV1 verify umbilical connection from UIA to DCU
+    field: 0
+    comparison: 5
+    targetValue: 5
+    tolerance: 0
+  - name: EMU PWR ON
+    instruction: "EV-1 EMU PWR \u2013 ON"
     field: 1
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: EV1 Oxygen
-    instruction: Switch EV1 Oxygen to OPEN
+  - name: DEPRESS ON
+    instruction: "DEPRESS PUMP PWR \u2013 ON"
+    field: 5
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: O2 VENT OPEN
+    instruction: "OXYGEN O2 VENT \u2013 OPEN"
+    field: 6
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: Wait OXY tanks
+    instruction: "Wait: both OXY tanks < 10 psi"
+    field: 0
+    comparison: 5
+    targetValue: 5
+    tolerance: 0
+  - name: O2 VENT CLOSE
+    instruction: "OXYGEN O2 VENT \u2013 CLOSE"
+    field: 6
+    comparison: 1
+    targetValue: 0
+    tolerance: 0
+  - name: OXY EMU-1 OPEN (Pri)
+    instruction: "OXYGEN EMU-1 \u2013 OPEN (fill Primary)"
     field: 2
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: EV1 Water Supply
-    instruction: Switch EV1 Water Supply to OPEN
-    field: 3
+  - name: Wait Pri O2
+    instruction: "Wait: EV1 Primary O2 tank > 3000 psi"
+    field: 0
+    comparison: 5
+    targetValue: 5
+    tolerance: 0
+  - name: OXY EMU-1 CLOSE (Pri)
+    instruction: "OXYGEN EMU-1 \u2013 CLOSE"
+    field: 2
+    comparison: 1
+    targetValue: 0
+    tolerance: 0
+  - name: OXY EMU-1 OPEN (Sec)
+    instruction: "OXYGEN EMU-1 \u2013 OPEN (fill Secondary)"
+    field: 2
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: EV1 Water Waste
-    instruction: Switch EV1 Water Waste to OPEN
-    field: 4
-    comparison: 0
+  - name: Wait Sec O2
+    instruction: "Wait: EV1 Secondary O2 tank > 3000 psi"
+    field: 0
+    comparison: 5
+    targetValue: 5
+    tolerance: 0
+  - name: OXY EMU-1 CLOSE (Sec)
+    instruction: "OXYGEN EMU-1 \u2013 CLOSE"
+    field: 2
+    comparison: 1
     targetValue: 0
+    tolerance: 0
+  - name: Wait Suit Pressure
+    instruction: "Wait: SUIT Pressure O2 = 4 psi"
+    field: 0
+    comparison: 5
+    targetValue: 5
+    tolerance: 0
+  - name: DEPRESS OFF
+    instruction: "DEPRESS PUMP PWR \u2013 OFF"
+    field: 5
+    comparison: 1
+    targetValue: 0
+    tolerance: 0
+  - name: EMU PWR OFF
+    instruction: "EV-1 EMU PWR \u2013 OFF"
+    field: 1
+    comparison: 1
+    targetValue: 0
+    tolerance: 0
+  - name: Disconnect
+    instruction: EV1 disconnect UIA and DCU umbilical
+    field: 0
+    comparison: 5
+    targetValue: 5
     tolerance: 0
 --- !u!1 &110005001
 GameObject:
@@ -626,45 +709,69 @@ MonoBehaviour:
   displayImage: {fileID: 110005004}
   idleSlideIndexAfterComplete: 0
   firstActiveSlideIndex: 1
-  prerequisite: {fileID: 110004005}
+  prerequisite: {fileID: 0}
   tssApi: {fileID: 110006003}
   statusText: {fileID: 110003003}
   autoProgressEnabled: 1
   stateSyncIntervalSeconds: 0.2
   showDebugOverlay: 1
   stepRules:
-  - name: Battery UMB
-    instruction: Switch DCU Battery to SUIT BATT
+  - name: BATT UMB
+    instruction: "DCU BATT \u2013 UMB"
     field: 7
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: DCU Oxygen
-    instruction: Switch DCU OXYGEN to PRI TANK
+  - name: OXY PRI (1)
+    instruction: "DCU OXY \u2013 PRI"
     field: 9
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: Battery Local
-    instruction: Switch DCU BATTERY to PRI BATT
+  - name: OXY SEC
+    instruction: "DCU OXY \u2013 SEC"
+    field: 9
+    comparison: 1
+    targetValue: 0
+    tolerance: 0
+  - name: OXY PRI (2)
+    instruction: "DCU OXY \u2013 PRI"
+    field: 9
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: BATT LOCAL
+    instruction: "DCU BATT \u2013 LOCAL"
     field: 8
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: DCU Fan
-    instruction: Switch DCU FAN to PRI FAN
+  - name: Verify OXY PRI
+    instruction: "Verify DCU OXY \u2013 PRI"
+    field: 9
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: Verify COMMS A
+    instruction: "Verify DCU COMMS \u2013 A"
+    field: 0
+    comparison: 5
+    targetValue: 5
+    tolerance: 0
+  - name: Verify FAN PRI
+    instruction: "Verify DCU FAN \u2013 PRI"
     field: 10
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: DCU Pump
-    instruction: Switch DCU PUMP to OPEN
+  - name: Verify PUMP CLOSE
+    instruction: "Verify DCU PUMP \u2013 CLOSE"
     field: 11
-    comparison: 0
+    comparison: 1
     targetValue: 0
     tolerance: 0
-  - name: DCU CO2
-    instruction: Switch DCU CO2 to Scrubber A
+  - name: Verify CO2 A
+    instruction: "Verify DCU CO2 \u2013 A"
     field: 12
     comparison: 0
     targetValue: 0
@@ -673,7 +780,11 @@ MonoBehaviour:
   - {fileID: 21300000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
   - {fileID: 21300000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
   - {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
+  - {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
+  - {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
   - {fileID: 21300000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
+  - {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
+  - {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
   - {fileID: 21300000, guid: c401d821da3b142b49bfe094d5f4e50b, type: 3}
   - {fileID: 21300000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
   - {fileID: 21300000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}

@@ -36,7 +36,8 @@ public class ImageCarouselUI : MonoBehaviour
         BoolIsFalse,
         FloatGreaterOrEqual,
         FloatLessOrEqual,
-        FloatNear
+        FloatNear,
+        TimedAutoAdvance
     }
 
     [Serializable]
@@ -81,8 +82,10 @@ public class ImageCarouselUI : MonoBehaviour
     public bool IsComplete { get; private set; }
 
     private int index;
+    private int _completedWatermark;
+    private float _timedStepStartTime = -1f;
     private Coroutine syncCoroutine;
-    private string _debugText = "UIA Debug: waiting for data…";
+    private string _debugText = "Waiting for data…";
     private float _debugLogTimer;
 
     private void Awake()
@@ -186,15 +189,31 @@ public class ImageCarouselUI : MonoBehaviour
     {
         if (stepRules.Count == 0 || slides.Count == 0) return;
 
-        int completed = 0;
-        for (int i = 0; i < stepRules.Count; i++)
+        while (_completedWatermark < stepRules.Count)
         {
-            if (EvaluateRule(stepRules[i], packet)) completed++;
-            else break;
+            var rule = stepRules[_completedWatermark];
+            if (rule.comparison == StepComparison.TimedAutoAdvance)
+            {
+                if (_timedStepStartTime < 0f)
+                    _timedStepStartTime = Time.time;
+                if (Time.time - _timedStepStartTime >= rule.targetValue)
+                {
+                    _timedStepStartTime = -1f;
+                    _completedWatermark++;
+                    continue;
+                }
+                break;
+            }
+
+            _timedStepStartTime = -1f;
+            if (EvaluateRule(rule, packet))
+                _completedWatermark++;
+            else
+                break;
         }
 
         int newIndex;
-        if (completed >= stepRules.Count)
+        if (_completedWatermark >= stepRules.Count)
         {
             IsComplete = true;
             int idle = idleSlideIndexAfterComplete >= 0 ? idleSlideIndexAfterComplete : slides.Count - 1;
@@ -203,8 +222,8 @@ public class ImageCarouselUI : MonoBehaviour
         }
         else
         {
-            newIndex = Mathf.Clamp(completed + 1, 0, slides.Count - 1);
-            EvaStepRule next = stepRules[completed];
+            newIndex = Mathf.Clamp(_completedWatermark + 1, 0, slides.Count - 1);
+            EvaStepRule next = stepRules[_completedWatermark];
             _debugText = string.IsNullOrEmpty(next.instruction) ? next.name : next.instruction;
         }
 
@@ -212,7 +231,6 @@ public class ImageCarouselUI : MonoBehaviour
         if (statusText != null && !IsComplete && prerequisiteDone)
             statusText.text = _debugText;
 
-        // Log to Console once a second and on slide changes
         _debugLogTimer -= Time.deltaTime;
         bool indexChanged = newIndex != index;
         if (indexChanged || _debugLogTimer <= 0f)
