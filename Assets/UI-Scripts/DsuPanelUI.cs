@@ -36,10 +36,16 @@ public class DsuPanelUI : MonoBehaviour
 
     [SerializeField] private float syncIntervalSeconds = 0.2f;
 
+    [Header("Debug")]
+    [Tooltip("Skip UIA completion check and jump straight to DCU procedure — for testing only")]
+    [SerializeField] private bool debugBypassUiaCheck = true;
+    [Tooltip("Show live DCU state overlay on screen")]
+    [SerializeField] private bool showDebugOverlay = true;
+
     // ── UIA completion paths (all must be true) ──────────────────────────────
+    // status.started intentionally omitted — react directly to UIA switch values
     private static readonly string[] UiaRequiredPaths =
     {
-        "status.started",
         "uia.eva1_power",
         "uia.eva1_oxy",
         "uia.eva1_water_supply",
@@ -75,6 +81,8 @@ public class DsuPanelUI : MonoBehaviour
     private bool _pendingDcuBatteryIntro;
     private int _dcuStep;             // 0‑5 within the DCU procedure
     private Coroutine _syncCoroutine;
+    private string _debugText = "DSU: waiting for data…";
+    private float _debugLogTimer;
 
     // ── Unity lifecycle ───────────────────────────────────────────────────────
 
@@ -153,58 +161,91 @@ public class DsuPanelUI : MonoBehaviour
     {
         if (eva == null || eva.Count == 0) return;
 
+        var sb = new System.Text.StringBuilder();
+        bool uiaDone = debugBypassUiaCheck || AllUiaStepsDone(eva);
+
+        // ── Phase 1: show default until UIA is finished ───────────────────────
         if (!_uiaComplete)
         {
-            if (AllUiaStepsDone(eva))
+            if (uiaDone)
             {
-                if (!_uiaComplete)
-                {
-                    _pendingDcuBatteryIntro = true;
-                }
-
+                _pendingDcuBatteryIntro = true;
                 _uiaComplete = true;
                 _dcuStep = 0;
+                Debug.Log("[DSU] UIA complete — entering DCU procedure");
             }
             else
             {
+                sb.AppendLine("[DSU] Phase 1 — waiting for UIA:");
+                foreach (string path in UiaRequiredPaths)
+                {
+                    bool ok = GetBoolVal(eva, path);
+                    sb.AppendLine($"  [{(ok ? "✓" : "✗")}] {path}");
+                }
+                sb.Append("  → showing default DCU image");
+                UpdateDebug(sb.ToString());
                 ShowDefault();
                 return;
             }
         }
 
-        // Always land on dcu-battery when UIA finishes; leave when EVA1 battery is active (lu or ps).
+        // ── Phase 2a: battery intro slide ─────────────────────────────────────
         if (_pendingDcuBatteryIntro)
         {
+            bool battActive = Eva1BatteryActive(eva);
+            sb.AppendLine("[DSU] Phase 2 — battery intro");
+            sb.AppendLine($"  batt.lu={GetBoolVal(eva, "dcu.eva1.batt.lu")}  batt.ps={GetBoolVal(eva, "dcu.eva1.batt.ps")}  active={battActive}");
+            sb.Append("  → slide 1 (dcu-battery)");
+            UpdateDebug(sb.ToString());
             ApplySlide(1);
-            if (Eva1BatteryActive(eva))
-            {
+            if (battActive)
                 _pendingDcuBatteryIntro = false;
-            }
-
             return;
         }
 
-        // Count how many consecutive DCU advance-rules are satisfied (0…5).
+        // ── Phase 2b: DCU step sequence ───────────────────────────────────────
         int completed = 0;
         for (int i = 0; i < DcuAdvancePaths.Length; i++)
         {
-            if (DcuAdvanceSatisfied(i, eva))
-                completed++;
-            else
-                break;
+            if (DcuAdvanceSatisfied(i, eva)) completed++;
+            else break;
         }
 
-        // Full sequence shown only after all intermediate rules have passed; CO₂ on → idle overview.
-        bool sequenceThroughLastSlide = completed >= DcuAdvancePaths.Length;
-        if (sequenceThroughLastSlide && GetBool(eva, "dcu.eva1.co2", out bool co2On) && co2On)
+        GetBool(eva, "dcu.eva1.co2", out bool co2On);
+        bool allDone = completed >= DcuAdvancePaths.Length;
+
+        sb.AppendLine("[DSU] Phase 2 — DCU sequence:");
+        sb.AppendLine($"  batt.lu={GetBoolVal(eva, "dcu.eva1.batt.lu")} batt.ps={GetBoolVal(eva, "dcu.eva1.batt.ps")}");
+        sb.AppendLine($"  oxy={GetBoolVal(eva, "dcu.eva1.oxy")}  fan={GetBoolVal(eva, "dcu.eva1.fan")}  pump={GetBoolVal(eva, "dcu.eva1.pump")}  co2={co2On}");
+        sb.Append($"  completed={completed}/{DcuAdvancePaths.Length}");
+
+        if (allDone && co2On)
         {
+            sb.Append("  → all done, back to default");
+            UpdateDebug(sb.ToString());
             ShowDefault();
             return;
         }
 
         _dcuStep = Mathf.Clamp(completed, 0, 5);
-        ApplySlide(_dcuStep + 1); // offset by 1 because index 0 is the default image
+        sb.Append($"  → slide {_dcuStep + 1}");
+        UpdateDebug(sb.ToString());
+        ApplySlide(_dcuStep + 1);
     }
+
+    private void UpdateDebug(string text)
+    {
+        _debugText = text;
+        _debugLogTimer -= Time.deltaTime;
+        if (_debugLogTimer <= 0f)
+        {
+            Debug.Log(text);
+            _debugLogTimer = 1f;
+        }
+    }
+
+    private static bool GetBoolVal(Dictionary<string, object> eva, string path)
+        => GetBool(eva, path, out bool v) && v;
 
     private void ShowDefault() => ApplySlide(0);
 
@@ -218,6 +259,22 @@ public class DsuPanelUI : MonoBehaviour
         displayImage.sprite = s;
         displayImage.enabled = s != null;
         displayImage.preserveAspect = false;
+    }
+
+    private void OnGUI()
+    {
+        if (!showDebugOverlay) return;
+
+        GUIStyle style = new GUIStyle(GUI.skin.box)
+        {
+            fontSize = 18,
+            alignment = TextAnchor.UpperLeft,
+            wordWrap = true
+        };
+        style.normal.textColor = Color.cyan;
+
+        float w = 420f, h = 220f;
+        GUI.Box(new Rect(Screen.width - w - 10, 10, w, h), _debugText, style);
     }
 
     // ── TSS helpers ───────────────────────────────────────────────────────────

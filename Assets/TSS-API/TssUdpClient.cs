@@ -48,16 +48,29 @@ namespace TssApi
             {
                 try
                 {
+                    int sentBytes;
                     lock (_lock)
                     {
-                        _udpClient.Send(_requestBuffer, _requestBuffer.Length);
-                        IPEndPoint sender = null;
-                        byte[] raw = _udpClient.Receive(ref sender);
-                        return DecodeResponse(raw);
+                        sentBytes = _udpClient.Send(_requestBuffer, _requestBuffer.Length);
                     }
+                    Debug.Log($"[TssUDP] cmd={command} attempt={attempt} sent={sentBytes}B to {_udpClient.Client.RemoteEndPoint}");
+
+                    IPEndPoint sender = null;
+                    byte[] raw;
+                    lock (_lock)
+                    {
+                        raw = _udpClient.Receive(ref sender);
+                    }
+
+                    Debug.Log($"[TssUDP] cmd={command} got {raw?.Length ?? 0}B from {sender}");
+                    var result = DecodeResponse(raw);
+                    if (result == null)
+                        Debug.LogWarning($"[TssUDP] cmd={command} — received {raw?.Length ?? 0}B but JSON decode returned null. First bytes: {HexPreview(raw, 16)}");
+                    return result;
                 }
-                catch (SocketException)
+                catch (SocketException se)
                 {
+                    Debug.LogWarning($"[TssUDP] cmd={command} attempt={attempt} SocketException: {se.SocketErrorCode} — {se.Message}");
                 }
                 catch (ObjectDisposedException)
                 {
@@ -65,11 +78,12 @@ namespace TssApi
                 }
                 catch (Exception e)
                 {
-                    Debug.LogWarning($"TssUdpClient request failed: {e.Message}");
+                    Debug.LogWarning($"[TssUDP] cmd={command} unexpected error: {e.Message}");
                     break;
                 }
             }
 
+            Debug.LogWarning($"[TssUDP] cmd={command} — all {_retries} attempts failed, returning null");
             return null;
         }
 
@@ -100,29 +114,19 @@ namespace TssApi
         }
 
         /// <summary>
-        /// Locates the first byte of the JSON object in the UDP payload.
-        /// TSS2026 GET replies are UTF-8 JSON beginning with '{' (possibly after whitespace).
+        /// Locates the first '{' byte in the UDP payload.
+        /// TSS2026 GET replies are plain UTF-8 JSON with no binary prefix, so '{' is at index 0.
+        /// A full linear scan is used so that any leading bytes (whitespace or a legacy binary
+        /// header) are skipped correctly without assuming a fixed offset.
         /// </summary>
         private static int FindJsonObjectStart(byte[] raw)
         {
             for (int i = 0; i < raw.Length; i++)
             {
-                byte b = raw[i];
-                if (b == (byte)'{')
-                {
+                if (raw[i] == (byte)'{')
                     return i;
-                }
-
-                // Stop scanning if we hit non-whitespace that is not '{' — payload may be legacy "[8-byte prefix][json]".
-                if (b != (byte)' ' && b != (byte)'\t' && b != (byte)'\r' && b != (byte)'\n')
-                {
-                    break;
-                }
             }
-
-            // Legacy fallback: some older/custom stacks may prepend 8 binary bytes before the JSON body
-            // (mirroring the 8-byte request shape). TSS2026 does not; healthy packets take the '{' branch above.
-            return raw.Length > 8 ? 8 : 0;
+            return -1;
         }
 
         private static void WriteUIntBigEndian(byte[] buffer, int offset, uint value)
@@ -131,6 +135,16 @@ namespace TssApi
             buffer[offset + 1] = (byte)(value >> 16);
             buffer[offset + 2] = (byte)(value >> 8);
             buffer[offset + 3] = (byte)value;
+        }
+
+        private static string HexPreview(byte[] data, int maxBytes)
+        {
+            if (data == null) return "(null)";
+            int len = System.Math.Min(maxBytes, data.Length);
+            var sb = new System.Text.StringBuilder();
+            for (int i = 0; i < len; i++)
+                sb.Append(data[i].ToString("X2")).Append(' ');
+            return sb.ToString().TrimEnd();
         }
     }
 }

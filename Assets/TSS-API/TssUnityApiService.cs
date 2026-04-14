@@ -12,7 +12,7 @@ namespace TssApi
         private const int UdpGetLtvErrors = 3;
 
         [Header("TSS UDP Source")]
-        [SerializeField] private string tssHost = "127.0.0.1";
+        [SerializeField] private string tssHost = "10.207.89.211";
         [SerializeField] private int tssPort = 14141;
         [SerializeField] private float pollIntervalSeconds = 0.25f;
         [SerializeField] private int udpTimeoutMs = 500;
@@ -531,7 +531,18 @@ namespace TssApi
                 if (evaRaw != null)
                 {
                     _eva = evaRaw;
+                    Dictionary<string, object> uia = GetNestedDict(evaRaw, "uia");
+                    bool power = uia.TryGetValue("eva1_power", out object p) && p is bool bp && bp;
+                    bool oxy   = uia.TryGetValue("eva1_oxy",   out object o) && o is bool bo && bo;
+                    bool sup   = uia.TryGetValue("eva1_water_supply", out object s) && s is bool bs && bs;
+                    bool waste = uia.TryGetValue("eva1_water_waste",  out object w) && w is bool bw && bw;
+                    bool started = GetNestedDict(evaRaw, "status").TryGetValue("started", out object st) && st is bool bst && bst;
+                    Debug.Log($"[TSS] EVA poll OK: started={started} power={power} oxy={oxy} supply={sup} waste={waste}");
                     EvaUpdated?.Invoke(GetEva());
+                }
+                else
+                {
+                    Debug.LogWarning($"[TSS] EVA poll returned NULL — UDP timeout or parse failure (host={tssHost}:{tssPort})");
                 }
 
                 if (ltvRaw != null)

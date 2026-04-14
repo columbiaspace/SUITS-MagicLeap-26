@@ -66,8 +66,14 @@ public class ImageCarouselUI : MonoBehaviour
     [SerializeField] private float stateSyncIntervalSeconds = 0.2f;
     [SerializeField] private List<EvaStepRule> stepRules = new List<EvaStepRule>();
 
+    [Header("Debug")]
+    [Tooltip("Show live TSS field values on screen for diagnostics")]
+    [SerializeField] private bool showDebugOverlay = true;
+
     private int index;
     private Coroutine syncCoroutine;
+    private string _debugText = "UIA Debug: waiting for data…";
+    private float _debugLogTimer;
 
     private void Awake()
     {
@@ -99,9 +105,11 @@ public class ImageCarouselUI : MonoBehaviour
     {
         if (!autoProgressEnabled || tssApi == null)
         {
+            Debug.LogWarning($"[UIACarousel] OnEnable skipped — autoProgress={autoProgressEnabled}, tssApi={(tssApi == null ? "NULL" : tssApi.name)}");
             return;
         }
 
+        Debug.Log($"[UIACarousel] OnEnable — subscribed to tssApi '{tssApi.name}'");
         tssApi.EvaUpdated += OnPacketUpdated;
         SyncFromApiState();
         syncCoroutine = StartCoroutine(SyncLoop());
@@ -134,7 +142,7 @@ public class ImageCarouselUI : MonoBehaviour
     private IEnumerator SyncLoop()
     {
         WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, stateSyncIntervalSeconds));
-        while (autoProgressEnabled)
+        while (true)
         {
             SyncFromApiState();
             yield return wait;
@@ -145,12 +153,14 @@ public class ImageCarouselUI : MonoBehaviour
     {
         if (tssApi == null)
         {
+            Debug.LogWarning("[UIACarousel] tssApi is null — cannot sync.");
             return;
         }
 
         Dictionary<string, object> eva = tssApi.GetEva();
         if (eva == null || eva.Count == 0)
         {
+            Debug.LogWarning("[UIACarousel] GetEva() returned null/empty.");
             return;
         }
 
@@ -162,35 +172,63 @@ public class ImageCarouselUI : MonoBehaviour
         if (stepRules.Count == 0 || slides.Count == 0) return;
 
         int completed = 0;
+        var sb = new System.Text.StringBuilder();
+        sb.AppendLine("[UIACarousel] EVA packet evaluation:");
         for (int i = 0; i < stepRules.Count; i++)
         {
-            if (EvaluateRule(stepRules[i], packet)) completed++;
-            else break; // stop at first unmet (ordered procedure)
+            bool result = EvaluateRule(stepRules[i], packet);
+            string label = string.IsNullOrEmpty(stepRules[i].name) ? stepRules[i].field.ToString() : stepRules[i].name;
+            sb.AppendLine($"  [{(result ? "✓" : "✗")}] {label}");
+            if (result) completed++;
+            else break;
         }
 
-        // Procedure: slides advance with each satisfied rule (highlighter steps). When all rules pass,
-        // hold on the idle slide (default: last sprite — e.g. SUITS_UIA_PANEL again).
+        int newIndex;
         if (completed >= stepRules.Count)
         {
+            // All rules satisfied — show the idle/complete slide (last slide by default)
             int idle = idleSlideIndexAfterComplete >= 0 ? idleSlideIndexAfterComplete : slides.Count - 1;
-            index = Mathf.Clamp(idle, 0, slides.Count - 1);
+            newIndex = Mathf.Clamp(idle, 0, slides.Count - 1);
         }
         else
         {
-            // Show first highlight (e.g. slide 1) as soon as the sim runs; stay there until rule 0–1
-            // settle, then follow slide index with each additional satisfied rule.
-            int first = Mathf.Clamp(firstActiveSlideIndex, 0, slides.Count - 1);
-            if (completed <= 1)
-            {
-                index = first;
-            }
-            else
-            {
-                index = Mathf.Clamp(completed, 0, slides.Count - 1);
-            }
+            // Show the NEXT step slide: completed=0 → slide[1], completed=1 → slide[2], etc.
+            // slide[0] is the overview shown only at idle/complete; slide[1..N] are the step instructions.
+            newIndex = Mathf.Clamp(completed + 1, 0, slides.Count - 1);
         }
 
+        sb.Append($"  completed={completed}/{stepRules.Count}  slide={newIndex}");
+
+        // Always update overlay text
+        _debugText = sb.ToString();
+
+        // Log to Console: always log once a second, and immediately on changes
+        _debugLogTimer -= Time.deltaTime;
+        bool indexChanged = newIndex != index;
+        if (indexChanged || _debugLogTimer <= 0f)
+        {
+            Debug.Log(_debugText);
+            _debugLogTimer = 1f;
+        }
+
+        index = newIndex;
         Refresh();
+    }
+
+    private void OnGUI()
+    {
+        if (!showDebugOverlay) return;
+
+        GUIStyle style = new GUIStyle(GUI.skin.box)
+        {
+            fontSize = 18,
+            alignment = TextAnchor.UpperLeft,
+            wordWrap = true
+        };
+        style.normal.textColor = Color.white;
+
+        float w = 420f, h = 200f;
+        GUI.Box(new Rect(10, 10, w, h), _debugText, style);
     }
 
     private bool EvaluateRule(EvaStepRule rule, Dictionary<string, object> packet)
@@ -371,11 +409,10 @@ public class ImageCarouselUI : MonoBehaviour
     {
         stepRules = new List<EvaStepRule>
         {
-            new EvaStepRule { name = "Mission started", field = EvaField.MissionStarted, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "EV1 EMU power on", field = EvaField.UiaEva1Power, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "EV1 oxygen on", field = EvaField.UiaEva1Oxy, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "EV1 water supply on", field = EvaField.UiaEva1WaterSupply, comparison = StepComparison.BoolIsTrue },
-            new EvaStepRule { name = "EV1 water waste on", field = EvaField.UiaEva1WaterWaste, comparison = StepComparison.BoolIsTrue }
+            new EvaStepRule { name = "EV1 Power", field = EvaField.UiaEva1Power, comparison = StepComparison.BoolIsTrue },
+            new EvaStepRule { name = "EV1 Oxygen", field = EvaField.UiaEva1Oxy, comparison = StepComparison.BoolIsTrue },
+            new EvaStepRule { name = "EV1 Water Supply", field = EvaField.UiaEva1WaterSupply, comparison = StepComparison.BoolIsTrue },
+            new EvaStepRule { name = "EV1 Water Waste", field = EvaField.UiaEva1WaterWaste, comparison = StepComparison.BoolIsTrue }
         };
     }
 

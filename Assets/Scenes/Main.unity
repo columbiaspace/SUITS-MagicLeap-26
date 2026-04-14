@@ -206,7 +206,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!224 &260000901
 RectTransform:
   m_ObjectHideFlags: 0
@@ -621,7 +621,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!4 &401001001
 Transform:
   m_ObjectHideFlags: 0
@@ -858,8 +858,8 @@ Transform:
   m_GameObject: {fileID: 505382992}
   serializedVersion: 2
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
-  m_LocalPosition: {x: 0, y: -1.36144, z: 1.2}
-  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0.9}
+  m_LocalScale: {x: 1.2, y: 1.2, z: 1.2}
   m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 857829563}
@@ -881,7 +881,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 1
+  m_IsActive: 0
 --- !u!108 &705507994
 Light:
   m_ObjectHideFlags: 0
@@ -975,7 +975,7 @@ GameObject:
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
   m_StaticEditorFlags: 0
-  m_IsActive: 0
+  m_IsActive: 1
 --- !u!114 &782628376
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -988,7 +988,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 10.207.124.137
+  tssHost: 10.207.89.211
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -1075,28 +1075,24 @@ MonoBehaviour:
   tssApi: {fileID: 782628376}
   autoProgressEnabled: 1
   stateSyncIntervalSeconds: 0.2
+  showDebugOverlay: 1
   stepRules:
-  - name: 
-    field: 0
-    comparison: 0
-    targetValue: 0
-    tolerance: 0
-  - name: 
+  - name: EV1 Power
     field: 1
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: 
+  - name: EV1 Oxygen
     field: 2
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: 
+  - name: EV1 Water Supply
     field: 3
     comparison: 0
     targetValue: 0
     tolerance: 0
-  - name: 
+  - name: EV1 Water Waste
     field: 4
     comparison: 0
     targetValue: 0
@@ -1238,6 +1234,10 @@ PrefabInstance:
     - target: {fileID: 5011708131622314371, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
       propertyPath: m_Name
       value: Hand Menu Setup With ScrollView Variant
+      objectReference: {fileID: 0}
+    - target: {fileID: 5011708131622314371, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5298709401013281464, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
       propertyPath: m_AnchorMax.y
@@ -2127,6 +2127,10 @@ PrefabInstance:
     - target: {fileID: 7953024735290065016, guid: 28bd7ab932cde416fb838cd4c5cd78fd, type: 3}
       propertyPath: m_Name
       value: Table
+      objectReference: {fileID: 0}
+    - target: {fileID: 7953024735290065016, guid: 28bd7ab932cde416fb838cd4c5cd78fd, type: 3}
+      propertyPath: m_IsActive
+      value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8006575674369793307, guid: 28bd7ab932cde416fb838cd4c5cd78fd, type: 3}
       propertyPath: m_AnchorMax.y

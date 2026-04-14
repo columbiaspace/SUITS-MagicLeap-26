@@ -279,11 +279,11 @@ MonoBehaviour:
   m_Name: OculusQuestFeature Android
   m_EditorClassIdentifier: Unity.XR.OpenXR.Features.OculusQuestSupport:UnityEngine.XR.OpenXR.Features.OculusQuestSupport:OculusQuestFeature
   m_enabled: 0
-  nameUi: 
-  version: 
-  featureIdInternal: 
-  openxrExtensionStrings: 
-  company: 
+  nameUi: Oculus Quest Support
+  version: 1.0.0
+  featureIdInternal: com.unity.openxr.feature.oculusquest
+  openxrExtensionStrings: XR_OCULUS_android_initialize_loader
+  company: Unity
   priority: 0
   required: 0
   targetQuest: 1
@@ -323,7 +323,7 @@ MonoBehaviour:
   m_Name: Standalone
   m_EditorClassIdentifier: 
   features:
-  - {fileID: -8486069140978055403}
+  - {fileID: -6043711387387633762}
   - {fileID: 8369685620038973862}
   - {fileID: -7178566817009682594}
   - {fileID: 8564577859056705000}
@@ -460,7 +460,7 @@ MonoBehaviour:
   m_Name: Android
   m_EditorClassIdentifier: 
   features:
-  - {fileID: 343709064305548110}
+  - {fileID: -4316106618429232158}
   - {fileID: 2617172007263961023}
   - {fileID: 3679684770700151319}
   - {fileID: 9004648682882332332}
@@ -478,12 +478,12 @@ MonoBehaviour:
   - {fileID: -5655505471076710244}
   - {fileID: 6484423780868360609}
   - {fileID: -7360197408559158517}
-  - {fileID: -3268413696680727075}
+  - {fileID: -2327492951974938890}
   - {fileID: 1906470366547154606}
   - {fileID: -5945302605267784065}
   - {fileID: -5650606742203378819}
   - {fileID: -5250921045177727726}
-  - {fileID: -6703357337670955691}
+  - {fileID: -6742096656348065523}
   - {fileID: 7709694562022830950}
   - {fileID: 8235720148641787372}
   - {fileID: 2960001637068827636}
@@ -643,11 +643,11 @@ MonoBehaviour:
   m_Name: ConformanceAutomationFeature Android
   m_EditorClassIdentifier: Unity.XR.OpenXR.Features.ConformanceAutomation:UnityEngine.XR.OpenXR.Features.ConformanceAutomation:ConformanceAutomationFeature
   m_enabled: 0
-  nameUi: 
-  version: 
-  featureIdInternal: 
-  openxrExtensionStrings: 
-  company: 
+  nameUi: Conformance Automation
+  version: 0.0.1
+  featureIdInternal: com.unity.openxr.feature.conformance
+  openxrExtensionStrings: XR_EXT_conformance_automation
+  company: Unity
   priority: 0
   required: 0
 --- !u!114 &-3969266772117700599
@@ -808,11 +808,11 @@ MonoBehaviour:
   m_Name: MetaQuestFeature Android
   m_EditorClassIdentifier: Unity.XR.OpenXR.Features.MetaQuestSupport:UnityEngine.XR.OpenXR.Features.MetaQuestSupport:MetaQuestFeature
   m_enabled: 0
-  nameUi: 
-  version: 
-  featureIdInternal: 
-  openxrExtensionStrings: 
-  company: 
+  nameUi: Meta Quest Support
+  version: 1.0.0
+  featureIdInternal: com.unity.openxr.feature.metaquest
+  openxrExtensionStrings: XR_OCULUS_android_initialize_loader
+  company: Unity
   priority: 0
   required: 0
   targetDevices:
