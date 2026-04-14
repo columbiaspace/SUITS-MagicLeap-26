@@ -823,6 +823,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a3c5e7d9b1f2a4c6e8d0b2f4a6c8e0d2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  statusText: {fileID: 999001003}
   displayImage: {fileID: 455361031}
   uiaCarousel: {fileID: 857829564}
   defaultDcuTexture: {fileID: 2800000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
@@ -1152,21 +1153,25 @@ MonoBehaviour:
   showDebugOverlay: 1
   stepRules:
   - name: EV1 Power
+    instruction: Switch EMU1 Power to ON (eva1_power = TRUE)
     field: 1
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: EV1 Oxygen
+    instruction: Switch EV1 Oxygen to OPEN (eva1_oxy = TRUE)
     field: 2
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: EV1 Water Supply
+    instruction: Switch EV1 Water Supply to OPEN (eva1_water_supply = TRUE)
     field: 3
     comparison: 0
     targetValue: 0
     tolerance: 0
   - name: EV1 Water Waste
+    instruction: Switch EV1 Water Waste to OPEN (eva1_water_waste = TRUE)
     field: 4
     comparison: 0
     targetValue: 0

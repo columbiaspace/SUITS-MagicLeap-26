@@ -43,6 +43,7 @@ public class ImageCarouselUI : MonoBehaviour
     private class EvaStepRule
     {
         public string name = "Step";
+        public string instruction = "";
         public EvaField field = EvaField.MissionStarted;
         public StepComparison comparison = StepComparison.BoolIsTrue;
         public float targetValue = 1f;
@@ -177,14 +178,9 @@ public class ImageCarouselUI : MonoBehaviour
         if (stepRules.Count == 0 || slides.Count == 0) return;
 
         int completed = 0;
-        var sb = new System.Text.StringBuilder();
-        sb.AppendLine("[UIACarousel] EVA packet evaluation:");
         for (int i = 0; i < stepRules.Count; i++)
         {
-            bool result = EvaluateRule(stepRules[i], packet);
-            string label = string.IsNullOrEmpty(stepRules[i].name) ? stepRules[i].field.ToString() : stepRules[i].name;
-            sb.AppendLine($"  [{(result ? "✓" : "✗")}] {label}");
-            if (result) completed++;
+            if (EvaluateRule(stepRules[i], packet)) completed++;
             else break;
         }
 
@@ -194,19 +190,16 @@ public class ImageCarouselUI : MonoBehaviour
             IsComplete = true;
             int idle = idleSlideIndexAfterComplete >= 0 ? idleSlideIndexAfterComplete : slides.Count - 1;
             newIndex = Mathf.Clamp(idle, 0, slides.Count - 1);
+            _debugText = "";
         }
         else
         {
-            // Show the NEXT step slide: completed=0 → slide[1], completed=1 → slide[2], etc.
-            // slide[0] is the overview shown only at idle/complete; slide[1..N] are the step instructions.
             newIndex = Mathf.Clamp(completed + 1, 0, slides.Count - 1);
+            EvaStepRule next = stepRules[completed];
+            _debugText = string.IsNullOrEmpty(next.instruction) ? next.name : next.instruction;
         }
 
-        sb.Append($"  completed={completed}/{stepRules.Count}  slide={newIndex}");
-
-        // Always update overlay text
-        _debugText = sb.ToString();
-        if (statusText != null)
+        if (statusText != null && !IsComplete)
             statusText.text = _debugText;
 
         // Log to Console once a second and on slide changes

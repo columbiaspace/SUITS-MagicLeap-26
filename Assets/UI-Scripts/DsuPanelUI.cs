@@ -34,6 +34,9 @@ public class DsuPanelUI : MonoBehaviour
     [Header("UIA dependency — DSU stays at default until this carousel completes")]
     [SerializeField] private ImageCarouselUI uiaCarousel;
 
+    [Header("Shared status text (same Text component as UIA carousel)")]
+    [SerializeField] private Text statusText;
+
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
 
@@ -75,6 +78,18 @@ public class DsuPanelUI : MonoBehaviour
         "ps",  // dcu.eva1.batt.ps == true  → done with slide 2
         null,  // dcu.eva1.fan     == true  → done with slide 3
         null,  // dcu.eva1.pump    == true  → done with slide 4
+    };
+
+    // One label per slide index (index 0 = default, no label)
+    private static readonly string[] SlideLabels =
+    {
+        "",
+        "DCU Battery: set to UMB (lu = TRUE)",
+        "DCU Oxygen: switch to PRI (oxy = TRUE)",
+        "DCU Battery: switch to LOCAL (ps = TRUE)",
+        "DCU Fan: switch to PRI (fan = TRUE)",
+        "DCU Pump: switch to OPEN (pump = TRUE)",
+        "DCU CO\u2082: turn Scrubber ON (co2 = TRUE)",
     };
 
     private Sprite[] _slideSprites;   // 7 entries: [0]=default, [1‑6]=procedure steps
@@ -260,6 +275,9 @@ public class DsuPanelUI : MonoBehaviour
         displayImage.sprite = s;
         displayImage.enabled = s != null;
         displayImage.preserveAspect = false;
+
+        if (_uiaComplete && statusText != null)
+            statusText.text = index < SlideLabels.Length ? SlideLabels[index] : "";
     }
 
 
