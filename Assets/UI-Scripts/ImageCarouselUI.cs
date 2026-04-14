@@ -67,6 +67,10 @@ public class ImageCarouselUI : MonoBehaviour
     [SerializeField] private float stateSyncIntervalSeconds = 0.2f;
     [SerializeField] private List<EvaStepRule> stepRules = new List<EvaStepRule>();
 
+    [Header("Prerequisite (optional)")]
+    [Tooltip("If set, this carousel will not write to statusText until the prerequisite carousel IsComplete")]
+    [SerializeField] private ImageCarouselUI prerequisite;
+
     [Header("Debug")]
     [Tooltip("Canvas Text element to display live UIA status (top of panel)")]
     [SerializeField] private Text statusText;
@@ -199,7 +203,8 @@ public class ImageCarouselUI : MonoBehaviour
             _debugText = string.IsNullOrEmpty(next.instruction) ? next.name : next.instruction;
         }
 
-        if (statusText != null && !IsComplete)
+        bool prerequisiteDone = prerequisite == null || prerequisite.IsComplete;
+        if (statusText != null && !IsComplete && prerequisiteDone)
             statusText.text = _debugText;
 
         // Log to Console once a second and on slide changes

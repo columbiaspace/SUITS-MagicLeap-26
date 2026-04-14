@@ -820,21 +820,63 @@ MonoBehaviour:
   m_GameObject: {fileID: 455361029}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: a3c5e7d9b1f2a4c6e8d0b2f4a6c8e0d2, type: 3}
+  m_Script: {fileID: 11500000, guid: cfbb78863613d4672a9521bd7bdf6acf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  statusText: {fileID: 999001003}
   displayImage: {fileID: 455361031}
-  uiaCarousel: {fileID: 857829564}
-  defaultDcuTexture: {fileID: 2800000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
-  dcuBatteryTexture: {fileID: 2800000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
-  dcuOxyTexture: {fileID: 2800000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
-  dcuBattery2Texture: {fileID: 2800000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
-  dcuFanTexture: {fileID: 2800000, guid: c401d821da3b142b49bfe094d5f4e50b, type: 3}
-  dcuPumpTexture: {fileID: 2800000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
-  dcuCo2Texture: {fileID: 2800000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}
+  idleSlideIndexAfterComplete: 0
+  firstActiveSlideIndex: 1
+  prerequisite: {fileID: 857829564}
   tssApi: {fileID: 782628376}
-  syncIntervalSeconds: 0.2
+  statusText: {fileID: 999001003}
+  autoProgressEnabled: 1
+  stateSyncIntervalSeconds: 0.2
+  showDebugOverlay: 1
+  stepRules:
+  - name: Battery UMB
+    instruction: DCU Battery: set to UMB (lu = TRUE)
+    field: 7
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: DCU Oxygen
+    instruction: "DCU Oxygen: switch to PRI (oxy = TRUE)"
+    field: 9
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: Battery Local
+    instruction: DCU Battery: switch to LOCAL (ps = TRUE)
+    field: 8
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: DCU Fan
+    instruction: "DCU Fan: switch to PRI (fan = TRUE)"
+    field: 10
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: DCU Pump
+    instruction: "DCU Pump: switch to OPEN (pump = TRUE)"
+    field: 11
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  - name: DCU CO2
+    instruction: "DCU CO2: turn Scrubber ON (co2 = TRUE)"
+    field: 12
+    comparison: 0
+    targetValue: 0
+    tolerance: 0
+  slides:
+  - {fileID: 21300000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
+  - {fileID: 21300000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
+  - {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
+  - {fileID: 21300000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
+  - {fileID: 21300000, guid: c401d821da3b142b49bfe094d5f4e50b, type: 3}
+  - {fileID: 21300000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
+  - {fileID: 21300000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}
 --- !u!1 &999001001
 GameObject:
   m_ObjectHideFlags: 0
