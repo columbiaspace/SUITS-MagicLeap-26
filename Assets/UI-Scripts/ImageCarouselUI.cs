@@ -113,6 +113,11 @@ public class ImageCarouselUI : MonoBehaviour
 
     private void OnEnable()
     {
+        if (tssApi == null)
+        {
+            tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+        }
+
         if (!autoProgressEnabled || tssApi == null)
         {
             Debug.LogWarning($"[UIACarousel] OnEnable skipped — autoProgress={autoProgressEnabled}, tssApi={(tssApi == null ? "NULL" : tssApi.name)}");

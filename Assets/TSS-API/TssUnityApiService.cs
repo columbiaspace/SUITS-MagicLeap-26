@@ -42,8 +42,13 @@ namespace TssApi
             }
 
             Instance = this;
-            DontDestroyOnLoad(gameObject);
             LoadProcedures();
+        }
+
+        private void OnDestroy()
+        {
+            if (Instance == this)
+                Instance = null;
         }
 
         private void OnEnable()
