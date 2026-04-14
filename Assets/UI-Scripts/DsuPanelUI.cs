@@ -31,6 +31,9 @@ public class DsuPanelUI : MonoBehaviour
     [SerializeField] private Texture2D dcuPumpTexture;      // slide 4 – pump
     [SerializeField] private Texture2D dcuCo2Texture;       // slide 5 – CO2
 
+    [Header("UIA dependency — DSU stays at default until this carousel completes")]
+    [SerializeField] private ImageCarouselUI uiaCarousel;
+
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
 
@@ -38,9 +41,7 @@ public class DsuPanelUI : MonoBehaviour
 
     [Header("Debug")]
     [Tooltip("Skip UIA completion check and jump straight to DCU procedure — for testing only")]
-    [SerializeField] private bool debugBypassUiaCheck = true;
-    [Tooltip("Show live DCU state overlay on screen")]
-    [SerializeField] private bool showDebugOverlay = true;
+    [SerializeField] private bool debugBypassUiaCheck = false;
 
     // ── UIA completion paths (all must be true) ──────────────────────────────
     // status.started intentionally omitted — react directly to UIA switch values
@@ -162,7 +163,7 @@ public class DsuPanelUI : MonoBehaviour
         if (eva == null || eva.Count == 0) return;
 
         var sb = new System.Text.StringBuilder();
-        bool uiaDone = debugBypassUiaCheck || AllUiaStepsDone(eva);
+        bool uiaDone = debugBypassUiaCheck || (uiaCarousel != null ? uiaCarousel.IsComplete : AllUiaStepsDone(eva));
 
         // ── Phase 1: show default until UIA is finished ───────────────────────
         if (!_uiaComplete)
@@ -261,21 +262,6 @@ public class DsuPanelUI : MonoBehaviour
         displayImage.preserveAspect = false;
     }
 
-    private void OnGUI()
-    {
-        if (!showDebugOverlay) return;
-
-        GUIStyle style = new GUIStyle(GUI.skin.box)
-        {
-            fontSize = 18,
-            alignment = TextAnchor.UpperLeft,
-            wordWrap = true
-        };
-        style.normal.textColor = Color.cyan;
-
-        float w = 420f, h = 220f;
-        GUI.Box(new Rect(Screen.width - w - 10, 10, w, h), _debugText, style);
-    }
 
     // ── TSS helpers ───────────────────────────────────────────────────────────
 

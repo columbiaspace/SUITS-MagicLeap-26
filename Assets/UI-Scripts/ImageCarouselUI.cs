@@ -67,8 +67,13 @@ public class ImageCarouselUI : MonoBehaviour
     [SerializeField] private List<EvaStepRule> stepRules = new List<EvaStepRule>();
 
     [Header("Debug")]
-    [Tooltip("Show live TSS field values on screen for diagnostics")]
+    [Tooltip("Canvas Text element to display live UIA status (top of panel)")]
+    [SerializeField] private Text statusText;
+    [Tooltip("Also show OnGUI screen overlay (useful when statusText is not assigned)")]
     [SerializeField] private bool showDebugOverlay = true;
+
+    /// <summary>True once all step rules have been satisfied in sequence this session.</summary>
+    public bool IsComplete { get; private set; }
 
     private int index;
     private Coroutine syncCoroutine;
@@ -186,7 +191,7 @@ public class ImageCarouselUI : MonoBehaviour
         int newIndex;
         if (completed >= stepRules.Count)
         {
-            // All rules satisfied — show the idle/complete slide (last slide by default)
+            IsComplete = true;
             int idle = idleSlideIndexAfterComplete >= 0 ? idleSlideIndexAfterComplete : slides.Count - 1;
             newIndex = Mathf.Clamp(idle, 0, slides.Count - 1);
         }
@@ -201,8 +206,10 @@ public class ImageCarouselUI : MonoBehaviour
 
         // Always update overlay text
         _debugText = sb.ToString();
+        if (statusText != null)
+            statusText.text = _debugText;
 
-        // Log to Console: always log once a second, and immediately on changes
+        // Log to Console once a second and on slide changes
         _debugLogTimer -= Time.deltaTime;
         bool indexChanged = newIndex != index;
         if (indexChanged || _debugLogTimer <= 0f)
@@ -217,7 +224,7 @@ public class ImageCarouselUI : MonoBehaviour
 
     private void OnGUI()
     {
-        if (!showDebugOverlay) return;
+        if (!showDebugOverlay || statusText != null) return;
 
         GUIStyle style = new GUIStyle(GUI.skin.box)
         {
