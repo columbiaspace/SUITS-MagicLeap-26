@@ -6,7 +6,7 @@ using LtvDiagnostics;
 public class LtvHudController : MonoBehaviour
 {
     [Header("Backend Service")]
-    public LtvErrorQueueService queueService;
+    public LtvInstructionService queueService;
 
     [Header("UI Elements")]
     public TextMeshProUGUI errorCodeText;   // The left box (formerly "AG NAV")

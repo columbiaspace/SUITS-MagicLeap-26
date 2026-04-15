@@ -339,7 +339,7 @@ Camera:
     y: 0
     width: 1
     height: 1
-  near clip plane: 0.1
+  near clip plane: 0.05
   far clip plane: 20
   field of view: 60
   orthographic: 0
@@ -1892,7 +1892,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: f5bec82ec592540aab90e546219d13cf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssApi: {fileID: 0}
+  tssApi: {fileID: 1472896860}
   evaId: eva1
   minimapRect: {fileID: 1691306746}
   playerIcon: {fileID: 1691306745}
@@ -2004,6 +2004,18 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 5952609899152695321, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5952609899152695321, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5952609899152695321, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 5952609899152695321, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
       objectReference: {fileID: 0}
@@ -2053,11 +2065,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6969810720149958986, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
       propertyPath: m_UiScaleMode
-      value: 0
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6969810720149958986, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
       propertyPath: m_MatchWidthOrHeight
-      value: 0
+      value: 0.5
       objectReference: {fileID: 0}
     - target: {fileID: 8119472018397929490, guid: 25b08192a51824f0fb0f026b39ff6d8b, type: 3}
       propertyPath: m_Sprite
@@ -2154,8 +2166,8 @@ Canvas:
   m_Enabled: 1
   serializedVersion: 3
   m_RenderMode: 1
-  m_Camera: {fileID: 0}
-  m_PlaneDistance: 1
+  m_Camera: {fileID: 230468987}
+  m_PlaneDistance: 2.25
   m_PixelPerfect: 0
   m_ReceivesEvents: 1
   m_OverrideSorting: 0
@@ -2301,7 +2313,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0ae66a638550e49bdaad75f24463fda3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssApi: {fileID: 0}
+  tssApi: {fileID: 1472896860}
   evaId: eva1
   NorthArrow: {fileID: 5063552029601517344}
   useTssHeading: 1
@@ -2344,7 +2356,7 @@ RectTransform:
   m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 3, y: 3, z: 3}
-  m_ConstrainProportionsScale: 0
+  m_ConstrainProportionsScale: 1
   m_Children:
   - {fileID: 5063552029601517344}
   - {fileID: 9068139348084309477}
@@ -2352,7 +2364,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 1, y: 1}
   m_AnchorMax: {x: 1, y: 1}
-  m_AnchoredPosition: {x: -370.9, y: -325.4}
+  m_AnchoredPosition: {x: -175, y: -150}
   m_SizeDelta: {x: 100, y: 100}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!224 &5828761328060048336
@@ -2386,12 +2398,12 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  m_UiScaleMode: 0
+  m_UiScaleMode: 1
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
-  m_ReferenceResolution: {x: 800, y: 600}
+  m_ReferenceResolution: {x: 1920, y: 1080}
   m_ScreenMatchMode: 0
-  m_MatchWidthOrHeight: 0
+  m_MatchWidthOrHeight: 0.5
   m_PhysicalUnit: 3
   m_FallbackScreenDPI: 96
   m_DefaultSpriteDPI: 96
