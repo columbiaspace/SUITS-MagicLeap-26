@@ -303,7 +303,15 @@ public class AIAVoskInputController : MonoBehaviour
 
         try
         {
-            UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
+            if (voiceIntents != null)
+            {
+                voiceIntents.BeginRecordingTranscript();
+            }
+            else
+            {
+                UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
+            }
+
             voskSpeechToText.ToggleRecording();
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             RefreshButtonVisuals();
@@ -326,7 +334,7 @@ public class AIAVoskInputController : MonoBehaviour
             return;
         }
 
-        UpdateStatus("Processing your recording...");
+        voiceIntents?.ShowRecordingProcessing();
         voskSpeechToText.ToggleRecording();
         isRecording = false;
         RefreshButtonVisuals();
@@ -341,7 +349,14 @@ public class AIAVoskInputController : MonoBehaviour
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             if (isRecording)
             {
-                UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
+                if (voiceIntents != null)
+                {
+                    voiceIntents.BeginRecordingTranscript();
+                }
+                else
+                {
+                    UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
+                }
             }
             StopInitializationTimeout();
         }
@@ -355,11 +370,6 @@ public class AIAVoskInputController : MonoBehaviour
 
     private void HandleVoiceRecordingStop()
     {
-        if (isRecording)
-        {
-            UpdateStatus("Processing your recording...");
-        }
-
         isRecording = false;
         RefreshButtonVisuals();
     }
@@ -378,7 +388,14 @@ public class AIAVoskInputController : MonoBehaviour
             if (string.IsNullOrWhiteSpace(transcript))
             {
                 Debug.LogWarning($"[Vosk] Empty transcription result: {rawJson}");
-                UpdateStatus("Vosk could not transcribe that recording.");
+                if (voiceIntents != null)
+                {
+                    voiceIntents.FailActiveRecording("Vosk could not transcribe that recording.");
+                }
+                else
+                {
+                    UpdateStatus("Vosk could not transcribe that recording.");
+                }
                 return;
             }
 
@@ -424,7 +441,14 @@ public class AIAVoskInputController : MonoBehaviour
                 return;
             }
 
-            UpdateStatus(partialTranscript);
+            if (voiceIntents != null)
+            {
+                voiceIntents.UpdateRecordingTranscript(partialTranscript);
+            }
+            else
+            {
+                UpdateStatus(partialTranscript);
+            }
         }
         catch (Exception exception)
         {
