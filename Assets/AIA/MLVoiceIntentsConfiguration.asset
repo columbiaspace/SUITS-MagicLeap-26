@@ -23,29 +23,7 @@ MonoBehaviour:
   - Id: 104
     Value: stop
   - Id: 105
-    Value: 'ask luna|ask luna {query}'
+    Value: hey luna
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
-  SlotsForVoiceCommands:
-  - name: query
-    values:
-    - what is the weather
-    - what time is it
-    - tell me about mars
-    - tell me about the moon
-    - tell me about the sun
-    - tell me about earth
-    - tell me about space
-    - who are you
-    - what can you do
-    - help me with navigation
-    - what is my battery level
-    - how do i get home
-    - tell me a joke
-    - what is the temperature
-    - give me a status update
-    - run a system check
-    - describe my surroundings
-    - what is the mission status
-    - how much oxygen do i have
-    - what is my heart rate
+  SlotsForVoiceCommands: []
