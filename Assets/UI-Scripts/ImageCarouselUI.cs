@@ -60,6 +60,7 @@ public class ImageCarouselUI : MonoBehaviour
     [SerializeField] private List<EvaStepRule> stepRules = new List<EvaStepRule>();
 
     private int index;
+    private int completedWatermark;
     private Coroutine syncCoroutine;
 
     private void Awake()
@@ -80,6 +81,7 @@ public class ImageCarouselUI : MonoBehaviour
         }
 
         index = 0;
+        completedWatermark = 0;
         Refresh();
     }
 
@@ -151,15 +153,21 @@ public class ImageCarouselUI : MonoBehaviour
     private void AdvanceIfReady(Dictionary<string, object> packet)
     {
         if (stepRules.Count == 0 || slides.Count == 0) return;
+        if (packet == null || packet.Count == 0) return;
 
         int completed = 0;
         for (int i = 0; i < stepRules.Count; i++)
         {
             if (EvaluateRule(stepRules[i], packet)) completed++;
-            else break; // stop at first unmet (ordered procedure)
+            else break;
         }
 
-        index = Mathf.Clamp(completed, 0, slides.Count - 1);
+        if (completed > completedWatermark)
+        {
+            completedWatermark = completed;
+        }
+
+        index = Mathf.Clamp(completedWatermark, 0, slides.Count - 1);
         Refresh();
     }
 
