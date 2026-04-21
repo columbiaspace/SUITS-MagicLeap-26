@@ -187,12 +187,67 @@ public class IngressProcedureManager : MonoBehaviour
     {
         try
         {
+            if (_latestData == null) return false;
+
+            if (TryCoerceBool(GetPath(_latestData, "uia." + field), out bool b)) return b;
+
+            if (field.StartsWith("eva1_", StringComparison.Ordinal))
+            {
+                string suffix = field.Substring("eva1_".Length);
+                if (TryCoerceBool(GetPath(_latestData, "uia.eva1." + suffix), out b)) return b;
+            }
+
+            if (field.StartsWith("eva2_", StringComparison.Ordinal))
+            {
+                string suffix = field.Substring("eva2_".Length);
+                if (TryCoerceBool(GetPath(_latestData, "uia.eva2." + suffix), out b)) return b;
+            }
+
             if (_latestData.TryGetValue("uia", out var raw) &&
                 raw is Dictionary<string, object> uia &&
                 uia.TryGetValue(field, out var v))
-                return Convert.ToBoolean(v);
+                return TryCoerceBool(v, out b) && b;
         }
         catch (Exception e) { Debug.LogWarning($"[Ingress] UIA({field}): {e.Message}"); }
+        return false;
+    }
+
+    private static object GetPath(Dictionary<string, object> source, string path)
+    {
+        if (source == null || string.IsNullOrEmpty(path)) return null;
+        object current = source;
+        foreach (string part in path.Split('.'))
+        {
+            if (!(current is Dictionary<string, object> dict) || !dict.TryGetValue(part, out current))
+                return null;
+        }
+        return current;
+    }
+
+    private static bool TryCoerceBool(object raw, out bool value)
+    {
+        value = false;
+        if (raw == null) return false;
+        if (raw is bool b) { value = b; return true; }
+        if (raw is string s)
+        {
+            if (bool.TryParse(s, out bool pb)) { value = pb; return true; }
+            if (double.TryParse(s, System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture, out double d))
+            {
+                value = Math.Abs(d) > double.Epsilon;
+                return true;
+            }
+            return false;
+        }
+        if (raw is IConvertible c)
+        {
+            try
+            {
+                value = Math.Abs(c.ToDouble(null)) > double.Epsilon;
+                return true;
+            }
+            catch { return false; }
+        }
         return false;
     }
 
