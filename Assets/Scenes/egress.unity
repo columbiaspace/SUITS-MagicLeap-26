@@ -952,13 +952,14 @@ MonoBehaviour:
   tssApi: {fileID: 920001003}
   uiaPanelSprite: {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   uiaPwrSprite: {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
-  uiaOxySprite: {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  uiaO2VentSprite: {fileID: 21300000, guid: 091e377850a60439b985fba14352e91d, type: 3}
+  uiaOxygenEmu1Sprite: {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
+  uiaDepressPumpSprite: {fileID: 21300000, guid: 1765574f1f0214173b8c54d85db0396f, type: 3}
   uiaWaterSupplySprite: {fileID: 21300000, guid: 50b05fbcf1d2e48b59aeb3ec8d2bb90e, type: 3}
-  dcuBatterySprite: {fileID: 21300000, guid: 8937208a934874952b35da4f9a627f83, type: 3}
+  dcuPanelSprite: {fileID: 21300000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
   dcuOxySprite: {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
   dcuFanSprite: {fileID: 21300000, guid: c401d821da3b142b49bfe094d5f4e50b, type: 3}
   dcuPumpSprite: {fileID: 21300000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
-  dcuCo2Sprite: {fileID: 21300000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

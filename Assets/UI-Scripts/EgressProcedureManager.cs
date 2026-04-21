@@ -21,15 +21,16 @@ public class EgressProcedureManager : MonoBehaviour
     [Header("UIA Sprites")]
     [SerializeField] private Sprite uiaPanelSprite;        // UIA.jpg  (default / no-image steps)
     [SerializeField] private Sprite uiaPwrSprite;          // UIA-pwr.png
-    [SerializeField] private Sprite uiaOxySprite;          // UIA-oxygen.png
+    [SerializeField] private Sprite uiaO2VentSprite;       // UIA-O2.png (OXYGEN O2 VENT)
+    [SerializeField] private Sprite uiaOxygenEmu1Sprite;   // UIA-oxygen-emu1.png (OXYGEN EMU-1)
+    [SerializeField] private Sprite uiaDepressPumpSprite;  // UIA-depress-pump.png (DEPRESS PUMP)
     [SerializeField] private Sprite uiaWaterSupplySprite;  // UIA-water-supply.png
 
     [Header("DCU Sprites")]
-    [SerializeField] private Sprite dcuBatterySprite;      // dcu-battery.png
+    [SerializeField] private Sprite dcuPanelSprite;        // dcu.png  (default)
     [SerializeField] private Sprite dcuOxySprite;          // dcu-oxy.png
     [SerializeField] private Sprite dcuFanSprite;          // dcu-fan.png
     [SerializeField] private Sprite dcuPumpSprite;         // dcu-pump.png
-    [SerializeField] private Sprite dcuCo2Sprite;          // dcu-co2.png
 
     // ── Internals ──────────────────────────────────────────────────────
     private enum CondType { Timed, UiaBool, DcuBool, DcuBattBool }
@@ -94,62 +95,62 @@ public class EgressProcedureManager : MonoBehaviour
         {
             // ── Connect UIA to DCU & start Depress ────────────────────
             T("EV1: Verify umbilical connection from UIA to DCU"),
-            U("UIA: EV1 EMU PWR – ON\n(eva1_power = true)",
+            U("UIA: EV1 EMU PWR – ON\n",
                 uiaPwrSprite,        "eva1_power",         true),
-            B("DCU: BATT – UMB\n(batt.lu = false)",
-                dcuBatterySprite,    "lu",                 false),
-            U("UIA: DEPRESS PUMP – ON\n(depress = true)",
-                uiaPanelSprite,      "depress",            true),
+            B("DCU: BATT – UMB\n(batt.ps = false)",
+                dcuPanelSprite,      "ps",                 false),
+            U("UIA: DEPRESS PUMP – ON\n",
+                uiaDepressPumpSprite, "depress",            true),
 
             // ── Prep O2 Tanks ─────────────────────────────────────────
-            U("UIA: OXYGEN O2 VENT – OPEN\n(oxy_vent = true)",
-                uiaOxySprite,        "oxy_vent",           true),
+            U("UIA: OXYGEN O2 VENT – OPEN\n",
+                uiaO2VentSprite,     "oxy_vent",           true),
             T("HMD: Wait until both OXY tanks < 10 psi"),
-            U("UIA: OXYGEN O2 VENT – CLOSE\n(oxy_vent = false)",
-                uiaOxySprite,        "oxy_vent",           false),
+            U("UIA: OXYGEN O2 VENT – CLOSE\n",
+                uiaO2VentSprite,     "oxy_vent",           false),
             D("DCU: OXY – PRI\n(oxy = true)",
                 dcuOxySprite,        "oxy",                true),
-            U("UIA: OXYGEN EMU-1 – OPEN\n(eva1_oxy = true)",
-                uiaOxySprite,        "eva1_oxy",           true),
+            U("UIA: OXYGEN EMU-1 – OPEN\n",
+                uiaOxygenEmu1Sprite, "eva1_oxy",           true),
             T("HMD: Wait until EV1 Primary O2 tank > 2950 psi"),
-            U("UIA: OXYGEN EMU-1 – CLOSE\n(eva1_oxy = false)",
-                uiaOxySprite,        "eva1_oxy",           false),
+            U("UIA: OXYGEN EMU-1 – CLOSE\n",
+                uiaOxygenEmu1Sprite, "eva1_oxy",           false),
             D("DCU: OXY – SEC\n(oxy = false)",
                 dcuOxySprite,        "oxy",                false),
-            U("UIA: OXYGEN EMU-1 – OPEN\n(eva1_oxy = true)",
-                uiaOxySprite,        "eva1_oxy",           true),
+            U("UIA: OXYGEN EMU-1 – OPEN\n",
+                uiaOxygenEmu1Sprite, "eva1_oxy",           true),
             T("HMD: Wait until EV1 Secondary O2 tank > 2950 psi"),
-            U("UIA: OXYGEN EMU-1 – CLOSE\n(eva1_oxy = false)",
-                uiaOxySprite,        "eva1_oxy",           false),
-            D("DCU: OXY – PRI\n(oxy = true)",
+            U("UIA: OXYGEN EMU-1 – CLOSE\n",
+                uiaOxygenEmu1Sprite, "eva1_oxy",           false),
+            D("DCU: OXY – PRI\n",
                 dcuOxySprite,        "oxy",                true),
 
             // ── Prep Coolant Tank ─────────────────────────────────────
-            D("DCU: PUMP – OPEN\n(pump = true)",
+            D("DCU: PUMP – OPEN\n",
                 dcuPumpSprite,       "pump",               true),
-            U("UIA: EV-1 SUPPLY WATER – OPEN\n(eva1_water_supply = true)",
+            U("UIA: EV-1 SUPPLY WATER – OPEN\n",
                 uiaWaterSupplySprite,"eva1_water_supply",  true),
             T("HMD: Wait until EV1 Coolant Storage > 95%"),
-            U("UIA: EV-1 SUPPLY WATER – CLOSE\n(eva1_water_supply = false)",
+            U("UIA: EV-1 SUPPLY WATER – CLOSE\n",
                 uiaWaterSupplySprite,"eva1_water_supply",  false),
 
             // ── END Depress, Check Switches & Disconnect ───────────────
             T("HMD: Wait until SUIT Pressure and O2 Pressure = 4"),
-            U("UIA: DEPRESS PUMP PWR – OFF\n(depress = false)",
-                uiaPanelSprite,      "depress",            false),
-            B("DCU: BATT – PRI\n(batt.lu = true)",
-                dcuBatterySprite,    "lu",                 true),
-            B("DCU: BATT – LOCAL\n(batt.ps = false)",
-                dcuBatterySprite,    "ps",                 false),
-            U("UIA: EV-1 EMU PWR – OFF\n(eva1_power = false)",
+            U("UIA: DEPRESS PUMP PWR – OFF\n",
+                uiaDepressPumpSprite, "depress",            false),
+            B("DCU: BATT – PRI\n",
+                dcuPanelSprite,      "lu",                 true),
+            B("DCU: BATT – LOCAL\n",
+                dcuPanelSprite,      "ps",                 true),
+            U("UIA: EV-1 EMU PWR – OFF\n",
                 uiaPwrSprite,        "eva1_power",         false),
             D("DCU: FAN – PRI\n(fan = true)",
                 dcuFanSprite,        "fan",                true),
-            D("DCU: PUMP – CLOSE\n(pump = false)",
+            D("DCU: PUMP – CLOSE\n",
                 dcuPumpSprite,       "pump",               false),
-            D("DCU: CO2 – PRI\n(co2 = true)",
-                dcuCo2Sprite,        "co2",                true),
-            D("DCU: Verify OXY – PRI\n(oxy = true)",
+            D("DCU: CO2 – PRI\n",
+                dcuPanelSprite,      "co2",                true),
+            D("DCU: Verify OXY – PRI\n",
                 dcuOxySprite,        "oxy",                true),
             T("EV-1: Disconnect UIA and DCU umbilical"),
             T("Verbally announce completion of egress"),
