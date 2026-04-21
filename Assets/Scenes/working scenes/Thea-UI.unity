@@ -590,6 +590,10 @@ PrefabInstance:
       propertyPath: healthCanvas
       value: 
       objectReference: {fileID: 1315369535}
+    - target: {fileID: 8374780147099731469, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_Camera
+      value: 
+      objectReference: {fileID: 1101935316}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -714,7 +718,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 192.168.2.1
+  tssHost: 10.207.105.50
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -895,6 +899,14 @@ PrefabInstance:
     - target: {fileID: 294005132753942053, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
       propertyPath: m_LocalEulerAnglesHint.z
       value: 0
+      objectReference: {fileID: 0}
+    - target: {fileID: 2769613890483781283, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+      propertyPath: m_Center.x
+      value: 0.36
+      objectReference: {fileID: 0}
+    - target: {fileID: 2769613890483781283, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+      propertyPath: m_Center.y
+      value: -0.12
       objectReference: {fileID: 0}
     - target: {fileID: 4818367814018673052, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
       propertyPath: suitPanel
@@ -1083,8 +1095,8 @@ MonoBehaviour:
   primaryOxygenPath: telemetry.eva1.oxy_pri_storage
   secondaryOxygenPath: telemetry.eva1.oxy_sec_storage
   useLowestAvailableSource: 1
-  runningLowThresholdPercent: 30
-  criticalThresholdPercent: 15
+  runningLowThresholdPercent: 95
+  criticalThresholdPercent: 90
   showPopupAlert: 1
   popupSize: {x: 420, y: 72}
   popupMargin: {x: 16, y: 16}

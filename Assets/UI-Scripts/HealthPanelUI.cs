@@ -118,6 +118,29 @@ public class HealthPanelUI : MonoBehaviour
         if (telemetry == null) return;
 
         DisplayTelemetry(telemetry);
+        UpdateOxygenWarningLive();
+    }
+
+    private void UpdateOxygenWarningLive()
+    {
+        if (oxygenWarningPanel == null || !oxygenWarningPanel.activeSelf) return;
+        if (oxygenWarningText == null) return;
+
+        var monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
+        if (monitor == null) return;
+
+        float percent = monitor.CurrentOxygenPercent;
+
+        switch (monitor.CurrentState)
+        {
+            case TssVitalsOxygenMonitor.OxygenState.CriticallyLow:
+                oxygenWarningText.text = $"CRITICAL O2: {percent:F1}% — RETURN IMMEDIATELY";
+                break;
+
+            case TssVitalsOxygenMonitor.OxygenState.RunningLow:
+                oxygenWarningText.text = $"O2 LOW: {percent:F1}%";
+                break;
+        }
     }
 
     private void HandleOxygenStateChanged(
@@ -131,16 +154,12 @@ public class HealthPanelUI : MonoBehaviour
                 oxygenWarningPanel.SetActive(true);
                 oxygenWarningText.text = $"CRITICAL O2: {percent:F1}% — RETURN IMMEDIATELY";
                 oxygenWarningText.color = new Color(1f, 0.2f, 0.2f);
-                if (vitalsPanel != null) vitalsPanel.SetActive(false);
-                if (suitPanel != null) suitPanel.SetActive(false);
                 break;
 
             case TssVitalsOxygenMonitor.OxygenState.RunningLow:
                 oxygenWarningPanel.SetActive(true);
                 oxygenWarningText.text = $"O2 LOW: {percent:F1}%";
                 oxygenWarningText.color = new Color(1f, 0.7f, 0.15f);
-                if (vitalsPanel != null) vitalsPanel.SetActive(true);
-                if (suitPanel != null) suitPanel.SetActive(true);
                 break;
 
             default:
