@@ -6,7 +6,7 @@ using UnityEngine.UI;
 using TssApi;
 
 /// <summary>
-/// Sequential ingress checklist: END Depress, check switches, disconnect.
+/// EVA Ingress procedure (~2 min).
 /// Uses the same TSS /eva payload as <see cref="EgressProcedureManager"/>.
 /// </summary>
 public class IngressProcedureManager : MonoBehaviour
@@ -18,15 +18,22 @@ public class IngressProcedureManager : MonoBehaviour
     [Header("UIA Sprites")]
     [SerializeField] private Sprite uiaPanelSprite;
     [SerializeField] private Sprite uiaPwrSprite;
-    [SerializeField] private Sprite uiaDepressPumpSprite;
+    [SerializeField] private Sprite uiaO2VentSprite;      // UIA-O2.png — OXYGEN O2 VENT
+    [SerializeField] private Sprite uiaWaterWasteSprite;  // UIA-water-waste.png
 
     [Header("DCU Sprites")]
-    [SerializeField] private Sprite dcuPanelSprite;
-    [SerializeField] private Sprite dcuOxySprite;
-    [SerializeField] private Sprite dcuFanSprite;
+    [SerializeField] private Sprite dcuPanelSprite;       // dcu.png — BATT and disconnect
     [SerializeField] private Sprite dcuPumpSprite;
 
-    private enum CondType { Timed, UiaBool, DcuBool, DcuBattBool, TelemetrySuitO2Pressure4 }
+    private enum CondType
+    {
+        Timed,
+        UiaBool,
+        DcuBool,
+        DcuBattBool,
+        TelemetryOxyBothUnder10Psi,
+        TelemetryCoolantUnder5Percent
+    }
 
     private class Step
     {
@@ -42,9 +49,6 @@ public class IngressProcedureManager : MonoBehaviour
     private int                         _current;
     private Dictionary<string, object>  _latestData;
     private Coroutine                   _timerCo;
-
-    private const float PressureTarget = 4f;
-    private const float PressureTolerance = 0.35f;
 
     private void Awake() => Resolve();
 
@@ -81,36 +85,45 @@ public class IngressProcedureManager : MonoBehaviour
             { Label = lbl, Image = img, Cond = CondType.DcuBool, Field = field, Expected = exp };
         Step B(string lbl, Sprite img, string field, bool exp) => new Step
             { Label = lbl, Image = img, Cond = CondType.DcuBattBool, Field = field, Expected = exp };
-        Step H() => new Step
+
+        Step HmdOxy() => new Step
         {
-            Label = "HMD: Wait until SUIT Pressure and O2 Pressure = 4\n(telemetry.eva1 suit_pressure_oxy & suit_pressure_total)",
+            Label = "HMD: Wait until both Primary and Secondary OXY tanks are < 10 psi\n",
             Image = uiaPanelSprite,
-            Cond  = CondType.TelemetrySuitO2Pressure4,
+            Cond  = CondType.TelemetryOxyBothUnder10Psi,
+            Secs  = 0f
+        };
+        Step HmdCoolant() => new Step
+        {
+            Label = "HMD: Wait until water EV1 Coolant tank is < 5%\n",
+            Image = uiaPanelSprite,
+            Cond  = CondType.TelemetryCoolantUnder5Percent,
             Secs  = 0f
         };
 
+        // 12 steps total
         _steps = new List<Step>
         {
-            H(),
-            U("UIA: DEPRESS PUMP PWR – OFF\n",
-                uiaDepressPumpSprite, "depress", false),
-            B("DCU: BATT – PRI\n",
-                dcuPanelSprite, "lu", true),
-            B("DCU: BATT – LOCAL\n",
-                dcuPanelSprite, "ps", true),
+            T("UIA and DCU: EV1 connect UIA and DCU umbilical"),
+            U("UIA: EV-1 EMU PWR – ON\n",
+                uiaPwrSprite, "eva1_power", true),
+            B("DCU: BATT – UMB\n",
+                dcuPanelSprite, "ps", false),
+            U("UIA: OXYGEN O2 VENT – OPEN (Vent O2 tanks)\n",
+                uiaO2VentSprite, "oxy_vent", true),
+            HmdOxy(),
+            U("UIA: OXYGEN O2 VENT – CLOSE\n",
+                uiaO2VentSprite, "oxy_vent", false),
+            D("DCU: PUMP – OPEN (Empty water tanks)\n",
+                dcuPumpSprite, "pump", true),
+            U("UIA: EV-1 WASTE WATER – OPEN\n",
+                uiaWaterWasteSprite, "eva1_water_waste", true),
+            HmdCoolant(),
+            U("UIA: EV-1 WASTE WATER – CLOSE\n",
+                uiaWaterWasteSprite, "eva1_water_waste", false),
             U("UIA: EV-1 EMU PWR – OFF\n",
                 uiaPwrSprite, "eva1_power", false),
-            D("DCU: FAN – PRI\n",
-                dcuFanSprite, "fan", true),
-            D("DCU: PUMP – CLOSE\n",
-                dcuPumpSprite, "pump", false),
-            D("DCU: CO2 – PRI\n",
-                dcuPanelSprite, "co2", true),
-            D("DCU: Verify OXY – PRI\n",
-                dcuOxySprite, "oxy", true),
-            T("EV-1: Disconnect UIA and DCU umbilical"),
-            T("Verbally announce completion of ingress"),
-            T("Begin navigation procedure"),
+            T("DCU: EV-1 disconnect umbilical", dcuPanelSprite, 3f),
         };
     }
 
@@ -125,7 +138,6 @@ public class IngressProcedureManager : MonoBehaviour
         }
 
         var step = _steps[index];
-
         if (stepText != null)
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
@@ -169,17 +181,18 @@ public class IngressProcedureManager : MonoBehaviour
 
         bool met = step.Cond switch
         {
-            CondType.UiaBool                  => ReadUiaBool(step.Field) == step.Expected,
-            CondType.DcuBool                => ReadDcuEva1Bool(step.Field) == step.Expected,
-            CondType.DcuBattBool            => ReadDcuBattBool(step.Field) == step.Expected,
-            CondType.TelemetrySuitO2Pressure4 => TelemetryPressureReady(),
-            _                               => false,
+            CondType.UiaBool                    => ReadUiaBool(step.Field) == step.Expected,
+            CondType.DcuBool                    => ReadDcuEva1Bool(step.Field) == step.Expected,
+            CondType.DcuBattBool                => ReadDcuBattBool(step.Field) == step.Expected,
+            CondType.TelemetryOxyBothUnder10Psi => TelemetryOxyBothUnder10Psi(),
+            CondType.TelemetryCoolantUnder5Percent => TelemetryCoolantUnder5Percent(),
+            _                                   => false,
         };
 
         if (met) Advance();
     }
 
-    private bool TelemetryPressureReady()
+    private bool TelemetryOxyBothUnder10Psi()
     {
         try
         {
@@ -189,12 +202,30 @@ public class IngressProcedureManager : MonoBehaviour
             if (!tel.TryGetValue("eva1", out var eRaw) ||
                 eRaw is not Dictionary<string, object> eva1) return false;
 
-            float oxy   = ReadFloat(eva1, "suit_pressure_oxy");
-            float total = ReadFloat(eva1, "suit_pressure_total");
-            return Mathf.Abs(oxy - PressureTarget) <= PressureTolerance
-                && Mathf.Abs(total - PressureTarget) <= PressureTolerance;
+            float pri = ReadFloat(eva1, "oxy_pri_pressure");
+            float sec = ReadFloat(eva1, "oxy_sec_pressure");
+            if (float.IsNaN(pri) || float.IsNaN(sec)) return false;
+            return pri < 10f && sec < 10f;
         }
-        catch (Exception e) { Debug.LogWarning($"[Ingress] telemetry: {e.Message}"); }
+        catch (Exception e) { Debug.LogWarning($"[Ingress] telemetry O2: {e.Message}"); }
+        return false;
+    }
+
+    private bool TelemetryCoolantUnder5Percent()
+    {
+        try
+        {
+            if (_latestData == null) return false;
+            if (!_latestData.TryGetValue("telemetry", out var tRaw) ||
+                tRaw is not Dictionary<string, object> tel) return false;
+            if (!tel.TryGetValue("eva1", out var eRaw) ||
+                eRaw is not Dictionary<string, object> eva1) return false;
+
+            float coolant = ReadFloat(eva1, "coolant_storage");
+            if (float.IsNaN(coolant)) return false;
+            return coolant < 5f;
+        }
+        catch (Exception e) { Debug.LogWarning($"[Ingress] telemetry coolant: {e.Message}"); }
         return false;
     }
 
