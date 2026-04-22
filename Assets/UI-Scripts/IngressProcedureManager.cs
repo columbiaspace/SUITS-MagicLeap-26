@@ -53,17 +53,32 @@ public class IngressProcedureManager : MonoBehaviour
     private void OnEnable()
     {
         Resolve();
-        if (tssApi != null) tssApi.EvaUpdated += OnEvaUpdated;
-
         BuildSteps();
         _current    = 0;
         _latestData = null;
+
+        RegisterTssEva();
         EnterStep(0);
+    }
+
+    private void Update()
+    {
+        if (tssApi != null)
+        {
+            return;
+        }
+
+        Resolve();
+        RegisterTssEva();
     }
 
     private void OnDisable()
     {
-        if (tssApi != null) tssApi.EvaUpdated -= OnEvaUpdated;
+        if (tssApi != null)
+        {
+            tssApi.EvaUpdated -= OnEvaUpdated;
+        }
+
         KillTimer();
     }
 
@@ -71,6 +86,22 @@ public class IngressProcedureManager : MonoBehaviour
     {
         if (tssApi == null)
             tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+    }
+
+    /// <summary>
+    /// Binds EVA telemetry once TSS is available. Step 2 (EMU PWR) needs <see cref="OnEvaUpdated"/>;
+    /// if we miss <c>OnEnable</c> because <see cref="TssUnityApiService"/> was not ready yet, we retry from <see cref="Update"/>.
+    /// </summary>
+    private void RegisterTssEva()
+    {
+        if (tssApi == null)
+        {
+            return;
+        }
+
+        tssApi.EvaUpdated -= OnEvaUpdated;
+        tssApi.EvaUpdated += OnEvaUpdated;
+        OnEvaUpdated(tssApi.GetEva());
     }
 
     private void BuildSteps()

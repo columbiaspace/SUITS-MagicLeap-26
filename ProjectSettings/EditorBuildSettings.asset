@@ -11,10 +11,10 @@ EditorBuildSettings:
   - enabled: 1
     path: Assets/Scenes/final_scenes/Egress.unity
     guid: 42d12380eb057498ab3d79e5f84e8a90
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/final_scenes/Ingress.unity
     guid: f1a2b3c4d5e6f7a8b9c0d1e2f3a4b5c6
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/final_scenes/MIssion.unity
     guid: 55d96265320294461b2212e6379667f5
   m_configObjects:
