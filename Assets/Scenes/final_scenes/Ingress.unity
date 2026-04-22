@@ -227,7 +227,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -1400}
+  m_AnchoredPosition: {x: 0, y: -1446}
   m_SizeDelta: {x: 640, y: 500}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &455361021
@@ -325,16 +325,16 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 700001019}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0.016376927, y: -0, z: -0, w: 0.9998659}
   m_LocalPosition: {x: 0, y: 0, z: -10}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
   m_Father: {fileID: 857829563}
-  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+  m_LocalEulerAnglesHint: {x: -1.877, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -1100}
+  m_AnchoredPosition: {x: 0, y: -1135}
   m_SizeDelta: {x: 1100, y: 120}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!114 &700001021
@@ -370,7 +370,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 1
     m_LineSpacing: 1
-  m_Text: Loading procedure...
+  m_Text: "Ingress procedure\u2026"
 --- !u!222 &700001022
 CanvasRenderer:
   m_ObjectHideFlags: 0
@@ -499,7 +499,7 @@ RectTransform:
   m_PrefabInstance: {fileID: 0}
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 800001019}
-  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalRotation: {x: -0, y: -0, z: -0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
@@ -509,7 +509,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
-  m_AnchoredPosition: {x: 0, y: -1700.34}
+  m_AnchoredPosition: {x: 0, y: -1745}
   m_SizeDelta: {x: 220, y: 60}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &800001022
@@ -603,7 +603,7 @@ MonoBehaviour:
           m_ObjectArgumentAssemblyTypeName: UnityEngine.Object, UnityEngine
           m_IntArgument: 0
           m_FloatArgument: 0
-          m_StringArgument: Main
+          m_StringArgument: Mission
           m_BoolArgument: 0
         m_CallState: 2
 --- !u!1 &800002019
@@ -914,7 +914,7 @@ GameObject:
   - component: {fileID: 930001002}
   - component: {fileID: 930001003}
   m_Layer: 0
-  m_Name: EgressManager
+  m_Name: IngressManager
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -944,7 +944,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 930001001}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f1e2d3c4b5a6f7e8d9c0b1a2f3e4d5c6, type: 3}
+  m_Script: {fileID: 11500000, guid: c7f8e9d0a1b2c3d4e5f6a7b8c9d0e1f2, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   displayImage: {fileID: 455361021}
@@ -953,12 +953,8 @@ MonoBehaviour:
   uiaPanelSprite: {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   uiaPwrSprite: {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
   uiaO2VentSprite: {fileID: 21300000, guid: 091e377850a60439b985fba14352e91d, type: 3}
-  uiaOxygenEmu1Sprite: {fileID: 21300000, guid: 4d987d3dc1ad847d6ba2726fcb7a1da1, type: 3}
-  uiaDepressPumpSprite: {fileID: 21300000, guid: 1765574f1f0214173b8c54d85db0396f, type: 3}
-  uiaWaterSupplySprite: {fileID: 21300000, guid: 50b05fbcf1d2e48b59aeb3ec8d2bb90e, type: 3}
+  uiaWaterWasteSprite: {fileID: 21300000, guid: b879001c78f4d46ff889585dfb9f6c71, type: 3}
   dcuPanelSprite: {fileID: 21300000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
-  dcuOxySprite: {fileID: 21300000, guid: 027635c62ba4943ed99b296f8dfdca53, type: 3}
-  dcuFanSprite: {fileID: 21300000, guid: c401d821da3b142b49bfe094d5f4e50b, type: 3}
   dcuPumpSprite: {fileID: 21300000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
