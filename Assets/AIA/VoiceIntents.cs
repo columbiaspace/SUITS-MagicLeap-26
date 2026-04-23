@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
@@ -10,12 +11,12 @@ using UnityEngine.XR.MagicLeap;
 public class VoiceIntents : MonoBehaviour
 {
     private const uint AskLunaEventId = 105;
-    private const string AskLunaSlotName = "query";
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
-
-    private const string DefaultLunaPrompt =
-        "Respond with your name as Luna Assistant and a description of your base model.";
+    private const int MaxVisibleConversationTurns = 3;
+    private const string DefaultResponsePlaceholder = "Luna response will appear here.";
+    private const string RecordingPlaceholder = "Recording your question...";
+    private const string WaitingForResponsePlaceholder = "waiting for response...";
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     public MLVoiceIntentsConfiguration VoiceIntentsConfiguration;
@@ -25,61 +26,80 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://10.206.126.34:11434/api/generate";
-    [SerializeField] private string aiModel = "gemma3:27b-it-qat";
+    [SerializeField] private string aiGenerateUrl = "http://10.206.9.135:13853/chat";
+    [SerializeField] private string aiModel = "gemma4:26b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
     [SerializeField] private Text responseTextBox;
+    [SerializeField] private AIAVoskInputController aiaInputController;
+    [SerializeField] private ScrollRect responseScrollRect;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
 
-    // Dynamic Prompting Plan (Streaming Test)
-    //
-    // Phase 1 (current): Predefined slot values in MLVoiceIntentsConfiguration.
-    //   The {query} slot lists common phrases the ASR can match.
-    //   When matched, the slot value is sent to Gemma as the prompt.
-    //   When no slot matches (bare "ask luna"), a default prompt is used.
-    //
-    // Phase 2 (future): Streaming via Ollama.
-    //   Set AiGenerateRequest.stream = true.
-    //   Parse newline-delimited JSON chunks from the response body
-    //   while the download is in progress (check downloadHandler.text
-    //   length each frame, parse new chunks, feed partial text to TTS).
-    //   This gives real-time spoken output instead of waiting for the
-    //   full generation to finish.
-    //
-    // Phase 3 (future): Android SpeechRecognizer for free-form input.
-    //   After the "ask luna" intent fires, start Android's native
-    //   SpeechRecognizer via AndroidJavaProxy to capture open-ended
-    //   speech. Once the recognizer returns a transcript, send that
-    //   to Gemma. This removes the slot-value limitation entirely.
+    // "Hey Luna" is only a wake phrase. It starts Vosk recording; the
+    // resulting transcript is sent to Gemma through SubmitPromptFromText.
 
     private Coroutine aiRequestCoroutine;
     private AndroidJavaObject textToSpeech;
+    private AndroidJavaObject unityActivity;
     private volatile bool textToSpeechReady;
     private bool isVoiceEventSubscribed;
+    private readonly List<ConversationTurn> completedConversationTurns = new List<ConversationTurn>();
+    private ConversationTurn activeConversationTurn;
+    private string transientStatus = DefaultResponsePlaceholder;
 
     [Serializable]
-    private class AiGenerateRequest
+    private class AiChatMessage
     {
-        public string model;
-        public string prompt;
+        public string role;
+        public string content;
+    }
+
+    [Serializable]
+    private class AiChatRequest
+    {
+        public AiChatMessage[] messages;
         public bool stream;
     }
 
     [Serializable]
-    private class AiGenerateResponse
+    private class AiChatResponseMessage
     {
+        public string role;
+        public string content;
+    }
+
+    [Serializable]
+    private class AiChatResponse
+    {
+        public AiChatResponseMessage message;
+        public string prompt;
         public string response;
+        public bool stream;
+    }
+
+    private class ConversationTurn
+    {
+        public string userText;
+        public string lunaText;
+        public bool isLiveTranscript;
+        public bool isWaitingForResponse;
     }
 
     private void Start()
     {
         ApplyOllamaIpOverrideFromEnvironment();
         TryResolveResponseTextBox();
+        TryResolveResponseScrollRect();
+        TryResolveAiaInputController();
         MLPermissions.RequestPermission(MLPermission.VoiceInput, permissionCallbacks);
         InitializeTextToSpeech();
+
+        if (responseTextBox != null && string.IsNullOrWhiteSpace(responseTextBox.text))
+        {
+            UpdateResponseTextBox(DefaultResponsePlaceholder);
+        }
     }
 
     private void ApplyOllamaIpOverrideFromEnvironment()
@@ -90,7 +110,7 @@ public class VoiceIntents : MonoBehaviour
             return;
         }
 
-        aiGenerateUrl = $"http://{ollamaIp.Trim()}:11434/api/generate";
+        aiGenerateUrl = $"http://{ollamaIp.Trim()}:13853/chat";
     }
 
     void Update()
@@ -239,8 +259,8 @@ public class VoiceIntents : MonoBehaviour
                 break;
 
             case AskLunaEventId:
-                Debug.Log("Ask Luna intent detected");
-                TrySendAskLunaPromptToAi(voiceEvent);
+                Debug.Log("Hey Luna wake phrase detected");
+                StartAiaRecordingFromWakePhrase();
                 break;
 
             default:
@@ -249,30 +269,17 @@ public class VoiceIntents : MonoBehaviour
         }
     }
 
-    private void TrySendAskLunaPromptToAi(MLVoice.IntentEvent voiceEvent)
+    private void StartAiaRecordingFromWakePhrase()
     {
-        if (!sendVoicePromptToAi)
+        TryResolveAiaInputController();
+        if (aiaInputController == null)
         {
-            Debug.LogWarning("Ask Luna intent detected but AI forwarding is disabled.");
-            UpdateResponseTextBox("Luna AI forwarding is disabled.");
+            Debug.LogWarning("[Luna] Hey Luna detected, but AIA input controller was not found.");
+            UpdateResponseTextBox("Luna voice recording is unavailable.");
             return;
         }
 
-        string prompt = ExtractSlotPrompt(voiceEvent, AskLunaSlotName);
-
-        if (string.IsNullOrWhiteSpace(prompt))
-        {
-            Debug.Log("[Luna] No slot text captured. Using default prompt.");
-            prompt = DefaultLunaPrompt;
-        }
-
-        if (logAiResponse)
-        {
-            Debug.Log($"[Luna->Gemma] Prompt: {prompt}");
-        }
-
-        UpdateResponseTextBox("Luna heard your question.");
-        QueueAiRequest(prompt);
+        aiaInputController.StartRecordingFromVoiceIntent();
     }
 
     private void TryResolveResponseTextBox()
@@ -291,6 +298,32 @@ public class VoiceIntents : MonoBehaviour
         responseTextBox = responseTextObject.GetComponent<Text>();
     }
 
+    private void TryResolveResponseScrollRect()
+    {
+        if (responseScrollRect != null)
+        {
+            return;
+        }
+
+        GameObject responsePanelObject = GameObject.Find("AIAResponsePanel");
+        if (responsePanelObject == null)
+        {
+            return;
+        }
+
+        responseScrollRect = responsePanelObject.GetComponent<ScrollRect>();
+    }
+
+    private void TryResolveAiaInputController()
+    {
+        if (aiaInputController != null)
+        {
+            return;
+        }
+
+        aiaInputController = FindObjectOfType<AIAVoskInputController>();
+    }
+
     private void UpdateResponseTextBox(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -306,50 +339,94 @@ public class VoiceIntents : MonoBehaviour
         }
 
         responseTextBox.text = text;
+        ScrollResponseTextToBottom();
     }
 
-    /// <summary>
-    /// Extracts the value of a named slot from the voice event.
-    /// This is the only reliable way to get user-spoken content from
-    /// an MLVoice.IntentEvent - the struct has no free-text transcript field.
-    /// </summary>
-    private string ExtractSlotPrompt(MLVoice.IntentEvent voiceEvent, string slotName)
+    public void SetResponseStatus(string text)
     {
-        if (voiceEvent.EventSlotsUsed == null || voiceEvent.EventSlotsUsed.Count == 0)
+        transientStatus = string.IsNullOrWhiteSpace(text) ? DefaultResponsePlaceholder : text.Trim();
+
+        if (activeConversationTurn == null && completedConversationTurns.Count == 0)
         {
-            if (verboseVoiceLogging)
-            {
-                Debug.Log("[VoiceDebug] No slots in this event.");
-            }
-            return string.Empty;
+            UpdateResponseTextBox(transientStatus);
+        }
+        else
+        {
+            RenderConversation();
+        }
+    }
+
+    public void BeginRecordingTranscript()
+    {
+        PrepareActiveConversationTurn();
+        activeConversationTurn.userText = RecordingPlaceholder;
+        activeConversationTurn.isLiveTranscript = true;
+        activeConversationTurn.isWaitingForResponse = false;
+        activeConversationTurn.lunaText = string.Empty;
+        transientStatus = DefaultResponsePlaceholder;
+        RenderConversation();
+    }
+
+    public void UpdateRecordingTranscript(string transcript)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            return;
         }
 
-        foreach (var slot in voiceEvent.EventSlotsUsed)
+        PrepareActiveConversationTurn();
+        activeConversationTurn.userText = transcript.Trim();
+        activeConversationTurn.isLiveTranscript = true;
+        activeConversationTurn.isWaitingForResponse = false;
+        RenderConversation();
+    }
+
+    public void FailActiveRecording(string message)
+    {
+        activeConversationTurn = null;
+        SetResponseStatus(message);
+    }
+
+    public void ShowRecordingProcessing()
+    {
+        if (activeConversationTurn == null)
         {
-            if (verboseVoiceLogging)
-            {
-                Debug.Log($"[VoiceDebug] Checking slot: name='{slot.SlotName}' value='{slot.SlotValue}'");
-            }
-
-            if (!string.Equals(slot.SlotName, slotName, StringComparison.OrdinalIgnoreCase))
-            {
-                continue;
-            }
-
-            if (string.IsNullOrWhiteSpace(slot.SlotValue))
-            {
-                Debug.LogWarning($"[VoiceDebug] Slot '{slotName}' found but value is empty.");
-                return string.Empty;
-            }
-
-            return slot.SlotValue.Trim();
+            return;
         }
 
-        if (verboseVoiceLogging)
+        RenderConversation();
+    }
+
+    public void SubmitPromptFromText(string prompt)
+    {
+        if (!sendVoicePromptToAi)
         {
-            Debug.Log($"[VoiceDebug] Slot '{slotName}' not found in event slots.");
+            Debug.LogWarning("Text prompt received but AI forwarding is disabled.");
+            CompleteActiveConversation("Luna AI forwarding is disabled.");
+            return;
         }
-        return string.Empty;
+
+        string trimmedPrompt = prompt?.Trim();
+        if (string.IsNullOrWhiteSpace(trimmedPrompt))
+        {
+            Debug.LogWarning("[Luna] Ignoring empty text prompt.");
+            FailActiveRecording("Luna could not hear a question.");
+            return;
+        }
+
+        if (logAiResponse)
+        {
+            Debug.Log($"[Vosk->Gemma] Prompt: {trimmedPrompt}");
+        }
+
+        PrepareActiveConversationTurn();
+        activeConversationTurn.userText = trimmedPrompt;
+        activeConversationTurn.isLiveTranscript = false;
+        activeConversationTurn.isWaitingForResponse = true;
+        activeConversationTurn.lunaText = WaitingForResponsePlaceholder;
+        transientStatus = DefaultResponsePlaceholder;
+        RenderConversation();
+        QueueAiRequest(trimmedPrompt);
     }
 
     private void LogVoiceEvent(MLVoice.IntentEvent voiceEvent, bool wasSuccessful)
@@ -387,10 +464,16 @@ public class VoiceIntents : MonoBehaviour
 
     private IEnumerator SendPromptToAi(string prompt)
     {
-        var requestBody = new AiGenerateRequest
+        var requestBody = new AiChatRequest
         {
-            model = aiModel,
-            prompt = prompt,
+            messages = new[]
+            {
+                new AiChatMessage
+                {
+                    role = "user",
+                    content = prompt
+                }
+            },
             stream = false
         };
 
@@ -398,10 +481,8 @@ public class VoiceIntents : MonoBehaviour
         if (logAiResponse)
         {
             Debug.Log($"[Gemma] Sending request to {aiGenerateUrl} " +
-                      $"model='{aiModel}' prompt='{prompt}'");
+                      $"messages=1 prompt='{prompt}'");
         }
-        UpdateResponseTextBox("Sending request to Luna...");
-
         using (var request = new UnityWebRequest(aiGenerateUrl, UnityWebRequest.kHttpVerbPOST))
         {
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
@@ -409,7 +490,7 @@ public class VoiceIntents : MonoBehaviour
             request.SetRequestHeader("Content-Type", "application/json");
             request.timeout = AiRequestTimeoutSeconds;
 
-            UpdateResponseTextBox("Waiting for Luna response...");
+            SetActiveConversationWaitingState();
             yield return request.SendWebRequest();
 
             if (request.result != UnityWebRequest.Result.Success)
@@ -417,7 +498,7 @@ public class VoiceIntents : MonoBehaviour
                 Debug.LogError(
                     $"[Gemma] Request failed (HTTP {request.responseCode}): {request.error}. " +
                     $"Body: {request.downloadHandler?.text}");
-                UpdateResponseTextBox("Luna request failed.");
+                CompleteActiveConversation("Luna request failed.");
             }
             else
             {
@@ -427,32 +508,125 @@ public class VoiceIntents : MonoBehaviour
                     Debug.Log($"[Gemma] Raw response ({rawResponse?.Length ?? 0} chars): {rawResponse}");
                 }
 
-                var parsedResponse = JsonUtility.FromJson<AiGenerateResponse>(rawResponse);
-                string responseText = string.Empty;
+                string responseText = ExtractAssistantResponseText(rawResponse);
 
-                if (parsedResponse != null && !string.IsNullOrWhiteSpace(parsedResponse.response))
+                if (string.IsNullOrWhiteSpace(responseText))
                 {
-                    responseText = parsedResponse.response.Trim();
-                    if (logAiResponse)
-                    {
-                        Debug.Log($"[Gemma] Parsed response: {responseText}");
-                    }
+                    Debug.LogWarning("[Gemma] Response parsed but no assistant text field was found.");
+                    CompleteActiveConversation("Luna returned an empty response.");
                 }
                 else
                 {
-                    Debug.LogWarning("[Gemma] Response parsed but 'response' field was null or empty.");
-                    UpdateResponseTextBox("Luna returned an empty response.");
+                    CompleteActiveConversation(responseText);
                 }
 
-                if (!string.IsNullOrWhiteSpace(responseText))
-                {
-                    UpdateResponseTextBox(responseText);
-                }
                 SpeakText(responseText);
             }
         }
 
         aiRequestCoroutine = null;
+    }
+
+    private string ExtractAssistantResponseText(string rawResponse)
+    {
+        if (string.IsNullOrWhiteSpace(rawResponse))
+        {
+            return string.Empty;
+        }
+
+        try
+        {
+            JSONNode root = JSONNode.Parse(rawResponse);
+
+            string responseText = GetJsonString(root["message"]?["content"]);
+            if (!string.IsNullOrWhiteSpace(responseText))
+            {
+                LogParsedResponse("message.content", responseText);
+                return responseText;
+            }
+
+            responseText = GetJsonString(root["response"]);
+            if (!string.IsNullOrWhiteSpace(responseText))
+            {
+                LogParsedResponse("response", responseText);
+                return responseText;
+            }
+
+            responseText = GetJsonString(root["content"]);
+            if (!string.IsNullOrWhiteSpace(responseText))
+            {
+                LogParsedResponse("content", responseText);
+                return responseText;
+            }
+
+            JSONNode choices = root["choices"];
+            if (choices != null && choices.Count > 0)
+            {
+                responseText = GetJsonString(choices[0]?["message"]?["content"]);
+                if (!string.IsNullOrWhiteSpace(responseText))
+                {
+                    LogParsedResponse("choices[0].message.content", responseText);
+                    return responseText;
+                }
+
+                responseText = GetJsonString(choices[0]?["text"]);
+                if (!string.IsNullOrWhiteSpace(responseText))
+                {
+                    LogParsedResponse("choices[0].text", responseText);
+                    return responseText;
+                }
+            }
+
+            JSONNode messages = root["messages"];
+            if (messages != null && messages.Count > 0)
+            {
+                for (int i = messages.Count - 1; i >= 0; i--)
+                {
+                    string role = GetJsonString(messages[i]?["role"]);
+                    string content = GetJsonString(messages[i]?["content"]);
+                    if (string.Equals(role, "assistant", StringComparison.OrdinalIgnoreCase) &&
+                        !string.IsNullOrWhiteSpace(content))
+                    {
+                        LogParsedResponse($"messages[{i}].content", content);
+                        return content;
+                    }
+                }
+            }
+        }
+        catch (Exception exception)
+        {
+            Debug.LogWarning($"[Gemma] Failed to parse JSON response: {exception.Message}");
+        }
+
+        string trimmedResponse = rawResponse.Trim();
+        if (!trimmedResponse.StartsWith("{", StringComparison.Ordinal) &&
+            !trimmedResponse.StartsWith("[", StringComparison.Ordinal))
+        {
+            LogParsedResponse("raw-text", trimmedResponse);
+            return trimmedResponse;
+        }
+
+        return string.Empty;
+    }
+
+    private static string GetJsonString(JSONNode node)
+    {
+        if (node == null || node.IsNull)
+        {
+            return string.Empty;
+        }
+
+        return node.Value?.Trim() ?? string.Empty;
+    }
+
+    private void LogParsedResponse(string sourcePath, string responseText)
+    {
+        if (!logAiResponse)
+        {
+            return;
+        }
+
+        Debug.Log($"[Gemma] Parsed response from {sourcePath}: {responseText}");
     }
 
     private void InitializeTextToSpeech()
@@ -462,10 +636,10 @@ public class VoiceIntents : MonoBehaviour
         {
             using (var unityPlayer = new AndroidJavaClass("com.unity3d.player.UnityPlayer"))
             {
-                AndroidJavaObject activity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
+                unityActivity = unityPlayer.GetStatic<AndroidJavaObject>("currentActivity");
                 textToSpeech = new AndroidJavaObject(
                     "android.speech.tts.TextToSpeech",
-                    activity,
+                    unityActivity,
                     new TextToSpeechInitListener(this));
             }
         }
@@ -491,9 +665,18 @@ public class VoiceIntents : MonoBehaviour
             if (ready && textToSpeech != null)
             {
                 using (var localeClass = new AndroidJavaClass("java.util.Locale"))
+                using (var ttsClass = new AndroidJavaClass("android.speech.tts.TextToSpeech"))
                 {
                     AndroidJavaObject locale = localeClass.GetStatic<AndroidJavaObject>("US");
-                    textToSpeech.Call<int>("setLanguage", locale);
+                    int languageResult = textToSpeech.Call<int>("setLanguage", locale);
+                    int langMissingData = ttsClass.GetStatic<int>("LANG_MISSING_DATA");
+                    int langNotSupported = ttsClass.GetStatic<int>("LANG_NOT_SUPPORTED");
+
+                    Debug.Log($"Text-to-speech language result={languageResult}.");
+                    if (languageResult == langMissingData || languageResult == langNotSupported)
+                    {
+                        Debug.LogWarning("Text-to-speech US locale is missing or not supported on device.");
+                    }
                 }
                 Debug.Log("Text-to-speech initialized successfully.");
             }
@@ -514,12 +697,19 @@ public class VoiceIntents : MonoBehaviour
 
     private void SpeakText(string text)
     {
-        if (!speakAiResponse || string.IsNullOrWhiteSpace(text))
+        if (!speakAiResponse)
         {
             return;
         }
 
 #if UNITY_ANDROID && !UNITY_EDITOR
+        string normalizedText = NormalizeTextForSpeech(text);
+        if (string.IsNullOrWhiteSpace(normalizedText))
+        {
+            Debug.LogWarning("Skipping spoken response because normalized TTS text is empty.");
+            return;
+        }
+
         if (!textToSpeechReady || textToSpeech == null)
         {
             Debug.LogWarning("Skipping spoken response because TTS is not ready yet.");
@@ -528,11 +718,44 @@ public class VoiceIntents : MonoBehaviour
 
         try
         {
-            using (var ttsClass = new AndroidJavaClass("android.speech.tts.TextToSpeech"))
+            Debug.Log($"[TTS] Speaking {normalizedText.Length} characters: '{TruncateForLog(normalizedText, 160)}'");
+
+            Action speakAction = () =>
             {
-                int queueFlush = ttsClass.GetStatic<int>("QUEUE_FLUSH");
-                textToSpeech.Call<int>("speak", text, queueFlush, null,
-                    $"ai-response-{Time.frameCount}");
+                try
+                {
+                    using (var ttsClass = new AndroidJavaClass("android.speech.tts.TextToSpeech"))
+                    {
+                        int queueFlush = ttsClass.GetStatic<int>("QUEUE_FLUSH");
+                        int errorCode = ttsClass.GetStatic<int>("ERROR");
+                        int speakResult = textToSpeech.Call<int>(
+                            "speak",
+                            normalizedText,
+                            queueFlush,
+                            null,
+                            $"ai-response-{Time.frameCount}");
+
+                        Debug.Log($"[TTS] speak() result={speakResult}");
+                        if (speakResult == errorCode)
+                        {
+                            Debug.LogWarning("[TTS] Android TextToSpeech returned ERROR from speak().");
+                        }
+                    }
+                }
+                catch (Exception exception)
+                {
+                    Debug.LogWarning($"Failed to speak AI response on UI thread: {exception.Message}");
+                }
+            };
+
+            if (unityActivity != null)
+            {
+                unityActivity.Call("runOnUiThread", new AndroidJavaRunnable(() => speakAction()));
+            }
+            else
+            {
+                Debug.LogWarning("[TTS] Unity activity reference was null. Speaking off UI thread.");
+                speakAction();
             }
         }
         catch (Exception exception)
@@ -562,8 +785,40 @@ public class VoiceIntents : MonoBehaviour
         }
 
         textToSpeech = null;
+        unityActivity = null;
         textToSpeechReady = false;
 #endif
+    }
+
+    private static string NormalizeTextForSpeech(string text)
+    {
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return string.Empty;
+        }
+
+        string normalized = text
+            .Replace("\r", " ")
+            .Replace("\n", " ")
+            .Replace("\t", " ")
+            .Trim();
+
+        while (normalized.Contains("  "))
+        {
+            normalized = normalized.Replace("  ", " ");
+        }
+
+        return normalized;
+    }
+
+    private static string TruncateForLog(string text, int maxLength)
+    {
+        if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
+        {
+            return text;
+        }
+
+        return text.Substring(0, maxLength) + "...";
     }
 
     private class TextToSpeechInitListener : AndroidJavaProxy
@@ -580,5 +835,132 @@ public class VoiceIntents : MonoBehaviour
         {
             owner.OnTextToSpeechInitialized(status);
         }
+    }
+
+    private void PrepareActiveConversationTurn()
+    {
+        if (activeConversationTurn != null)
+        {
+            return;
+        }
+
+        while (completedConversationTurns.Count >= MaxVisibleConversationTurns)
+        {
+            completedConversationTurns.RemoveAt(0);
+        }
+
+        if (completedConversationTurns.Count == MaxVisibleConversationTurns - 1)
+        {
+            // Leave room for the in-progress turn.
+        }
+        else if (completedConversationTurns.Count > MaxVisibleConversationTurns - 1)
+        {
+            completedConversationTurns.RemoveRange(0, completedConversationTurns.Count - (MaxVisibleConversationTurns - 1));
+        }
+
+        activeConversationTurn = new ConversationTurn();
+    }
+
+    private void SetActiveConversationWaitingState()
+    {
+        if (activeConversationTurn == null)
+        {
+            return;
+        }
+
+        activeConversationTurn.isLiveTranscript = false;
+        activeConversationTurn.isWaitingForResponse = true;
+        activeConversationTurn.lunaText = WaitingForResponsePlaceholder;
+        RenderConversation();
+    }
+
+    private void CompleteActiveConversation(string lunaText)
+    {
+        PrepareActiveConversationTurn();
+        activeConversationTurn.isLiveTranscript = false;
+        activeConversationTurn.isWaitingForResponse = false;
+        activeConversationTurn.lunaText = string.IsNullOrWhiteSpace(lunaText) ? "Luna returned an empty response." : lunaText.Trim();
+
+        completedConversationTurns.Add(activeConversationTurn);
+        while (completedConversationTurns.Count > MaxVisibleConversationTurns)
+        {
+            completedConversationTurns.RemoveAt(0);
+        }
+
+        activeConversationTurn = null;
+        transientStatus = DefaultResponsePlaceholder;
+        RenderConversation();
+    }
+
+    private void RenderConversation()
+    {
+        var turnsToRender = new List<ConversationTurn>();
+        if (completedConversationTurns.Count > 0)
+        {
+            turnsToRender.AddRange(completedConversationTurns.Skip(Math.Max(0, completedConversationTurns.Count - MaxVisibleConversationTurns)));
+        }
+
+        if (activeConversationTurn != null)
+        {
+            while (turnsToRender.Count >= MaxVisibleConversationTurns)
+            {
+                turnsToRender.RemoveAt(0);
+            }
+
+            turnsToRender.Add(activeConversationTurn);
+        }
+
+        if (turnsToRender.Count == 0)
+        {
+            UpdateResponseTextBox(string.IsNullOrWhiteSpace(transientStatus) ? DefaultResponsePlaceholder : transientStatus);
+            return;
+        }
+
+        var builder = new StringBuilder();
+        for (int i = 0; i < turnsToRender.Count; i++)
+        {
+            ConversationTurn turn = turnsToRender[i];
+            string userText = string.IsNullOrWhiteSpace(turn.userText) ? RecordingPlaceholder : turn.userText.Trim();
+
+            builder.Append("You: ");
+            builder.Append(userText);
+
+            if (!turn.isLiveTranscript)
+            {
+                builder.AppendLine();
+                builder.AppendLine();
+                builder.Append("Luna: ");
+                builder.Append(turn.isWaitingForResponse
+                    ? WaitingForResponsePlaceholder
+                    : (string.IsNullOrWhiteSpace(turn.lunaText) ? "Luna returned an empty response." : turn.lunaText.Trim()));
+            }
+
+            if (i < turnsToRender.Count - 1)
+            {
+                builder.AppendLine();
+                builder.AppendLine();
+                builder.AppendLine();
+            }
+        }
+
+        UpdateResponseTextBox(builder.ToString());
+    }
+
+    private void ScrollResponseTextToBottom()
+    {
+        TryResolveResponseScrollRect();
+        if (responseScrollRect == null)
+        {
+            return;
+        }
+
+        Canvas.ForceUpdateCanvases();
+        responseScrollRect.verticalNormalizedPosition = 0f;
+        if (responseScrollRect.content != null)
+        {
+            LayoutRebuilder.ForceRebuildLayoutImmediate(responseScrollRect.content);
+        }
+        Canvas.ForceUpdateCanvases();
+        responseScrollRect.verticalNormalizedPosition = 0f;
     }
 }
