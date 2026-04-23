@@ -4,7 +4,10 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/LTV-HUD.unity
+    guid: 60c7fc6009cb444a7800934a39bd6e8d
   m_configObjects:
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: c761bc8a9a07b4bbd896483595753c2d, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 8ed9a45425179499dbcea186030840ed, type: 2}
