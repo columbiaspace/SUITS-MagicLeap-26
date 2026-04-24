@@ -6,11 +6,16 @@ using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
 using UnityEngine.UI;
+using UnityEngine.SceneManagement;
 using UnityEngine.XR.MagicLeap;
 
 public class VoiceIntents : MonoBehaviour
 {
     private const uint AskLunaEventId = 105;
+    private const uint InitiateIngressEventId = 106;
+    private const uint InitiateEgressEventId = 107;
+    private const uint InitiateLtvEventId = 108;
+    private const uint CompleteLtvEventId = 109;
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
     private const int MaxVisibleConversationTurns = 3;
@@ -37,8 +42,8 @@ public class VoiceIntents : MonoBehaviour
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
 
-    // "Hey Luna" is only a wake phrase. It starts Vosk recording; the
-    // resulting transcript is sent to Gemma through SubmitPromptFromText.
+    // Plain "Hey Luna" starts Vosk recording. Specific "Hey Luna ..." scene
+    // commands route directly to scene loads and do not query Gemma.
 
     private Coroutine aiRequestCoroutine;
     private AndroidJavaObject textToSpeech;
@@ -263,6 +268,26 @@ public class VoiceIntents : MonoBehaviour
                 StartAiaRecordingFromWakePhrase();
                 break;
 
+            case InitiateIngressEventId:
+                Debug.Log("Hey Luna initiate ingress detected");
+                LoadSceneCommand(AIASceneCatalog.IngressScene, "Switching to ingress...");
+                break;
+
+            case InitiateEgressEventId:
+                Debug.Log("Hey Luna initiate egress detected");
+                LoadSceneCommand(AIASceneCatalog.IngressScene, "Switching to egress...");
+                break;
+
+            case InitiateLtvEventId:
+                Debug.Log("Hey Luna initiate LTV detected");
+                LoadSceneCommand(AIASceneCatalog.LtvScene, "Switching to LTV...");
+                break;
+
+            case CompleteLtvEventId:
+                Debug.Log("Hey Luna complete LTV detected");
+                LoadSceneCommand(AIASceneCatalog.MissionScene, "Switching to mission...");
+                break;
+
             default:
                 Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
                 break;
@@ -280,6 +305,34 @@ public class VoiceIntents : MonoBehaviour
         }
 
         aiaInputController.StartRecordingFromVoiceIntent();
+    }
+
+    private void LoadSceneCommand(string sceneName, string statusMessage)
+    {
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            Debug.LogWarning("[Luna] Scene command was invoked without a target scene name.");
+            return;
+        }
+
+        string activeSceneName = SceneManager.GetActiveScene().name;
+        if (string.Equals(activeSceneName, sceneName, StringComparison.Ordinal))
+        {
+            SetResponseStatus($"Already in {sceneName}.");
+            return;
+        }
+
+        SetResponseStatus(statusMessage);
+
+        try
+        {
+            SceneManager.LoadScene(sceneName);
+        }
+        catch (Exception exception)
+        {
+            Debug.LogError($"[Luna] Failed to load scene '{sceneName}': {exception.Message}");
+            SetResponseStatus($"Luna could not load {sceneName}.");
+        }
     }
 
     private void TryResolveResponseTextBox()

@@ -4,7 +4,22 @@
 EditorBuildSettings:
   m_ObjectHideFlags: 0
   serializedVersion: 2
-  m_Scenes: []
+  m_Scenes:
+  - enabled: 1
+    path: Assets/Scenes/Main.unity
+    guid: 565e1611274174ea2952e6d7576b3238
+  - enabled: 1
+    path: Assets/Scenes/AIA.unity
+    guid: b7e281a5bdeb4484ae7fa8a32a0a2b9f
+  - enabled: 1
+    path: Assets/Scenes/final scenes/InEgress.unity
+    guid: 49c79b9039a81429f86f47e46cb37807
+  - enabled: 1
+    path: Assets/Scenes/final scenes/LTV.unity
+    guid: fae8df6ac86fa48fc985d18b019670f2
+  - enabled: 1
+    path: Assets/Scenes/final scenes/MIssion.unity
+    guid: 55d96265320294461b2212e6379667f5
   m_configObjects:
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: c761bc8a9a07b4bbd896483595753c2d, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 8ed9a45425179499dbcea186030840ed, type: 2}

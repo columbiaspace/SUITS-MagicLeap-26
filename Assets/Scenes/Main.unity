@@ -262,8 +262,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 0cd44c1031e13a943bb63640046fad76, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name: ""
+  m_EditorClassIdentifier: ""
   m_UiScaleMode: 0
   m_ReferencePixelsPerUnit: 100
   m_ScaleFactor: 1
@@ -285,8 +285,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: dc42784cf147c0c48a680349fa168899, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name: ""
+  m_EditorClassIdentifier: ""
   m_IgnoreReversedGraphics: 1
   m_BlockingObjects: 0
   m_BlockingMask:
@@ -302,8 +302,8 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 7951c64acb0fa62458bf30a60089fe2d, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
+  m_Name: ""
+  m_EditorClassIdentifier: ""
   m_IgnoreReversedGraphics: 1
   m_CheckFor2DOcclusion: 0
   m_CheckFor3DOcclusion: 0
@@ -931,6 +931,7 @@ GameObject:
   m_Component:
   - component: {fileID: 401001001}
   - component: {fileID: 401001002}
+  - component: {fileID: 401001003}
   m_Layer: 0
   m_Name: VoiceIntent
   m_TagString: Untagged
@@ -973,10 +974,23 @@ MonoBehaviour:
   aiModel: gemma4:26b
   logAiResponse: 1
   speakAiResponse: 1
-  responseTextBox: {fileID: 0}
-  aiaInputController: {fileID: 0}
-  responseScrollRect: {fileID: 0}
+  responseTextBox: {fileID: 260001103}
+  aiaInputController: {fileID: 260000906}
+  responseScrollRect: {fileID: 260001004}
   verboseVoiceLogging: 1
+--- !u!114 &401001003
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 401001000}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 8a1a43d590c4478da39e0159d71dd99f, type: 3}
+  m_Name: ""
+  m_EditorClassIdentifier: ""
+  persistentCanvasRoot: {fileID: 260000900}
 --- !u!1 &455361019
 GameObject:
   m_ObjectHideFlags: 0
