@@ -329,7 +329,7 @@ MonoBehaviour:
   responseTextBox: {fileID: 260001103}
   voskSpeechToText: {fileID: 0}
   voiceProcessor: {fileID: 0}
-  voskModelPath: vosk-model-small-en-us-0.15.zip
+  voskModelPath: vosk-model-en-us-0.22-lgraph.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
   silenceStopSeconds: 2

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
@@ -10,7 +11,106 @@ public class AIAVoskInputController : MonoBehaviour
     private const string ReadyButtonLabel = "Start Recording";
     private const string RecordingButtonLabel = "Stop Recording";
     private const string BusyButtonLabel = "Loading Vosk...";
-    private const string DefaultVoskModelPath = "vosk-model-small-en-us-0.15.zip";
+    private const string DefaultVoskModelPath = "vosk-model-en-us-0.22-lgraph.zip";
+    private static readonly string[] NasaMissionKeyPhrases =
+    {
+        "ingress",
+        "egress",
+        "suits",
+        "s u i t s",
+        "spacesuit user interface technologies for students",
+        "e h p",
+        "extravehicular activity and human surface mobility program",
+        "t s s",
+        "telemetry stream server",
+        "p r",
+        "pressurized rover",
+        "rover",
+        "e v a",
+        "extravehicular activity",
+        "e v",
+        "astronaut",
+        "r s s i",
+        "received signal strength indicator",
+        "h m d",
+        "h m d s",
+        "head mounted display",
+        "head mounted displays",
+        "l t v",
+        "lunar terrain vehicle",
+        "a i a",
+        "artificial intelligence assistant",
+        "u i a",
+        "umbilical interface assembly",
+        "e m u",
+        "extravehicular mobility unit",
+        "i m u",
+        "inertial measurement unit",
+        "d c u",
+        "display and control unit",
+        "e r m",
+        "exit recovery mode",
+        "p o i",
+        "point of interest",
+        "dust",
+        "digital lunar exploration sites unreal simulation tool",
+        "nav",
+        "navigation",
+        "anav",
+        "a nav",
+        "autonomous navigation",
+        "asits",
+        "a sits",
+        "a s i t s",
+        "autonomous systems indicators toggle switch",
+        "r t h",
+        "return to home",
+        "a c a",
+        "autonomy confidence adjustment",
+        "pri",
+        "primary",
+        "sec",
+        "secondary",
+        "r i l",
+        "reaction indicator light",
+        "pops",
+        "p o p s",
+        "power override panel for subsystems"
+    };
+
+    private static readonly string[,] TranscriptNormalizations =
+    {
+        { "s u i t s", "SUITS" },
+        { "suits", "SUITS" },
+        { "e h p", "EHP" },
+        { "t s s", "TSS" },
+        { "p r", "PR" },
+        { "e v a", "EVA" },
+        { "eva", "EVA" },
+        { "e v", "EV" },
+        { "r s s i", "RSSI" },
+        { "h m d s", "HMDs" },
+        { "h m d", "HMD" },
+        { "l t v", "LTV" },
+        { "a i a", "AIA" },
+        { "u i a", "UIA" },
+        { "e m u", "EMU" },
+        { "i m u", "IMU" },
+        { "d c u", "DCU" },
+        { "e r m", "ERM" },
+        { "p o i", "POI" },
+        { "dust", "DUST" },
+        { "a nav", "ANAV" },
+        { "anav", "ANAV" },
+        { "a s i t s", "ASITS" },
+        { "a sits", "ASITS" },
+        { "asits", "ASITS" },
+        { "r t h", "RTH" },
+        { "a c a", "ACA" },
+        { "r i l", "RIL" },
+        { "p o p s", "POPS" },
+        { "pops", "POPS" }
+    };
 
     [SerializeField] private VoiceIntents voiceIntents;
     [SerializeField] private Button recordButton;
@@ -278,7 +378,7 @@ public class AIAVoskInputController : MonoBehaviour
             StartInitializationTimeout();
 
             voskSpeechToText.StartVoskStt(
-                keyPhrases: new List<string>(),
+                keyPhrases: new List<string>(NasaMissionKeyPhrases),
                 modelPath: safeModelPath,
                 startMicrophone: startRecordingWhenReady,
                 maxAlternatives: maxAlternatives);
@@ -399,6 +499,8 @@ public class AIAVoskInputController : MonoBehaviour
                 return;
             }
 
+            transcript = NormalizeDomainTranscript(transcript);
+
             if (logTranscripts)
             {
                 Debug.Log($"[Vosk] Transcript: {transcript}");
@@ -441,6 +543,8 @@ public class AIAVoskInputController : MonoBehaviour
                 return;
             }
 
+            partialTranscript = NormalizeDomainTranscript(partialTranscript);
+
             if (voiceIntents != null)
             {
                 voiceIntents.UpdateRecordingTranscript(partialTranscript);
@@ -454,6 +558,29 @@ public class AIAVoskInputController : MonoBehaviour
         {
             Debug.LogWarning($"[Vosk] Failed to parse partial transcription result '{rawJson}': {exception}");
         }
+    }
+
+    private static string NormalizeDomainTranscript(string transcript)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            return transcript;
+        }
+
+        string normalizedTranscript = Regex.Replace(transcript.Trim(), @"\s+", " ");
+        for (int i = 0; i < TranscriptNormalizations.GetLength(0); i++)
+        {
+            string spokenForm = TranscriptNormalizations[i, 0];
+            string normalizedForm = TranscriptNormalizations[i, 1];
+            string pattern = $@"\b{Regex.Escape(spokenForm)}\b";
+            normalizedTranscript = Regex.Replace(
+                normalizedTranscript,
+                pattern,
+                normalizedForm,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        return normalizedTranscript;
     }
 
     private void RefreshButtonVisuals()
