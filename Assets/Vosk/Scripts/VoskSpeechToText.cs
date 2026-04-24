@@ -14,7 +14,7 @@ using Vosk;
 
 public class VoskSpeechToText : MonoBehaviour
 {
-	private const string DefaultAiaModelPath = "vosk-model-small-en-us-0.15.zip";
+	private const string DefaultAiaModelPath = "vosk-model-en-us-0.22-lgraph.zip";
 
 	[Tooltip("Location of the model, relative to the Streaming Assets folder.")]
 	public string ModelPath = DefaultAiaModelPath;

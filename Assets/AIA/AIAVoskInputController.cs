@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
@@ -10,7 +11,142 @@ public class AIAVoskInputController : MonoBehaviour
     private const string ReadyButtonLabel = "Start Recording";
     private const string RecordingButtonLabel = "Stop Recording";
     private const string BusyButtonLabel = "Loading Vosk...";
-    private const string DefaultVoskModelPath = "vosk-model-small-en-us-0.15.zip";
+    private const string DefaultVoskModelPath = "vosk-model-en-us-0.22-lgraph.zip";
+    private static readonly string[] NasaMissionKeyPhrases =
+    {
+        "ingress",
+        "egress",
+        "suits",
+        "s u i t s",
+        "spacesuit user interface technologies for students",
+        "ehp",
+        "e h p",
+        "extravehicular activity and human surface mobility program",
+        "tss",
+        "t s s",
+        "telemetry stream server",
+        "pr",
+        "p r",
+        "pressurized rover",
+        "rover",
+        "eva",
+        "e v a",
+        "extravehicular activity",
+        "ev",
+        "e v",
+        "astronaut",
+        "rssi",
+        "r s s i",
+        "received signal strength indicator",
+        "hmd",
+        "h m d",
+        "hmds",
+        "h m d s",
+        "head mounted display",
+        "head mounted displays",
+        "ltv",
+        "l t v",
+        "lunar terrain vehicle",
+        "aia",
+        "a i a",
+        "artificial intelligence assistant",
+        "uia",
+        "u i a",
+        "umbilical interface assembly",
+        "emu",
+        "e m u",
+        "extravehicular mobility unit",
+        "imu",
+        "i m u",
+        "inertial measurement unit",
+        "dcu",
+        "d c u",
+        "display and control unit",
+        "erm",
+        "e r m",
+        "exit recovery mode",
+        "poi",
+        "p o i",
+        "point of interest",
+        "dust",
+        "digital lunar exploration sites unreal simulation tool",
+        "nav",
+        "navigation",
+        "a nav",
+        "autonomous navigation",
+        "a sits",
+        "a s i t s",
+        "autonomous systems indicators toggle switch",
+        "r t h",
+        "return to home",
+        "aca",
+        "a c a",
+        "autonomy confidence adjustment",
+        "pri",
+        "primary",
+        "sec",
+        "secondary",
+        "ril",
+        "r i l",
+        "reaction indicator light",
+        "pops",
+        "p o p s",
+        "power override panel for subsystems"
+    };
+
+    private static readonly string[,] TranscriptNormalizations =
+    {
+        { "s u i t s", "SUITS" },
+        { "suits", "SUITS" },
+        { "e h p", "EHP" },
+        { "ehp", "EHP" },
+        { "t s s", "TSS" },
+        { "tss", "TSS" },
+        { "p r", "PR" },
+        { "pr", "PR" },
+        { "e v a", "EVA" },
+        { "eva", "EVA" },
+        { "e v", "EV" },
+        { "ev", "EV" },
+        { "r s s i", "RSSI" },
+        { "rssi", "RSSI" },
+        { "h m d s", "HMDs" },
+        { "hmds", "HMDs" },
+        { "h m d", "HMD" },
+        { "hmd", "HMD" },
+        { "l t v", "LTV" },
+        { "ltv", "LTV" },
+        { "a i a", "AIA" },
+        { "aia", "AIA" },
+        { "u i a", "UIA" },
+        { "uia", "UIA" },
+        { "e m u", "EMU" },
+        { "emu", "EMU" },
+        { "i m u", "IMU" },
+        { "imu", "IMU" },
+        { "d c u", "DCU" },
+        { "dcu", "DCU" },
+        { "e r m", "ERM" },
+        { "erm", "ERM" },
+        { "p o i", "POI" },
+        { "poi", "POI" },
+        { "dust", "DUST" },
+        { "a nav", "ANAV" },
+        { "anav", "ANAV" },
+        { "a s i t s", "ASITS" },
+        { "a sits", "ASITS" },
+        { "asits", "ASITS" },
+        { "r t h", "RTH" },
+        { "rth", "RTH" },
+        { "a c a", "ACA" },
+        { "aca", "ACA" },
+        { "pri", "PRI" },
+        { "sec", "SEC" },
+        { "r i l", "RIL" },
+        { "ril", "RIL" },
+        { "p o p s", "POPS" },
+        { "pops", "POPS" }
+    };
 
     [SerializeField] private VoiceIntents voiceIntents;
     [SerializeField] private Button recordButton;
@@ -278,7 +414,7 @@ public class AIAVoskInputController : MonoBehaviour
             StartInitializationTimeout();
 
             voskSpeechToText.StartVoskStt(
-                keyPhrases: new List<string>(),
+                keyPhrases: new List<string>(NasaMissionKeyPhrases),
                 modelPath: safeModelPath,
                 startMicrophone: startRecordingWhenReady,
                 maxAlternatives: maxAlternatives);
@@ -399,6 +535,8 @@ public class AIAVoskInputController : MonoBehaviour
                 return;
             }
 
+            transcript = NormalizeDomainTranscript(transcript);
+
             if (logTranscripts)
             {
                 Debug.Log($"[Vosk] Transcript: {transcript}");
@@ -441,6 +579,8 @@ public class AIAVoskInputController : MonoBehaviour
                 return;
             }
 
+            partialTranscript = NormalizeDomainTranscript(partialTranscript);
+
             if (voiceIntents != null)
             {
                 voiceIntents.UpdateRecordingTranscript(partialTranscript);
@@ -454,6 +594,29 @@ public class AIAVoskInputController : MonoBehaviour
         {
             Debug.LogWarning($"[Vosk] Failed to parse partial transcription result '{rawJson}': {exception}");
         }
+    }
+
+    private static string NormalizeDomainTranscript(string transcript)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            return transcript;
+        }
+
+        string normalizedTranscript = Regex.Replace(transcript.Trim(), @"\s+", " ");
+        for (int i = 0; i < TranscriptNormalizations.GetLength(0); i++)
+        {
+            string spokenForm = TranscriptNormalizations[i, 0];
+            string normalizedForm = TranscriptNormalizations[i, 1];
+            string pattern = $@"\b{Regex.Escape(spokenForm)}\b";
+            normalizedTranscript = Regex.Replace(
+                normalizedTranscript,
+                pattern,
+                normalizedForm,
+                RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
+        }
+
+        return normalizedTranscript;
     }
 
     private void RefreshButtonVisuals()
