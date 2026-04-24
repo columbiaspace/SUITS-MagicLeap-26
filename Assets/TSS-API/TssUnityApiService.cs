@@ -191,6 +191,31 @@ namespace TssApi
             return GetNestedDict(_ltv, "location");
         }
 
+        public bool HasLtvCoordinates()
+        {
+            return TryGetLtvCoordinates(out _, out _);
+        }
+
+        public bool TryGetLtvCoordinates(out double x, out double y)
+        {
+            x = 0.0d;
+            y = 0.0d;
+
+            Dictionary<string, object> location = GetNestedDict(_ltv, "location");
+            if (location.Count == 0)
+            {
+                return false;
+            }
+
+            if (!location.TryGetValue("last_known_x", out object rawX) ||
+                !location.TryGetValue("last_known_y", out object rawY))
+            {
+                return false;
+            }
+
+            return TryToDouble(rawX, out x) && TryToDouble(rawY, out y);
+        }
+
         public Dictionary<string, object> GetEgressReadiness(string evaId)
         {
             string normalizedEvaId = NormalizeEvaId(evaId);
