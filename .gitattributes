@@ -1,0 +1,1 @@
+Assets/StreamingAssets/*.zip filter=lfs diff=lfs merge=lfs -text
