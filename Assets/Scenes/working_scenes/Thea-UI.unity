@@ -586,6 +586,10 @@ PrefabInstance:
       propertyPath: m_Name
       value: VitalsButtonCanvas
       objectReference: {fileID: 0}
+    - target: {fileID: 2982926389689507325, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_PresetInfoIsWorld
+      value: 1
+      objectReference: {fileID: 0}
     - target: {fileID: 7699461129031171122, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: healthCanvas
       value: 
@@ -656,11 +660,11 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_AnchoredPosition.x
-      value: -0.169
+      value: -0.108
       objectReference: {fileID: 0}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_AnchoredPosition.y
-      value: -0.074
+      value: -0.182
       objectReference: {fileID: 0}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_LocalEulerAnglesHint.x
