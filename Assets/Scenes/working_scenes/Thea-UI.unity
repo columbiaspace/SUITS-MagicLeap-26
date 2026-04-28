@@ -570,8 +570,8 @@ MonoBehaviour:
   primaryBatteryPath: telemetry.eva1.primary_battery_level
   secondaryBatteryPath: telemetry.eva1.secondary_battery_level
   useLowestAvailableSource: 1
-  runningLowThresholdPercent: 95
-  criticalThresholdPercent: 90
+  runningLowThresholdPercent: 98
+  criticalThresholdPercent: 95
 --- !u!4 &554983983
 Transform:
   m_ObjectHideFlags: 0
@@ -1326,6 +1326,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 4276570974324033740, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
+      propertyPath: criticalThresholdPercent
+      value: 95
+      objectReference: {fileID: 0}
+    - target: {fileID: 4276570974324033740, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
+      propertyPath: runningLowThresholdPercent
+      value: 98
+      objectReference: {fileID: 0}
     - target: {fileID: 5910537829333682753, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
       propertyPath: m_Name
       value: TSSOxygen
