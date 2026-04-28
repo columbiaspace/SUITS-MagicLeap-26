@@ -65,7 +65,6 @@ public class LtvInstructionDebugPanel : MonoBehaviour
 
         return path.EndsWith("/Egress.unity", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith("/Ingress.unity", StringComparison.OrdinalIgnoreCase)
-            || path.EndsWith("/MIssion.unity", StringComparison.OrdinalIgnoreCase)
             || path.EndsWith("/Mission.unity", StringComparison.OrdinalIgnoreCase);
     }
 #endif
