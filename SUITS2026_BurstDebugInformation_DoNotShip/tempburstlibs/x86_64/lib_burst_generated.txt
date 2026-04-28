@@ -9,7 +9,6 @@ Library: /Users/dev/SUITS-MagicLeap-26/Temp/BurstOutput/tempburstlibs/x86_64/lib
 --target-framework=NetFramework
 --generate-link-xml=Temp/burst.link.xml
 --temp-folder=/Users/dev/SUITS-MagicLeap-26/Temp/Burst
---debug=Full
 --key-folder=/Applications/Unity/Hub/Editor/2022.3.62f3/PlaybackEngines/AndroidPlayer
 --decode-folder=/Users/dev/SUITS-MagicLeap-26/Library/Burst
 --output=/Users/dev/SUITS-MagicLeap-26/Temp/BurstOutput/tempburstlibs/x86_64/lib_burst_generated

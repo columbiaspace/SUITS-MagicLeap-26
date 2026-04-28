@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Registers in OnEnable (not Awake) so the singleton is set when the object becomes active.
+/// Registers in OnEnable (not Awake) so the singleton is set when the object becoyes active.
 /// Inactive objects never receive Awake/OnEnable at load, which leaves Instance null until enabled.
 /// </summary>
 [DefaultExecutionOrder(-500)]
@@ -14,11 +14,15 @@ public class TerrainAnalyzer : MonoBehaviour
     [Header("Grid Settings")]
     [SerializeField] private float tileSize = 0.6096f;
 
-    [Header("Coordinate Mapping (OBJ → DUST)")]
-    [SerializeField] private float dustCenterX = -5655f;
-    [SerializeField] private float dustCenterY = -10007.5f;
-    [SerializeField] private float dustScaleX = 4.027f;
-    [SerializeField] private float dustScaleZ = 2.38f;
+    [Header("Position → Mesh Calibration")]
+    [Tooltip("Source (TSS) X value that corresponds to mesh X = 0. Used to shift EVA/LTV posx onto the mesh frame.")]
+    [SerializeField] private float posOffsetX = 0f;
+    [Tooltip("Source (TSS) Y value that corresponds to mesh Z = 0. Used to shift EVA/LTV posy onto the mesh frame.")]
+    [SerializeField] private float posOffsetY = 0f;
+    [Tooltip("Source units per mesh unit along X. 1 = raw posx is already in mesh units.")]
+    [SerializeField] private float posScaleX = 1f;
+    [Tooltip("Source units per mesh unit along Z. 1 = raw posy is already in mesh units.")]
+    [SerializeField] private float posScaleY = 1f;
 
     [Header("Walkability Thresholds")]
     [Tooltip("Higher = allow steeper triangles before maxing difficulty.")]
@@ -98,18 +102,26 @@ public class TerrainAnalyzer : MonoBehaviour
 
     // --- Coordinate conversions ---
 
-    public Vector2Int DustToGrid(float dustX, float dustY)
-    {
-        float objX = (dustX - dustCenterX) / dustScaleX;
-        float objZ = (dustY - dustCenterY) / dustScaleZ;
-        return ObjToGrid(objX, objZ);
-    }
-
     public Vector2Int ObjToGrid(float objX, float objZ)
     {
         int gx = Mathf.FloorToInt(objX / tileSize);
         int gz = Mathf.FloorToInt(objZ / tileSize);
         return new Vector2Int(gx, gz);
+    }
+
+    /// <summary>
+    /// Convert raw source (TSS) posx / posy into a grid cell by first mapping them into
+    /// mesh space via the configured offset and scale, then flooring onto the tile grid.
+    /// With defaults (offset=0, scale=1) this is equivalent to <see cref="ObjToGrid"/>.
+    /// </summary>
+    public Vector2Int PosToGrid(float posX, float posY)
+    {
+        float safeScaleX = Mathf.Approximately(posScaleX, 0f) ? 1f : posScaleX;
+        float safeScaleY = Mathf.Approximately(posScaleY, 0f) ? 1f : posScaleY;
+
+        float meshX = (posX - posOffsetX) / safeScaleX;
+        float meshZ = (posY - posOffsetY) / safeScaleY;
+        return ObjToGrid(meshX, meshZ);
     }
 
     // --- Grid construction pipeline ---

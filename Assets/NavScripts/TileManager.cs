@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using TMPro;
 using UnityEngine;
 using UnityEngine.XR.ARFoundation;
 using TssApi;
@@ -30,10 +31,20 @@ public class TileManager : MonoBehaviour
     [Header("IMU Position")]
     [SerializeField] private string evaId = "eva1";
 
+    [Header("LTV override (dummy / testing)")]
+    [Tooltip("If true, ignore TSS LTV location and use the dummy rock-yard (x, y) below as the goal. These values skip PosToGrid and are fed directly into ObjToGrid, so they are treated as already in mesh/rock-yard units.")]
+    [SerializeField] private bool useDummyLtv = true;
+    [Tooltip("Dummy LTV position in rock-yard units (same frame as the mesh vertices). Default: (-5635, -9960).")]
+    [SerializeField] private Vector2 dummyLtvPosition = new Vector2(-5635f, -9960f);
+
     [Header("Nav grid debug (OnGUI)")]
     [SerializeField] private bool showNavGridOverlay = true;
     [SerializeField] private int navGridMarginCells = 12;
     [SerializeField] private float navGridMaxDisplayPx = 480f;
+
+    [Header("On-device status readout (worldspace TMP)")]
+    [Tooltip("Optional TextMeshPro label (UGUI or 3D TMP) to mirror _debugStatus on-device. OnGUI does not render in XR, so wire a worldspace canvas + TMP_Text in front of the rig to see status in the headset.")]
+    [SerializeField] private TMP_Text statusLabel;
 
     public const float TILE_SIZE = 0.6096f;
 
@@ -45,9 +56,19 @@ public class TileManager : MonoBehaviour
     private Vector2Int _lastImuGrid;
     private Vector2Int _lastLtvGrid;
     private bool _initialized;
+    private bool _navRootLocked;
 
     private Material _unlitMaterial;
     private string _debugStatus = "TileManager: Initializing...";
+
+    void SetStatus(string status)
+    {
+        _debugStatus = status;
+        if (statusLabel != null)
+        {
+            statusLabel.text = status;
+        }
+    }
 
     private Texture2D _navDebugTex;
     private bool _navDebugHaveSnapshot;
@@ -89,9 +110,9 @@ public class TileManager : MonoBehaviour
 
         if (terrain == null || !terrain.IsReady)
         {
-            _debugStatus = terrain == null
+            SetStatus(terrain == null
                 ? "TileManager: No TerrainAnalyzer — assign Nav Terrain Mesh on TileManager or add a TerrainAnalyzer to the scene"
-                : "TileManager: TerrainAnalyzer not ready yet (mesh missing or grid still building)...";
+                : "TileManager: TerrainAnalyzer not ready yet (mesh missing or grid still building)...");
             return;
         }
 
@@ -100,7 +121,7 @@ public class TileManager : MonoBehaviour
 
         if (!imuGrid.HasValue || !ltvGrid.HasValue)
         {
-            _debugStatus = BuildNavWaitStatus(TssUnityApiService.Instance);
+            SetStatus(BuildNavWaitStatus(TssUnityApiService.Instance));
             _navDebugHaveSnapshot = false;
             return;
         }
@@ -298,13 +319,18 @@ public class TileManager : MonoBehaviour
         if (imu == null || !imu.ContainsKey("posx") || !imu.ContainsKey("posy"))
             return null;
 
-        float dustX = Convert.ToSingle(imu["posx"]);
-        float dustY = Convert.ToSingle(imu["posy"]);
-        return terrain.DustToGrid(dustX, dustY);
+        float posX = Convert.ToSingle(imu["posx"]);
+        float posY = Convert.ToSingle(imu["posy"]);
+        return terrain.PosToGrid(posX, posY);
     }
 
     Vector2Int? GetLtvGridPosition(TerrainAnalyzer terrain)
     {
+        if (useDummyLtv)
+        {
+            return terrain.ObjToGrid(dummyLtvPosition.x, dummyLtvPosition.y);
+        }
+
         TssUnityApiService tss = TssUnityApiService.Instance;
         if (tss == null) return null;
 
@@ -314,9 +340,9 @@ public class TileManager : MonoBehaviour
             || !location.TryGetValue("last_known_y", out object ly))
             return null;
 
-        float dustX = Convert.ToSingle(lx);
-        float dustY = Convert.ToSingle(ly);
-        return terrain.DustToGrid(dustX, dustY);
+        float x = Convert.ToSingle(lx);
+        float y = Convert.ToSingle(ly);
+        return terrain.PosToGrid(x, y);
     }
 
     string BuildNavWaitStatus(TssUnityApiService tss)
@@ -415,7 +441,7 @@ public class TileManager : MonoBehaviour
 
         if (walkableSet.Count < 2)
         {
-            _debugStatus = $"Not enough walkable cells ({walkableSet.Count})";
+            SetStatus($"Not enough walkable cells ({walkableSet.Count})");
             Debug.LogWarning(_debugStatus);
             return;
         }
@@ -463,13 +489,13 @@ public class TileManager : MonoBehaviour
             string tag = (startAdjusted || goalAdjusted)
                 ? $" (adjusted start→{start} goal→{goal} to same walkable island)"
                 : string.Empty;
-            _debugStatus = $"Path: {path.Count} tiles from {start} to {goal}{tag}";
+            SetStatus($"Path: {path.Count} tiles from {start} to {goal}{tag}");
             Debug.Log($"TileManager: Path found — {path.Count} steps.{tag} Grid cells: {FormatPathCells(path)}");
             ApplyPath(new HashSet<Vector2Int>(path), start);
         }
         else
         {
-            _debugStatus = $"No path from snapped EVA/LTV (TerrainAnalyzer may need looser thresholds or DUST/OBJ mapping fix)";
+            SetStatus("No path from snapped EVA/LTV (TerrainAnalyzer may need looser thresholds or posx/posy vs mesh scale)");
             Debug.LogWarning(
                 $"{_debugStatus} Raw imu→{imuGrid} ltv→{ltvGrid}; walkable cells={walkableSet.Count}.");
             ApplyPath(new HashSet<Vector2Int>(), start);
@@ -530,6 +556,7 @@ public class TileManager : MonoBehaviour
             {
                 _pathTilesRoot.SetPositionAndRotation(Vector3.zero, Quaternion.identity);
             }
+            _navRootLocked = false;
 
             foreach (Vector2Int cell in _pathCells)
             {
@@ -588,9 +615,10 @@ public class TileManager : MonoBehaviour
 
         _pathCells = newPathCells;
 
-        if (useRoot)
+        if (useRoot && !_navRootLocked)
         {
             AlignPathRootUnderRigForEvaCell(snappedPathStartEvaCell);
+            _navRootLocked = true;
         }
 
         ARMinimapErica minimap = FindObjectOfType<ARMinimapErica>();
