@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
 using TMPro;
@@ -47,13 +48,17 @@ public class HealthPanelUI : MonoBehaviour
     [Header("Mission")]
     public TextMeshProUGUI evaElapsedTimeText;
 
-    [Header("Oxygen Warning")]
+    [Header("Top Warning (10 second auto-hide)")]
     public GameObject oxygenWarningPanel;
     public TextMeshProUGUI oxygenWarningText;
 
-    [Header("Health Panels")]
-    public GameObject vitalsPanel;
-    public GameObject suitPanel;
+    [Header("Persistent Warning (stays until resolved)")]
+    public GameObject persistentWarningPanel;
+    public TextMeshProUGUI persistentWarningText;
+
+    private string oxygenMessage = null;
+    private string batteryMessage = null;
+    private Coroutine warningHideCoroutine;
 
     private void OnEnable()
     {
@@ -61,6 +66,7 @@ public class HealthPanelUI : MonoBehaviour
             TssUnityApiService.Instance.EvaUpdated += HandleEvaUpdate;
 
         TssVitalsOxygenMonitor.OxygenStateChanged += HandleOxygenStateChanged;
+        TssVitalsBatteryMonitor.BatteryStateChanged += HandleBatteryStateChanged;
     }
 
     private void Start()
@@ -83,19 +89,7 @@ public class HealthPanelUI : MonoBehaviour
             TssUnityApiService.Instance.EvaUpdated -= HandleEvaUpdate;
 
         TssVitalsOxygenMonitor.OxygenStateChanged -= HandleOxygenStateChanged;
-    }
-
-    // Remove this method once testing is done
-    private void Update()
-    {
-        if (Input.GetKeyDown(KeyCode.Alpha1))
-            HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState.Good, 85f);
-
-        if (Input.GetKeyDown(KeyCode.Alpha2))
-            HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState.RunningLow, 22f);
-
-        if (Input.GetKeyDown(KeyCode.Alpha3))
-            HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState.CriticallyLow, 8f);
+        TssVitalsBatteryMonitor.BatteryStateChanged -= HandleBatteryStateChanged;
     }
 
     private void HandleEvaUpdate(Dictionary<string, object> fullEvaData)
@@ -111,63 +105,131 @@ public class HealthPanelUI : MonoBehaviour
         var evaData = TssUnityApiService.Instance.GetEvaById(evaId);
         if (evaData == null) return;
 
-        var telemetry = evaData.ContainsKey("telemetry")
-            ? evaData["telemetry"] as Dictionary<string, object>
-            : null;
-
+        var telemetry = evaData.ContainsKey("telemetry") ? evaData["telemetry"] as Dictionary<string, object> : null;
         if (telemetry == null) return;
 
         DisplayTelemetry(telemetry);
-        UpdateOxygenWarningLive();
+        UpdateWarningsLive();
     }
 
-    private void UpdateOxygenWarningLive()
+    private void UpdateWarningsLive()
     {
-        if (oxygenWarningPanel == null || !oxygenWarningPanel.activeSelf) return;
-        if (oxygenWarningText == null) return;
-
-        var monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
-        if (monitor == null) return;
-
-        float percent = monitor.CurrentOxygenPercent;
-
-        switch (monitor.CurrentState)
+        var oxyMonitor = FindObjectOfType<TssVitalsOxygenMonitor>();
+        if (oxyMonitor != null
+            && oxyMonitor.CurrentState != TssVitalsOxygenMonitor.OxygenState.Good
+            && oxyMonitor.CurrentState != TssVitalsOxygenMonitor.OxygenState.Unknown)
         {
-            case TssVitalsOxygenMonitor.OxygenState.CriticallyLow:
-                oxygenWarningText.text = $"CRITICAL O2: {percent:F1}% — RETURN IMMEDIATELY";
-                break;
-
-            case TssVitalsOxygenMonitor.OxygenState.RunningLow:
-                oxygenWarningText.text = $"O2 LOW: {percent:F1}%";
-                break;
+            HandleOxygenStateChanged(oxyMonitor.CurrentState, oxyMonitor.CurrentOxygenPercent, isStateChange: false);
         }
+
+        var battMonitor = FindObjectOfType<TssVitalsBatteryMonitor>();
+        if (battMonitor != null
+            && battMonitor.CurrentState != TssVitalsBatteryMonitor.BatteryState.Good
+            && battMonitor.CurrentState != TssVitalsBatteryMonitor.BatteryState.Unknown)
+        {
+            HandleBatteryStateChanged(battMonitor.CurrentState, battMonitor.CurrentBatteryPercent, isStateChange: false);
+        }
+    }
+
+    private void HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState state, float percent)
+    {
+        HandleOxygenStateChanged(state, percent, isStateChange: true);
     }
 
     private void HandleOxygenStateChanged(
-        TssVitalsOxygenMonitor.OxygenState state, float percent)
+        TssVitalsOxygenMonitor.OxygenState state, float percent, bool isStateChange)
     {
-        if (oxygenWarningPanel == null || oxygenWarningText == null) return;
-
         switch (state)
         {
             case TssVitalsOxygenMonitor.OxygenState.CriticallyLow:
-                oxygenWarningPanel.SetActive(true);
-                oxygenWarningText.text = $"CRITICAL O2: {percent:F1}% — RETURN IMMEDIATELY";
-                oxygenWarningText.color = new Color(1f, 0.2f, 0.2f);
+                oxygenMessage = $"<color=#FF3333>CRITICAL O2: {percent:F1}%</color>";
                 break;
-
             case TssVitalsOxygenMonitor.OxygenState.RunningLow:
-                oxygenWarningPanel.SetActive(true);
-                oxygenWarningText.text = $"O2 LOW: {percent:F1}%";
-                oxygenWarningText.color = new Color(1f, 0.7f, 0.15f);
+                oxygenMessage = $"<color=#FFB326>O2 LOW: {percent:F1}%</color>";
                 break;
-
             default:
-                oxygenWarningPanel.SetActive(false);
-                if (vitalsPanel != null) vitalsPanel.SetActive(true);
-                if (suitPanel != null) suitPanel.SetActive(true);
+                oxygenMessage = null;
                 break;
         }
+        RefreshWarningPanels(isStateChange);
+    }
+
+    private void HandleBatteryStateChanged(TssVitalsBatteryMonitor.BatteryState state, float percent)
+    {
+        HandleBatteryStateChanged(state, percent, isStateChange: true);
+    }
+
+    private void HandleBatteryStateChanged(
+        TssVitalsBatteryMonitor.BatteryState state, float percent, bool isStateChange)
+    {
+        switch (state)
+        {
+            case TssVitalsBatteryMonitor.BatteryState.CriticallyLow:
+                batteryMessage = $"<color=#FF3333>CRITICAL BATTERY: {percent:F1}%</color>";
+                break;
+            case TssVitalsBatteryMonitor.BatteryState.RunningLow:
+                batteryMessage = $"<color=#FFB326>BATTERY LOW: {percent:F1}%</color>";
+                break;
+            default:
+                batteryMessage = null;
+                break;
+        }
+        RefreshWarningPanels(isStateChange);
+    }
+
+    private void RefreshWarningPanels(bool isStateChange)
+    {
+        var lines = new List<string>();
+        if (!string.IsNullOrEmpty(oxygenMessage)) lines.Add(oxygenMessage);
+        if (!string.IsNullOrEmpty(batteryMessage)) lines.Add(batteryMessage);
+
+        // Top panel: only re-show and restart timer on state changes
+        if (oxygenWarningPanel != null && oxygenWarningText != null)
+        {
+            if (lines.Count == 0)
+            {
+                oxygenWarningPanel.SetActive(false);
+            }
+            else if (isStateChange)
+            {
+                oxygenWarningPanel.SetActive(true);
+                oxygenWarningText.color = Color.white;
+                oxygenWarningText.text = string.Join("\n", lines);
+                RestartHideTimer();
+            }
+            else if (oxygenWarningPanel.activeSelf)
+            {
+                // Still visible: keep text live, but don't restart timer
+                oxygenWarningText.text = string.Join("\n", lines);
+            }
+        }
+
+        // Persistent panel: always reflects current state
+        if (persistentWarningPanel != null && persistentWarningText != null)
+        {
+            if (lines.Count == 0)
+            {
+                persistentWarningPanel.SetActive(false);
+            }
+            else
+            {
+                persistentWarningPanel.SetActive(true);
+                persistentWarningText.color = Color.white;
+                persistentWarningText.text = string.Join("\n", lines);
+            }
+        }
+    }
+
+    private void RestartHideTimer()
+    {
+        if (warningHideCoroutine != null) StopCoroutine(warningHideCoroutine);
+        warningHideCoroutine = StartCoroutine(HideTopPanelAfterDelay(10f));
+    }
+
+    private IEnumerator HideTopPanelAfterDelay(float seconds)
+    {
+        yield return new WaitForSeconds(seconds);
+        if (oxygenWarningPanel != null) oxygenWarningPanel.SetActive(false);
     }
 
     private void DisplayTelemetry(Dictionary<string, object> t)
@@ -198,10 +260,10 @@ public class HealthPanelUI : MonoBehaviour
         SetText(heartRateText,        $"Heart Rate: {GetNum(t, "heart_rate")} bpm");
         SetText(temperatureText,      $"Temperature: {GetNum(t, "temperature")} °F");
         SetText(co2ProductionText,    $"CO2 Production: {GetNum(t, "co2_production")} psi/min");
-        SetText(fanPrimary,        $"Fan Primary: {GetNum(t, "fan_pri_rpm")} rpm");
-        SetText(fanSecondary,        $"Fan Secondary: {GetNum(t, "fan_sec_rpm")} rpm");
-        SetText(scrubberPrimary,     $"Scrubber Primary: {GetNum(t, "scrubber_a_co2_storage")}%");
-        SetText(scrubberSecondary,     $"Scrubber Secondary: {GetNum(t, "scrubber_b_co2_storage")}%");
+        SetText(fanPrimary,           $"Fan Primary: {GetNum(t, "fan_pri_rpm")} rpm");
+        SetText(fanSecondary,         $"Fan Secondary: {GetNum(t, "fan_sec_rpm")} rpm");
+        SetText(scrubberPrimary,      $"Scrubber Primary: {GetNum(t, "scrubber_a_co2_storage")}%");
+        SetText(scrubberSecondary,    $"Scrubber Secondary: {GetNum(t, "scrubber_b_co2_storage")}%");
 
         SetText(coolantStorageText,        $"Coolant Storage: {GetNum(t, "coolant_storage")}%");
         SetText(coolantLiquidPressureText, $"Coolant Liquid Pressure: {GetNum(t, "coolant_liquid_pressure")} psi");
@@ -212,8 +274,7 @@ public class HealthPanelUI : MonoBehaviour
 
     private void SetText(TextMeshProUGUI field, string value)
     {
-        if (field != null)
-            field.text = value;
+        if (field != null) field.text = value;
     }
 
     private string GetNum(Dictionary<string, object> dict, string key)
