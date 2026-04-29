@@ -946,8 +946,8 @@ MonoBehaviour:
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
-  m_EditorClassIdentifier: 
-  tssHost: 10.207.124.137
+  m_EditorClassIdentifier:
+  tssHost: 10.207.89.182
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -1542,7 +1542,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   ltvSceneName: LTV
   triggerPhrases:
-  - ltv repair
+  - start repair
   - ltv-repair
   - lt v repair
   enableDebugLogs: 1

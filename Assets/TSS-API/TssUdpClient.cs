@@ -44,6 +44,7 @@ namespace TssApi
             WriteUIntBigEndian(_requestBuffer, 0, timestamp);
             WriteUIntBigEndian(_requestBuffer, 4, (uint)command);
 
+            SocketException lastSocketException = null;
             for (int attempt = 0; attempt < _retries; attempt++)
             {
                 try
@@ -56,8 +57,9 @@ namespace TssApi
                         return DecodeResponse(raw);
                     }
                 }
-                catch (SocketException)
+                catch (SocketException socketException)
                 {
+                    lastSocketException = socketException;
                 }
                 catch (ObjectDisposedException)
                 {
@@ -70,7 +72,27 @@ namespace TssApi
                 }
             }
 
+            // Don't spam — log only when we transition from "working" to "broken" or every Nth poll.
+            // Most callers poll at 4Hz; logging once per second of consistent failure is enough to
+            // diagnose without flooding the device console.
+            if (lastSocketException != null)
+            {
+                LogThrottledSocketFailure(command, lastSocketException);
+            }
+
             return null;
+        }
+
+        private long _lastFailureLogTicks;
+        private void LogThrottledSocketFailure(int command, SocketException socketException)
+        {
+            long nowTicks = DateTime.UtcNow.Ticks;
+            long elapsedSeconds = (nowTicks - _lastFailureLogTicks) / TimeSpan.TicksPerSecond;
+            if (_lastFailureLogTicks == 0 || elapsedSeconds >= 5)
+            {
+                _lastFailureLogTicks = nowTicks;
+                Debug.LogWarning($"[Tss] UDP request failed (cmd={command}, code={socketException.SocketErrorCode}): {socketException.Message}. Will retry on next poll.");
+            }
         }
 
         private static Dictionary<string, object> DecodeResponse(byte[] raw)

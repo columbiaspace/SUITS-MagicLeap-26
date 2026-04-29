@@ -123,11 +123,34 @@ public class LtvInstructionService : MonoBehaviour
 
         List<Dictionary<string, object>> errorProcedures = tssApi.GetLtvErrorProcedures();
 
+        int rawCount = errorProcedures?.Count ?? 0;
+        int rawNeedsResolved = 0;
+        if (errorProcedures != null)
+        {
+            for (int i = 0; i < errorProcedures.Count; i++)
+            {
+                Dictionary<string, object> raw = errorProcedures[i];
+                if (raw != null && raw.ContainsKey("needs_resolved") && ToBool(raw["needs_resolved"]))
+                {
+                    rawNeedsResolved++;
+                }
+            }
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.Log(
+                $"[LTV] TSS returned {rawCount} error_procedures entries " +
+                $"(needs_resolved=true on {rawNeedsResolved} of them).",
+                this
+            );
+        }
+
         if (errorProcedures == null || errorProcedures.Count == 0)
         {
             if (enableDebugLogs)
             {
-                Debug.Log("[LTV] No error_procedures returned from TSS.", this);
+                Debug.Log("[LTV] No error_procedures returned from TSS — likely UDP timeout or empty response.", this);
             }
 
             diagnosisActive = false;
@@ -146,8 +169,24 @@ public class LtvInstructionService : MonoBehaviour
             }
 
             LtvError error = ParseError(raw);
-            if (error == null || !error.NeedsResolved)
+            if (error == null)
             {
+                if (enableDebugLogs)
+                {
+                    Debug.Log("[LTV] Skipping error: ParseError returned null.", this);
+                }
+                continue;
+            }
+
+            if (!error.NeedsResolved)
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log(
+                        $"[LTV] Skipping error {error.Code} ({error.Description}): needs_resolved=false.",
+                        this
+                    );
+                }
                 continue;
             }
 
