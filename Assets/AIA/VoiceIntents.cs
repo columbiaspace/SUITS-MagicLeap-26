@@ -11,6 +11,10 @@ using UnityEngine.XR.MagicLeap;
 public class VoiceIntents : MonoBehaviour
 {
     private const uint AskLunaEventId = 105;
+    // MLVoice intent IDs that route directly to LTV-repair (bypasses Vosk).
+    // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
+    private const uint LtvRepairEventIdMin = 106;
+    private const uint LtvRepairEventIdMax = 108;
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
     private const int MaxVisibleConversationTurns = 3;
@@ -280,7 +284,21 @@ public class VoiceIntents : MonoBehaviour
                 break;
 
             default:
-                Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
+                if (voiceEvent.EventID >= LtvRepairEventIdMin && voiceEvent.EventID <= LtvRepairEventIdMax)
+                {
+                    Debug.Log($"[Luna] LTV-repair MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
+                    string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
+                        ? "ltv repair"
+                        : voiceEvent.EventName;
+                    if (!TryRouteLtvRepairCommand(spokenPhrase))
+                    {
+                        Debug.LogWarning("[Luna] LTV-repair MLVoice intent matched but coordinator did not accept it.");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
+                }
                 break;
         }
     }

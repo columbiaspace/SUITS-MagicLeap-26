@@ -24,6 +24,12 @@ MonoBehaviour:
     Value: stop
   - Id: 105
     Value: hey luna
+  - Id: 106
+    Value: ltv repair
+  - Id: 107
+    Value: start ltv repair
+  - Id: 108
+    Value: begin ltv repair
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []
