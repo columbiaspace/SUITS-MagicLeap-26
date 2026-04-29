@@ -38,7 +38,6 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 705507994}
-  m_IndirectSpecularColor: {r: 0.18028326, g: 0.22571333, b: 0.30692202, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -299,6 +298,67 @@ Transform:
   m_Children:
   - {fileID: 857829563}
   m_Father: {fileID: 189396468}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &614052804
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 614052806}
+  - component: {fileID: 614052805}
+  m_Layer: 0
+  m_Name: NavManager
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &614052805
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 614052804}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b7cf38fd6f7b543e4aee58214148dc1c, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  xrOrigin: {fileID: 0}
+  anchorManager: {fileID: 0}
+  tilePrefab: {fileID: 4995099973755842962, guid: 2898a90f8510c43218c5b1b5fb456859, type: 3}
+  alignInitialPathToRig: 1
+  pathTilesFloorYOffset: 0.02
+  navTerrainMesh: {fileID: -2432090755550338912, guid: 5674cc1989f9049b9918ae498b012f06, type: 3}
+  createTerrainAnalyzerIfMissing: 1
+  pathColor: {r: 0.2, g: 0.5, b: 1, a: 0.9}
+  evaId: eva1
+  useDummyEva: 1
+  dummyEvaPosition: {x: -10, y: 10}
+  useDummyLtv: 1
+  dummyLtvPosition: {x: -5635, y: -9960}
+  showNavGridOverlay: 1
+  navGridMarginCells: 12
+  navGridMaxDisplayPx: 480
+  statusLabel: {fileID: 0}
+--- !u!4 &614052806
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 614052804}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &705507993
 GameObject:
@@ -1619,3 +1679,4 @@ SceneRoots:
   - {fileID: 782628377}
   - {fileID: 2032274387}
   - {fileID: 932304026}
+  - {fileID: 614052806}

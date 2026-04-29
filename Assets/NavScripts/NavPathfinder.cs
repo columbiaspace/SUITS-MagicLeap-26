@@ -1,8 +1,19 @@
 using System.Collections.Generic;
 using UnityEngine;
 
+/// <summary>
+/// Stateless grid pathfinding utilities consumed by <see cref="TileManager.ComputePath"/>.
+/// Operates entirely in the lunar-mesh grid frame produced by <see cref="TerrainAnalyzer"/>:
+/// inputs and outputs are <see cref="Vector2Int"/> cells, no world-space concerns. The
+/// returned path is later mapped back to headset world space via
+/// <c>NavGridUtilities.CellToLocalTilePos</c> + <c>TileManager.AlignPathRootUnderRigForEvaCell</c>.
+/// </summary>
 public static class NavPathfinder
 {
+    /// <summary>
+    /// 8-connected neighborhood offsets — first four cardinal, last four diagonal.
+    /// Index ≥ 4 is used by <see cref="FindPath"/> to apply the √2 diagonal-step penalty.
+    /// </summary>
     private static readonly Vector2Int[] Dirs =
     {
         new Vector2Int( 1,  0),
@@ -18,8 +29,14 @@ public static class NavPathfinder
     private const float Sqrt2 = 1.41421356f;
 
     /// <summary>
-    /// A* over a pre-filtered walkable set. Only cells in walkableSet are
-    /// considered; weights from TerrainAnalyzer influence edge costs.
+    /// A* over a pre-filtered walkable set. Only cells in <paramref name="walkableSet"/> are
+    /// considered, and per-cell weights from <see cref="TerrainAnalyzer.GetWeight"/> are folded
+    /// into edge costs so steeper / bumpier terrain costs more to cross. Heuristic is Euclidean
+    /// distance, edge cost is <c>(1 + neighborWeight) · {1, √2}</c> for cardinal vs. diagonal.
+    /// Returns the cell list start → goal (inclusive) on success, or empty when start/goal are
+    /// not walkable or no path exists. An empty result is a real answer — start and goal are on
+    /// disconnected walkable regions — and the caller is expected to render it as "no path"
+    /// rather than fabricating one.
     /// </summary>
     public static List<Vector2Int> FindPath(
         HashSet<Vector2Int> walkableSet,
@@ -81,35 +98,12 @@ public static class NavPathfinder
         return new List<Vector2Int>();
     }
 
-    /// <summary>8-connected flood fill of <paramref name="walkableSet"/> from <paramref name="seed"/>.</summary>
-    public static HashSet<Vector2Int> WalkableComponentContaining(HashSet<Vector2Int> walkableSet, Vector2Int seed)
-    {
-        var comp = new HashSet<Vector2Int>();
-        if (walkableSet == null || walkableSet.Count == 0 || !walkableSet.Contains(seed))
-        {
-            return comp;
-        }
-
-        var q = new Queue<Vector2Int>();
-        q.Enqueue(seed);
-        comp.Add(seed);
-
-        while (q.Count > 0)
-        {
-            Vector2Int c = q.Dequeue();
-            for (int i = 0; i < Dirs.Length; i++)
-            {
-                Vector2Int n = c + Dirs[i];
-                if (walkableSet.Contains(n) && comp.Add(n))
-                {
-                    q.Enqueue(n);
-                }
-            }
-        }
-
-        return comp;
-    }
-
+    /// <summary>
+    /// A* heuristic: Euclidean distance between two grid cells. Admissible because the cheapest
+    /// possible step cost is 1 (cardinal) or √2 (diagonal) before terrain weighting, and Euclidean
+    /// distance never overestimates that lower bound. Match with the diagonal step cost in
+    /// <see cref="FindPath"/> keeps the search tight without sacrificing optimality.
+    /// </summary>
     private static float Heuristic(Vector2Int a, Vector2Int b)
     {
         float dx = a.x - b.x;
@@ -117,6 +111,12 @@ public static class NavPathfinder
         return Mathf.Sqrt(dx * dx + dy * dy);
     }
 
+    /// <summary>
+    /// Walks the <paramref name="cameFrom"/> back-pointer chain from goal to start, then reverses
+    /// the list so the caller gets cells in traversal order. <see cref="FindPath"/> calls this
+    /// the moment the open-set min equals the goal, returning the result directly to
+    /// <see cref="TileManager.ComputePath"/>.
+    /// </summary>
     private static List<Vector2Int> ReconstructPath(Dictionary<Vector2Int, Vector2Int> cameFrom, Vector2Int current)
     {
         var path = new List<Vector2Int> { current };

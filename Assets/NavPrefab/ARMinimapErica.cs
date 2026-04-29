@@ -56,8 +56,8 @@ public class ARMinimapErica : MonoBehaviour
 
         foreach (Vector2Int cell in pathCells)
         {
-            float worldX = cell.x * TileManager.TILE_SIZE;
-            float worldZ = cell.y * TileManager.TILE_SIZE;
+            float worldX = cell.x * NavGridUtilities.TILE_SIZE;
+            float worldZ = cell.y * NavGridUtilities.TILE_SIZE;
 
             // CHANGED: was * worldToMapScale (fixed 8f). Now uses MapScale for the
             // same reason as UpdatePlayerIcon — keeps path dots consistent with
