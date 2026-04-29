@@ -340,7 +340,12 @@ public class VoiceIntents : MonoBehaviour
         aiaInputController = FindObjectOfType<AIAVoskInputController>();
     }
 
-    private bool TryRouteLtvRepairCommand(string trimmedPrompt)
+    /// <summary>
+    /// Public so AIAVoskInputController can fire LTV-repair routing on partial Vosk
+    /// transcripts (without waiting for the recording to stop and a final result to
+    /// emit). Returns true when the transcript matched and the LTV scene was loaded.
+    /// </summary>
+    public bool TryRouteLtvRepairCommand(string trimmedPrompt)
     {
         if (ltvVoiceCoordinator == null)
         {
