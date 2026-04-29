@@ -1406,9 +1406,7 @@ GameObject:
   serializedVersion: 6
   m_Component:
   - component: {fileID: 1773227992}
-  - component: {fileID: 1773227991}
   - component: {fileID: 1773227990}
-  - component: {fileID: 1773227993}
   - component: {fileID: 1773227994}
   m_Layer: 0
   m_Name: LtvServices
@@ -1435,18 +1433,6 @@ MonoBehaviour:
   udpTimeoutMs: 500
   udpRetries: 2
   ltvProceduresJson: {fileID: 0}
---- !u!114 &1773227991
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1773227989}
-  m_Enabled: 1
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: e7cef459282e34521ad977df6b05ec21, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!4 &1773227992
 Transform:
   m_ObjectHideFlags: 0
@@ -1462,18 +1448,6 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
---- !u!114 &1773227993
-MonoBehaviour:
-  m_ObjectHideFlags: 0
-  m_CorrespondingSourceObject: {fileID: 0}
-  m_PrefabInstance: {fileID: 0}
-  m_PrefabAsset: {fileID: 0}
-  m_GameObject: {fileID: 1773227989}
-  m_Enabled: 0
-  m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 8c7a2fe0f5f4344849e9ddafdf64033a, type: 3}
-  m_Name: 
-  m_EditorClassIdentifier: 
 --- !u!114 &1773227994
 MonoBehaviour:
   m_ObjectHideFlags: 0
