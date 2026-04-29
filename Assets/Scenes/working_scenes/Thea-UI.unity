@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028301, g: 0.22571309, b: 0.30692127, a: 1}
+  m_IndirectSpecularColor: {r: 0.18018535, g: 0.22559482, b: 0.30677685, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -955,18 +955,6 @@ PrefabInstance:
       propertyPath: m_Name
       value: VitalsButtonCanvas
       objectReference: {fileID: 0}
-    - target: {fileID: 2982926389689507325, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
-      propertyPath: m_PresetInfoIsWorld
-      value: 1
-      objectReference: {fileID: 0}
-    - target: {fileID: 7699461129031171122, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
-      propertyPath: healthCanvas
-      value: 
-      objectReference: {fileID: 1315369535}
-    - target: {fileID: 8374780147099731469, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
-      propertyPath: m_Camera
-      value: 
-      objectReference: {fileID: 1101935316}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
@@ -1056,11 +1044,6 @@ PrefabInstance:
 RectTransform:
   m_CorrespondingSourceObject: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
   m_PrefabInstance: {fileID: 1255728889}
-  m_PrefabAsset: {fileID: 0}
---- !u!1 &1315369535 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 8715221860109088846, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
-  m_PrefabInstance: {fileID: 1456152517}
   m_PrefabAsset: {fileID: 0}
 --- !u!1 &1365001711
 GameObject:
