@@ -41,12 +41,12 @@ public class TileManager : MonoBehaviour
     [Header("EVA override (dummy / testing)")]
     [Tooltip("If true, ignore TSS EVA IMU and use the dummy (x, y) below as the path start. Treated as raw TSS posx/posy and routed through TerrainAnalyzer.PosToGrid identically to live data.")]
     [SerializeField] private bool useDummyEva = false;
-    [SerializeField] private Vector2 dummyEvaPosition = new Vector2(-10f, 10f);
+    [SerializeField] private Vector2 dummyEvaPosition = new Vector2(-5500f, 8100f);
 
     [Header("LTV override (dummy / testing)")]
     [Tooltip("If true, ignore TSS LTV location and use the dummy (x, y) below as the goal. Treated as raw TSS last_known_x / last_known_y and routed through TerrainAnalyzer.PosToGrid identically to live data.")]
     [SerializeField] private bool useDummyLtv = true;
-    [SerializeField] private Vector2 dummyLtvPosition = new Vector2(-5635f, -9960f);
+    [SerializeField] private Vector2 dummyLtvPosition = new Vector2(-5635f, -8200f);
 
     private readonly Dictionary<Vector2Int, GameObject> _tileObjects = new Dictionary<Vector2Int, GameObject>();
     private HashSet<Vector2Int> _pathCells = new HashSet<Vector2Int>();
