@@ -519,6 +519,7 @@ namespace TssApi
             return false;
         }
 
+        private long _pollCounter;
         private IEnumerator PollLoop()
         {
             WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
@@ -542,6 +543,30 @@ namespace TssApi
                 if (ltvErrorsRaw != null)
                 {
                     MergeLtvErrors(ltvErrorsRaw);
+                }
+
+                // Once every ~5 seconds (with default 0.25s interval => every 20 polls),
+                // log a snapshot of what each command returned so we can diagnose missing
+                // error_procedures without flooding the log.
+                _pollCounter++;
+                if (_pollCounter % 20 == 1)
+                {
+                    int evaKeys = evaRaw?.Count ?? -1;
+                    int ltvKeys = ltvRaw?.Count ?? -1;
+                    int errKeys = ltvErrorsRaw?.Count ?? -1;
+                    string ltvErrorsKeyList = ltvErrorsRaw != null
+                        ? string.Join(",", ltvErrorsRaw.Keys)
+                        : "<null>";
+                    object procRaw = ltvErrorsRaw != null && ltvErrorsRaw.ContainsKey("error_procedures")
+                        ? ltvErrorsRaw["error_procedures"]
+                        : null;
+                    int procListLen = (procRaw as List<object>)?.Count ?? -1;
+                    Debug.Log(
+                        $"[Tss] Poll snapshot: eva keys={evaKeys}, ltv keys={ltvKeys}, " +
+                        $"ltvErrors keys={errKeys} ({ltvErrorsKeyList}), " +
+                        $"error_procedures count={procListLen}",
+                        this
+                    );
                 }
 
                 _sourceOnline = evaRaw != null && ltvRaw != null;
