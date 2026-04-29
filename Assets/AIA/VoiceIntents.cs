@@ -99,7 +99,18 @@ public class VoiceIntents : MonoBehaviour
         TryResolveResponseScrollRect();
         TryResolveAiaInputController();
         MLPermissions.RequestPermission(MLPermission.VoiceInput, permissionCallbacks);
-        InitializeTextToSpeech();
+
+        // Prefer LunaTtsBridge (persistent, scene-spanning) when one exists in the scene.
+        // Only initialize the inline Android TTS if no bridge is wired up — this avoids
+        // two TextToSpeech engines competing for the audio service on ML2.
+        if (FindObjectOfType<LunaTtsBridge>() == null)
+        {
+            InitializeTextToSpeech();
+        }
+        else
+        {
+            Debug.Log("[Luna] LunaTtsBridge present; routing TTS through it instead of inline engine.");
+        }
 
         if (responseTextBox != null && string.IsNullOrWhiteSpace(responseTextBox.text))
         {
@@ -727,6 +738,14 @@ public class VoiceIntents : MonoBehaviour
     {
         if (!speakAiResponse)
         {
+            return;
+        }
+
+        // Prefer the persistent bridge — it survives scene transitions and is the only TTS
+        // we initialize when present. Inline path below only runs as a fallback.
+        if (LunaTtsBridge.Instance != null)
+        {
+            LunaTtsBridge.Instance.Speak(text);
             return;
         }
 
