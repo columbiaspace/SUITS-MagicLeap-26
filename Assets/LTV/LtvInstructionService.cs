@@ -29,6 +29,12 @@ public class LtvInstructionService : MonoBehaviour
     public event Action<LtvError> ResolutionFailed;
     public event Action<LtvError> MaxRetriesExceeded;
     public event Action AllErrorsResolved;
+    /// <summary>
+    /// Fired when StartDiagnosisFromTss completes its initial enqueue. The int is the
+    /// number of errors with needs_resolved=true at start; 0 means TSS reported nothing
+    /// to fix (the LTV-repair flow uses this to decide whether to skip the procedure).
+    /// </summary>
+    public event Action<int> DiagnosisStarted;
 
     // Public read-only state
     public LtvError CurrentError => currentError;
@@ -125,6 +131,7 @@ public class LtvInstructionService : MonoBehaviour
             }
 
             diagnosisActive = false;
+            DiagnosisStarted?.Invoke(0);
             AllErrorsResolved?.Invoke();
             EmitSnapshot();
             return;
@@ -171,10 +178,14 @@ public class LtvInstructionService : MonoBehaviour
             }
         }
 
+        int initialCount = errorHeap.Count;
+
         if (enableDebugLogs)
         {
-            Debug.Log($"[LTV] Diagnosis started. {errorHeap.Count} errors queued.", this);
+            Debug.Log($"[LTV] Diagnosis started. {initialCount} errors queued.", this);
         }
+
+        DiagnosisStarted?.Invoke(initialCount);
 
         PopNextError();
     }
@@ -734,17 +745,19 @@ public class LtvInstructionService : MonoBehaviour
             return string.Empty;
         }
 
+        // Codes match the LTV_ERRORS.json schema released by NASA SUITS 2026 (see
+        // documents/updates/updates.pdf, 4/24 entry). The mapping is a best-effort
+        // translation to the keys TSS may expose in GetLtvErrors(); when no mapping
+        // exists the verifier falls back to re-checking needs_resolved on the same code.
         switch (code)
         {
-            case "0000": return "recovery_mode";
-            case "4155": return "power_distribution";
-            case "4761": return "dust_sensor";
-            case "2129": return "fuse";
-            case "2130": return "nav_system";
-            case "2131": return "lidar_system";
-            case "2132": return "comms";
-            case "3700": return "electronic_heater";
-            case "2900": return "power_subsystem_bus";
+            case "4800": return "recovery_mode";
+            case "4509": return "nav_system";
+            case "1969": return "fuse";
+            case "3452": return "comms_rssi";
+            case "4968": return "power_subsystem_bus";
+            case "2441": return "comms_reboot";
+            case "2235": return "dust_sensor";
             default: return string.Empty;
         }
     }

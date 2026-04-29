@@ -34,6 +34,11 @@ public class VoiceIntents : MonoBehaviour
     [SerializeField] private AIAVoskInputController aiaInputController;
     [SerializeField] private ScrollRect responseScrollRect;
 
+    [Header("Voice command routing")]
+    [Tooltip("Optional LTV-repair voice coordinator. If present and the transcript matches its " +
+             "trigger phrases, the prompt is consumed locally instead of being forwarded to Gemma.")]
+    [SerializeField] private LtvVoiceCoordinator ltvVoiceCoordinator;
+
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
 
@@ -324,6 +329,21 @@ public class VoiceIntents : MonoBehaviour
         aiaInputController = FindObjectOfType<AIAVoskInputController>();
     }
 
+    private bool TryRouteLtvRepairCommand(string trimmedPrompt)
+    {
+        if (ltvVoiceCoordinator == null)
+        {
+            ltvVoiceCoordinator = FindObjectOfType<LtvVoiceCoordinator>();
+        }
+
+        if (ltvVoiceCoordinator == null)
+        {
+            return false;
+        }
+
+        return ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+    }
+
     private void UpdateResponseTextBox(string text)
     {
         if (string.IsNullOrWhiteSpace(text))
@@ -411,6 +431,14 @@ public class VoiceIntents : MonoBehaviour
         {
             Debug.LogWarning("[Luna] Ignoring empty text prompt.");
             FailActiveRecording("Luna could not hear a question.");
+            return;
+        }
+
+        if (TryRouteLtvRepairCommand(trimmedPrompt))
+        {
+            // The coordinator will load the LTV scene and run the repair flow.
+            // We intentionally do NOT forward this transcript to Gemma.
+            CompleteActiveConversation("Loading LTV repair console.");
             return;
         }
 
