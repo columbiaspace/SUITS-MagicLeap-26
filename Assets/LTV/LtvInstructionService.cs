@@ -56,14 +56,20 @@ public class LtvInstructionService : MonoBehaviour
 
     private void Awake()
     {
-        if (tssApi == null)
-        {
-            tssApi = GetComponent<TssUnityApiService>();
-        }
-
-        if (tssApi == null)
+        // Prefer the persistent singleton over scene-local references. Reason: when this
+        // service lives in the LTV scene (Mission already has its own TssUnityApiService
+        // marked DontDestroyOnLoad), the LTV scene's local component gets self-destroyed
+        // by the singleton check in TssUnityApiService.Awake. A serialized [SerializeField]
+        // tssApi reference here would still point at that destroyed component — its _ltv
+        // dictionary is empty, so GetLtvErrorProcedures() returns 0 even when the Mission
+        // singleton has fresh data.
+        if (TssUnityApiService.Instance != null)
         {
             tssApi = TssUnityApiService.Instance;
+        }
+        else if (tssApi == null)
+        {
+            tssApi = GetComponent<TssUnityApiService>();
         }
 
         if (tssApi == null)
@@ -74,7 +80,8 @@ public class LtvInstructionService : MonoBehaviour
         if (enableDebugLogs)
         {
             Debug.Log(
-                $"[LTV] Service ready. TssApi linked={tssApi != null}",
+                $"[LTV] Service ready. TssApi linked={tssApi != null}" +
+                (tssApi != null ? $" (instanceId={tssApi.GetInstanceID()}, isSingleton={ReferenceEquals(tssApi, TssUnityApiService.Instance)})" : ""),
                 this
             );
         }
