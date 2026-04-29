@@ -38,7 +38,6 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028356, g: 0.2257137, b: 0.3069222, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -194,7 +193,7 @@ MonoBehaviour:
   responseTextBox: {fileID: 0}
   voskSpeechToText: {fileID: 0}
   voiceProcessor: {fileID: 0}
-  voskModelPath: vosk-model-small-en-us-0.15.zip
+  voskModelPath: vosk-model-en-us-0.22-lgraph.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
   silenceStopSeconds: 2
@@ -1410,6 +1409,51 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1469075974}
   m_CullTransparentMesh: 1
+--- !u!1 &1538358367
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1538358369}
+  - component: {fileID: 1538358368}
+  m_Layer: 0
+  m_Name: LunaTtsBridge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1538358368
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1538358367}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ded4bc3dabc04449a056109cffa72db, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  logSpokenText: 1
+--- !u!4 &1538358369
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1538358367}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.20947142, y: 1.6597596, z: 0.47089064}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1607032825
 GameObject:
   m_ObjectHideFlags: 0
@@ -1450,6 +1494,7 @@ MonoBehaviour:
   responseTextBox: {fileID: 0}
   aiaInputController: {fileID: 0}
   responseScrollRect: {fileID: 0}
+  ltvVoiceCoordinator: {fileID: 1944448547}
   verboseVoiceLogging: 1
 --- !u!4 &1607032827
 Transform:
@@ -1461,6 +1506,56 @@ Transform:
   serializedVersion: 2
   m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
   m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &1944448546
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1944448548}
+  - component: {fileID: 1944448547}
+  m_Layer: 0
+  m_Name: LtvVoiceCoordinator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &1944448547
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1944448546}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 9c12f3bab58fb4de5a7e17fcd66e743f, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  ltvSceneName: LTV
+  triggerPhrases:
+  - ltv repair
+  - ltv-repair
+  - lt v repair
+  enableDebugLogs: 1
+--- !u!4 &1944448548
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1944448546}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: -0.20947142, y: 1.6597596, z: 0.47089064}
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
@@ -1610,3 +1705,5 @@ SceneRoots:
   - {fileID: 809889382}
   - {fileID: 1350499924}
   - {fileID: 872049072}
+  - {fileID: 1538358369}
+  - {fileID: 1944448548}
