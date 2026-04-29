@@ -547,7 +547,7 @@ GameObject:
   - component: {fileID: 554983983}
   - component: {fileID: 554983982}
   m_Layer: 0
-  m_Name: TSS
+  m_Name: TSSBattery
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
