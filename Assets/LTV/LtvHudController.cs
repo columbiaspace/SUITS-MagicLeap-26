@@ -1,6 +1,7 @@
 using UnityEngine;
 using UnityEngine.UI;
-using TMPro; // Required for TextMeshPro UI
+using UnityEngine.EventSystems;
+using TMPro;
 using LtvDiagnostics;
 
 public class LtvHudController : MonoBehaviour
@@ -12,12 +13,28 @@ public class LtvHudController : MonoBehaviour
     public TextMeshProUGUI errorCodeText;   // The left box (formerly "AG NAV")
     public TextMeshProUGUI instructionText; // The middle instructional text
     public Button checkmarkButton;          // The right side button
+    public Image leftPanelImage;            // Background image of the left box (colored by danger level)
+
+    [Header("Danger-level colors")]
+    public Color highDangerColor = new Color(0.85f, 0.10f, 0.10f, 0.85f);   // red
+    public Color mediumDangerColor = new Color(0.95f, 0.75f, 0.15f, 0.85f); // yellow
+    public Color lowDangerColor = new Color(0.18f, 0.70f, 0.30f, 0.85f);    // green
+    public Color idleColor = new Color(1f, 1f, 1f, 0.627f);                 // matches original BG
+
+    [Header("Keyboard fallback (editor/device)")]
+    [Tooltip("If enabled, pressing these keys triggers OnCheckmarkClicked. Works in editor and on device.")]
+    public bool enableKeyboardFallback = true;
+    public KeyCode[] fallbackKeys = { KeyCode.Space, KeyCode.Return, KeyCode.KeypadEnter };
+
+    [Header("Debug")]
+    public bool enableDebugLogs = true;
+
+    public int ClickCount { get; private set; } // Exposed for PlayMode tests / proof-of-click
 
     private void OnEnable()
     {
         if (queueService != null)
         {
-            // Subscribe to the backend events
             queueService.StepChanged += OnStepChanged;
             queueService.ErrorChanged += OnErrorChanged;
             queueService.AllErrorsResolved += OnAllResolved;
@@ -28,7 +45,6 @@ public class LtvHudController : MonoBehaviour
     {
         if (queueService != null)
         {
-            // Unsubscribe to prevent memory leaks
             queueService.StepChanged -= OnStepChanged;
             queueService.ErrorChanged -= OnErrorChanged;
             queueService.AllErrorsResolved -= OnAllResolved;
@@ -37,44 +53,121 @@ public class LtvHudController : MonoBehaviour
 
     private void Start()
     {
-        // Kick off the diagnosis when the scene starts 
-        // (You can move this to a voice command later if needed!)
+        if (leftPanelImage != null)
+        {
+            leftPanelImage.color = idleColor;
+        }
+
         if (queueService != null && !queueService.IsDiagnosisActive)
         {
             queueService.StartDiagnosisFromTss();
         }
     }
 
-    // 3. When the right-hand button is clicked...
+    private void Update()
+    {
+        if (!enableKeyboardFallback || checkmarkButton == null) return;
+
+        for (int i = 0; i < fallbackKeys.Length; i++)
+        {
+            if (Input.GetKeyDown(fallbackKeys[i]))
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"[LtvHud] Keyboard fallback '{fallbackKeys[i]}' pressed \u2014 invoking checkmark button.", this);
+                }
+                InvokeCheckmark("keyboard");
+                return;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Programmatically clicks the checkmark button through the Button.onClick pipeline.
+    /// Used by the keyboard fallback and PlayMode tests so every path goes through the same code.
+    /// </summary>
+    public void InvokeCheckmark(string source)
+    {
+        if (checkmarkButton == null || !checkmarkButton.interactable) return;
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[LtvHud] InvokeCheckmark source={source}", this);
+        }
+
+        checkmarkButton.onClick.Invoke();
+    }
+
+    // Called by the Button's OnClick UnityEvent (wired in the scene)
     public void OnCheckmarkClicked()
     {
-        // Only advance if a diagnosis is active and we aren't waiting on TSS verification
+        ClickCount++;
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[LtvHud] >>> OnCheckmarkClicked fired! (clickCount={ClickCount})", this);
+        }
+
         if (queueService != null && queueService.IsDiagnosisActive && !queueService.IsVerifying)
         {
             queueService.AdvanceStep();
         }
     }
 
-    // 1 & 4. Displays the error code (and updates when the next error starts)
     private void OnErrorChanged(LtvError error)
     {
-        errorCodeText.text = error.Code;
+        if (error == null) return;
+
+        if (errorCodeText != null)
+        {
+            errorCodeText.text = error.Code;
+        }
+
+        ApplyDangerColor(error.Danger);
     }
 
-    // 2. Displays the current instruction
     private void OnStepChanged(LtvError error, int stepIndex)
     {
-        instructionText.text = error.Procedures[stepIndex];
+        if (error == null) return;
 
-        // Disable the button temporarily if the system is verifying the fix via TSS
-        checkmarkButton.interactable = !queueService.IsVerifying;
+        if (instructionText != null && stepIndex >= 0 && stepIndex < error.Procedures.Count)
+        {
+            instructionText.text = error.Procedures[stepIndex];
+        }
+
+        if (checkmarkButton != null)
+        {
+            checkmarkButton.interactable = !queueService.IsVerifying;
+        }
     }
 
-    // Handles the end-state when everything is fixed
     private void OnAllResolved()
     {
-        errorCodeText.text = "DONE";
-        instructionText.text = "All LTV errors resolved. Systems nominal.";
-        checkmarkButton.interactable = false; // Disable button since we are done
+        if (errorCodeText != null) errorCodeText.text = "DONE";
+        if (instructionText != null) instructionText.text = "All LTV errors resolved. Systems nominal.";
+        if (checkmarkButton != null) checkmarkButton.interactable = false;
+        if (leftPanelImage != null) leftPanelImage.color = idleColor;
+    }
+
+    private void ApplyDangerColor(LtvDangerLevel level)
+    {
+        if (leftPanelImage == null) return;
+
+        switch (level)
+        {
+            case LtvDangerLevel.High:
+                leftPanelImage.color = highDangerColor;
+                break;
+            case LtvDangerLevel.Medium:
+                leftPanelImage.color = mediumDangerColor;
+                break;
+            case LtvDangerLevel.Low:
+                leftPanelImage.color = lowDangerColor;
+                break;
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[LtvHud] ApplyDangerColor level={level} color={leftPanelImage.color}", this);
+        }
     }
 }

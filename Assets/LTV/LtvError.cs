@@ -3,6 +3,13 @@ using System.Collections.Generic;
 
 namespace LtvDiagnostics
 {
+    public enum LtvDangerLevel
+    {
+        Low,
+        Medium,
+        High
+    }
+
     public class LtvError : IComparable<LtvError>
     {
         public string Code { get; }
@@ -12,6 +19,7 @@ namespace LtvDiagnostics
         public int Priority { get; }
         public int Criticality { get; }
         public int SubsystemId { get; }
+        public LtvDangerLevel Danger { get; }
 
         public LtvError(string code, string description, bool needsResolved, List<string> procedures)
         {
@@ -23,6 +31,14 @@ namespace LtvDiagnostics
             Criticality = ParseDigit(Code, 0);
             SubsystemId = ParseDigit(Code, 1);
             Priority = Criticality * 10 + SubsystemId;
+            Danger = ClassifyDanger(Criticality);
+        }
+
+        public static LtvDangerLevel ClassifyDanger(int criticality)
+        {
+            if (criticality >= 7) return LtvDangerLevel.High;
+            if (criticality >= 4) return LtvDangerLevel.Medium;
+            return LtvDangerLevel.Low;
         }
 
         public int CompareTo(LtvError other)
