@@ -228,7 +228,7 @@ public class HealthPanelUI : MonoBehaviour
 
     private IEnumerator HideTopPanelAfterDelay(float seconds)
     {
-        yield return new WaitForSeconds(seconds);
+        yield return new WaitForSecondsRealtime(seconds);
         if (oxygenWarningPanel != null) oxygenWarningPanel.SetActive(false);
     }
 
@@ -251,10 +251,10 @@ public class HealthPanelUI : MonoBehaviour
         SetText(oxySecPressureText,   $"O2 Secondary Pressure: {GetNum(t, "oxy_sec_pressure")} psi");
         SetText(oxyConsumptionText,   $"O2 Consumption: {GetNum(t, "oxy_consumption")} psi/min");
 
-        SetText(suitPressureOxyText,  $"Suit Pressure O2: {GetNum(t, "suit_pressure_oxy")} psi");
-        SetText(suitPressureCO2Text,  $"Suit Pressure CO2: {GetNum(t, "suit_pressure_co2")} psi");
-        SetText(suitPressureOtherText, $"Suit Pressure Other: {GetNum(t, "suit_pressure_other")} psi");
-        SetText(suitPressureTotalText,$"Suit Pressure Total: {GetNum(t, "suit_pressure_total")} psi");
+        SetText(suitPressureOxyText,  $"O2: {GetNum(t, "suit_pressure_oxy")} psi");
+        SetText(suitPressureCO2Text,  $"CO2: {GetNum(t, "suit_pressure_co2")} psi");
+        SetText(suitPressureOtherText, $"Other: {GetNum(t, "suit_pressure_other")} psi");
+        SetText(suitPressureTotalText,$"Total: {GetNum(t, "suit_pressure_total")} psi");
         SetText(helmetPressureCO2Text,$"Helmet CO2: {GetNum(t, "helmet_pressure_co2")} psi");
 
         SetText(heartRateText,        $"Heart Rate: {GetNum(t, "heart_rate")} bpm");
