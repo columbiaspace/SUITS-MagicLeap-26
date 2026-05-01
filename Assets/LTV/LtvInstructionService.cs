@@ -831,10 +831,10 @@ public class LtvInstructionService : MonoBehaviour
     {
         if (string.IsNullOrEmpty(text)) return null;
 
-        // Word-boundary + digits + "." + whitespace. \b matches before "5" even
-        // when preceded by punctuation like "labeled 'RECO' 5." which is the
-        // exact shape the LTV 4800 procedure uses.
-        MatchCollection matches = Regex.Matches(text, @"\b(\d+)\.\s+");
+        // Word-boundary + digits + "." + (NOT another digit). Tolerates both
+        // "17. To" and the no-space "17.To" shape that appears in the actual
+        // 4800 feed, while excluding decimal numbers like "17.5".
+        MatchCollection matches = Regex.Matches(text, @"\b(\d+)\.(?!\d)");
         if (matches.Count < 2) return null;
 
         // Walk matches and keep only those that form a strictly +1 sequence
@@ -881,6 +881,8 @@ public class LtvInstructionService : MonoBehaviour
             int start = startIndices[i];
             int end = (i + 1 < startIndices.Count) ? startIndices[i + 1] : text.Length;
             string segment = text.Substring(start, end - start).Trim();
+            // Normalize "17.To" → "17. To" so the user-facing text reads consistently.
+            segment = Regex.Replace(segment, @"^(\d+)\.(\S)", "$1. $2");
             if (segment.Length > 0) result.Add(segment);
         }
 
