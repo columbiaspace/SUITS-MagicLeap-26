@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using LtvDiagnostics;
 using TssApi;
 using UnityEngine;
@@ -781,7 +782,109 @@ public class LtvInstructionService : MonoBehaviour
             }
         }
 
+        procedures = NormalizeProcedures(procedures);
+
         return new LtvError(code, description, needsResolved, procedures);
+    }
+
+    /// <summary>
+    /// Some TSS feeds deliver a multi-step procedure as a single concatenated
+    /// string ("1. Do X 2. Do Y 3. Do Z"). The HUD shows one entry of this list
+    /// per click, so without splitting the user sees every step at once. This
+    /// detects sequential "N. " markers and splits the string into individual
+    /// steps. Entries that already arrive as separate items pass through unchanged.
+    /// </summary>
+    private static List<string> NormalizeProcedures(List<string> input)
+    {
+        List<string> output = new List<string>();
+        if (input == null) return output;
+
+        for (int i = 0; i < input.Count; i++)
+        {
+            string raw = input[i];
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            List<string> split = SplitSequentialNumberedSteps(raw);
+            if (split != null && split.Count > 1)
+            {
+                output.AddRange(split);
+            }
+            else
+            {
+                output.Add(raw.Trim());
+            }
+        }
+
+        return output;
+    }
+
+    /// <summary>
+    /// Splits a string on sequential numbered markers ("1.", "2.", "3.", ...) only
+    /// when at least two consecutive numbers in proper sequence are present.
+    /// Returns null when no valid split can be made; the caller falls back to
+    /// keeping the original string as a single step.
+    /// </summary>
+    private static List<string> SplitSequentialNumberedSteps(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+
+        // Word-boundary + digits + "." + whitespace. \b matches before "5" even
+        // when preceded by punctuation like "labeled 'RECO' 5." which is the
+        // exact shape the LTV 4800 procedure uses.
+        MatchCollection matches = Regex.Matches(text, @"\b(\d+)\.\s+");
+        if (matches.Count < 2) return null;
+
+        // Walk matches and keep only those that form a strictly +1 sequence
+        // starting at 1 or 2 (the first marker may legitimately be "1." or, if
+        // the first step has no leading number, "2.").
+        List<int> startIndices = new List<int>();
+        int prevNum = -1;
+        for (int i = 0; i < matches.Count; i++)
+        {
+            int num;
+            if (!int.TryParse(matches[i].Groups[1].Value, out num)) continue;
+
+            if (startIndices.Count == 0)
+            {
+                if (num != 1 && num != 2) continue;
+            }
+            else if (num != prevNum + 1)
+            {
+                // Number out of sequence — likely a reference inside a step
+                // ("go back to step 1."). Skip without breaking the chain.
+                continue;
+            }
+
+            startIndices.Add(matches[i].Index);
+            prevNum = num;
+        }
+
+        if (startIndices.Count < 2) return null;
+
+        List<string> result = new List<string>();
+
+        // If the first valid marker is "2." (i.e., step 1 had no leading number),
+        // capture the prefix before it as the first step so we don't drop content.
+        int firstNum;
+        int.TryParse(Regex.Match(text.Substring(startIndices[0]), @"^(\d+)\.").Groups[1].Value, out firstNum);
+        if (firstNum == 2 && startIndices[0] > 0)
+        {
+            string prefix = text.Substring(0, startIndices[0]).Trim();
+            if (prefix.Length > 0) result.Add(prefix);
+        }
+
+        for (int i = 0; i < startIndices.Count; i++)
+        {
+            int start = startIndices[i];
+            int end = (i + 1 < startIndices.Count) ? startIndices[i + 1] : text.Length;
+            string segment = text.Substring(start, end - start).Trim();
+            if (segment.Length > 0) result.Add(segment);
+        }
+
+        return result;
     }
 
     private static string MapCodeToErrorKey(string code)
