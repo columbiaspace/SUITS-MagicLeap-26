@@ -13,6 +13,8 @@ public class LtvInstructionService : MonoBehaviour
     [Header("Polling")]
     [SerializeField] private float verificationPollSeconds = 1.0f;
     [SerializeField] private float verificationTimeoutSeconds = 10.0f;
+    [Tooltip("How often (seconds) to re-request LTV_ERRORS from TSS to catch errors that appear mid-resolution.")]
+    [SerializeField] private float errorListRefreshSeconds = 1.0f;
 
     [Header("Retry")]
     [SerializeField] private int maxRetries = 3;
@@ -37,12 +39,14 @@ public class LtvInstructionService : MonoBehaviour
     public int RetryCount => retryCount;
 
     private MaxHeap<LtvError> errorHeap = new MaxHeap<LtvError>();
+    private readonly HashSet<string> queuedCodes = new HashSet<string>();
     private LtvError currentError;
     private int currentStepIndex;
     private bool diagnosisActive;
     private bool verifying;
     private int retryCount;
     private Coroutine verificationCoroutine;
+    private Coroutine refreshCoroutine;
 
     private void Awake()
     {
@@ -70,6 +74,23 @@ public class LtvInstructionService : MonoBehaviour
         }
     }
 
+    private void OnEnable()
+    {
+        if (refreshCoroutine == null)
+        {
+            refreshCoroutine = StartCoroutine(RefreshLoop());
+        }
+    }
+
+    private void OnDisable()
+    {
+        if (refreshCoroutine != null)
+        {
+            StopCoroutine(refreshCoroutine);
+            refreshCoroutine = null;
+        }
+    }
+
     /// <summary>
     /// Fetches error_procedures from TSS, builds priority queue, and starts
     /// walking through errors highest-priority-first.
@@ -88,6 +109,7 @@ public class LtvInstructionService : MonoBehaviour
 
         StopVerification();
         errorHeap.Clear();
+        queuedCodes.Clear();
         currentError = null;
         currentStepIndex = 0;
         retryCount = 0;
@@ -136,6 +158,7 @@ public class LtvInstructionService : MonoBehaviour
             }
 
             errorHeap.Insert(error);
+            queuedCodes.Add(error.Code);
 
             if (enableDebugLogs)
             {
@@ -251,6 +274,7 @@ public class LtvInstructionService : MonoBehaviour
     {
         StopVerification();
         errorHeap.Clear();
+        queuedCodes.Clear();
         currentError = null;
         currentStepIndex = 0;
         retryCount = 0;
@@ -268,13 +292,18 @@ public class LtvInstructionService : MonoBehaviour
     {
         if (errorHeap.Count == 0)
         {
+            RefreshFromTss();
+        }
+
+        if (errorHeap.Count == 0)
+        {
             currentError = null;
             currentStepIndex = 0;
             diagnosisActive = false;
 
             if (enableDebugLogs)
             {
-                Debug.Log("[LTV] All errors resolved.", this);
+                Debug.Log("[LTV] All errors resolved. Refresh loop continues to watch for new errors.", this);
             }
 
             AllErrorsResolved?.Invoke();
@@ -358,6 +387,7 @@ public class LtvInstructionService : MonoBehaviour
                     Debug.Log($"[LTV] Error {errorToVerify.Code} verified resolved by TSS.", this);
                 }
 
+                queuedCodes.Remove(errorToVerify.Code);
                 verifying = false;
                 verificationCoroutine = null;
                 PopNextError();
@@ -391,6 +421,7 @@ public class LtvInstructionService : MonoBehaviour
                 );
             }
 
+            queuedCodes.Remove(currentError.Code);
             MaxRetriesExceeded?.Invoke(currentError);
             PopNextError();
             return;
@@ -409,6 +440,95 @@ public class LtvInstructionService : MonoBehaviour
         ResolutionFailed?.Invoke(currentError);
         StepChanged?.Invoke(currentError, currentStepIndex);
         EmitSnapshot();
+    }
+
+    /// <summary>
+    /// Continuously re-requests LTV_ERRORS from TSS. Additional errors may arise
+    /// while the astronaut is resolving others; this loop ensures every new
+    /// `needs_resolved=true` entry gets queued, and re-activates diagnosis if
+    /// errors appear after we previously reported all-resolved.
+    /// </summary>
+    private IEnumerator RefreshLoop()
+    {
+        WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.1f, errorListRefreshSeconds));
+        while (true)
+        {
+            int addedCount = RefreshFromTss();
+
+            if (addedCount > 0 && currentError == null && !verifying)
+            {
+                bool wasActive = diagnosisActive;
+                diagnosisActive = true;
+
+                if (enableDebugLogs && !wasActive)
+                {
+                    Debug.Log("[LTV] Refresh re-activated diagnosis after new errors arrived post-resolution.", this);
+                }
+
+                PopNextError();
+            }
+            else if (addedCount > 0)
+            {
+                EmitSnapshot();
+            }
+
+            yield return wait;
+        }
+    }
+
+    /// <summary>
+    /// Pulls the latest error_procedures from TSS and enqueues every
+    /// `needs_resolved=true` entry whose code we aren't already tracking.
+    /// Returns the number of newly-queued errors.
+    /// </summary>
+    private int RefreshFromTss()
+    {
+        if (tssApi == null)
+        {
+            return 0;
+        }
+
+        List<Dictionary<string, object>> errorProcedures = tssApi.GetLtvErrorProcedures();
+        if (errorProcedures == null || errorProcedures.Count == 0)
+        {
+            return 0;
+        }
+
+        int addedCount = 0;
+        for (int i = 0; i < errorProcedures.Count; i++)
+        {
+            Dictionary<string, object> raw = errorProcedures[i];
+            if (raw == null)
+            {
+                continue;
+            }
+
+            LtvError error = ParseError(raw);
+            if (error == null || !error.NeedsResolved || error.Procedures.Count == 0)
+            {
+                continue;
+            }
+
+            if (queuedCodes.Contains(error.Code))
+            {
+                continue;
+            }
+
+            errorHeap.Insert(error);
+            queuedCodes.Add(error.Code);
+            addedCount++;
+
+            if (enableDebugLogs)
+            {
+                Debug.Log(
+                    $"[LTV] Refresh queued new error {error.Code} ({error.Description}) " +
+                    $"priority={error.Priority} steps={error.Procedures.Count}",
+                    this
+                );
+            }
+        }
+
+        return addedCount;
     }
 
     private bool IsErrorStillActive(LtvError error)

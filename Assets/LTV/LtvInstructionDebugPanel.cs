@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.EventSystems;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 #if ENABLE_INPUT_SYSTEM && !ENABLE_LEGACY_INPUT_MANAGER
 using UnityEngine.InputSystem.UI;
@@ -34,6 +35,11 @@ public class LtvInstructionDebugPanel : MonoBehaviour
             return;
         }
 
+        if (ShouldSkipAutoCreateForActiveScene())
+        {
+            return;
+        }
+
         if (FindObjectOfType<LtvInstructionDebugPanel>() != null)
         {
             return;
@@ -41,6 +47,25 @@ public class LtvInstructionDebugPanel : MonoBehaviour
 
         GameObject panelRoot = new GameObject("LtvInstructionDebugPanel");
         panelRoot.AddComponent<LtvInstructionDebugPanel>();
+    }
+
+    private static bool ShouldSkipAutoCreateForActiveScene()
+    {
+        var scene = SceneManager.GetActiveScene();
+        if (!scene.IsValid() || string.IsNullOrEmpty(scene.path))
+        {
+            return false;
+        }
+
+        var path = scene.path.Replace('\\', '/');
+        if (path.IndexOf("/final_scenes/", StringComparison.OrdinalIgnoreCase) < 0)
+        {
+            return false;
+        }
+
+        return path.EndsWith("/Egress.unity", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith("/Ingress.unity", StringComparison.OrdinalIgnoreCase)
+            || path.EndsWith("/Mission.unity", StringComparison.OrdinalIgnoreCase);
     }
 #endif
 
