@@ -45,6 +45,7 @@ public class IngressProcedureManager : MonoBehaviour
 
     private List<Step>                  _steps;
     private int                         _current;
+    private int                         _lastSpokenStep = -1;
     private Dictionary<string, object>  _latestData;
     private Coroutine                   _timerCo;
 
@@ -55,6 +56,7 @@ public class IngressProcedureManager : MonoBehaviour
         Resolve();
         BuildSteps();
         _current    = 0;
+        _lastSpokenStep = -1;
         _latestData = null;
 
         RegisterTssEva();
@@ -158,6 +160,8 @@ public class IngressProcedureManager : MonoBehaviour
         if (stepText != null)
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
+        SpeakStep(index, step.Label);
+
         if (displayImage != null)
             displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
 
@@ -189,6 +193,17 @@ public class IngressProcedureManager : MonoBehaviour
     private void KillTimer()
     {
         if (_timerCo != null) { StopCoroutine(_timerCo); _timerCo = null; }
+    }
+
+    private void SpeakStep(int index, string label)
+    {
+        if (_lastSpokenStep == index || string.IsNullOrWhiteSpace(label))
+        {
+            return;
+        }
+
+        _lastSpokenStep = index;
+        VoiceIntents.Instance?.SpeakText(label);
     }
 
     private void OnEvaUpdated(Dictionary<string, object> data)

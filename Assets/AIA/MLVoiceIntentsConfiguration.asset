@@ -22,6 +22,14 @@ MonoBehaviour:
     Value: rotate
   - Id: 104
     Value: stop
+  - Id: 106
+    Value: hey luna initiate egress
+  - Id: 107
+    Value: hey luna initiate ltv
+  - Id: 108
+    Value: hey luna initiate ingress
+  - Id: 109
+    Value: hey luna go back
   - Id: 105
     Value: hey luna
   AutoAllowAllSystemIntents: 0

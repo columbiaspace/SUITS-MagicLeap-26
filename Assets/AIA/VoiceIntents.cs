@@ -5,12 +5,17 @@ using System.Linq;
 using System.Text;
 using UnityEngine;
 using UnityEngine.Networking;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using UnityEngine.XR.MagicLeap;
 
 public class VoiceIntents : MonoBehaviour
 {
     private const uint AskLunaEventId = 105;
+    private const uint InitiateEgressEventId = 106;
+    private const uint InitiateLtvEventId = 107;
+    private const uint InitiateIngressEventId = 108;
+    private const uint GoBackEventId = 109;
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
     private const int MaxVisibleConversationTurns = 3;
@@ -48,6 +53,9 @@ public class VoiceIntents : MonoBehaviour
     private readonly List<ConversationTurn> completedConversationTurns = new List<ConversationTurn>();
     private ConversationTurn activeConversationTurn;
     private string transientStatus = DefaultResponsePlaceholder;
+    private static string previousSceneName;
+
+    public static VoiceIntents Instance { get; private set; }
 
     [Serializable]
     private class AiChatMessage
@@ -123,6 +131,7 @@ public class VoiceIntents : MonoBehaviour
 
     private void Awake()
     {
+        Instance = this;
         permissionCallbacks.OnPermissionGranted += OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied += OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain += OnPermissionDenied;
@@ -137,6 +146,10 @@ public class VoiceIntents : MonoBehaviour
         {
             MLVoice.OnVoiceEvent -= MLVoiceOnVoiceEvent;
             isVoiceEventSubscribed = false;
+        }
+        if (Instance == this)
+        {
+            Instance = null;
         }
         DisposeTextToSpeech();
     }
@@ -263,6 +276,26 @@ public class VoiceIntents : MonoBehaviour
                 StartAiaRecordingFromWakePhrase();
                 break;
 
+            case InitiateEgressEventId:
+                Debug.Log("Hey Luna initiate egress detected");
+                LoadSceneCommand(AIASceneCatalog.EgressScene, "Switching to egress...");
+                break;
+
+            case InitiateLtvEventId:
+                Debug.Log("Hey Luna initiate LTV detected");
+                LoadSceneCommand(AIASceneCatalog.LtvScene, "Switching to LTV...");
+                break;
+
+            case InitiateIngressEventId:
+                Debug.Log("Hey Luna initiate ingress detected");
+                LoadSceneCommand(AIASceneCatalog.IngressScene, "Switching to ingress...");
+                break;
+
+            case GoBackEventId:
+                Debug.Log("Hey Luna go back detected");
+                GoBackCommand();
+                break;
+
             default:
                 Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
                 break;
@@ -280,6 +313,39 @@ public class VoiceIntents : MonoBehaviour
         }
 
         aiaInputController.StartRecordingFromVoiceIntent();
+    }
+
+    private void LoadSceneCommand(string sceneName, string statusMessage)
+    {
+        if (string.IsNullOrWhiteSpace(sceneName))
+        {
+            return;
+        }
+
+        Scene activeScene = SceneManager.GetActiveScene();
+        if (string.Equals(activeScene.name, sceneName, StringComparison.OrdinalIgnoreCase))
+        {
+            SetResponseStatus($"Already in {sceneName}.");
+            return;
+        }
+
+        previousSceneName = activeScene.name;
+        SetResponseStatus(statusMessage);
+        SceneLoader.LoadSceneByNameOrPath(AIASceneCatalog.GetScenePath(sceneName));
+    }
+
+    private void GoBackCommand()
+    {
+        if (string.IsNullOrWhiteSpace(previousSceneName))
+        {
+            SetResponseStatus("Luna does not have a previous scene to return to.");
+            return;
+        }
+
+        string sceneToLoad = previousSceneName;
+        previousSceneName = SceneManager.GetActiveScene().name;
+        SetResponseStatus($"Returning to {sceneToLoad}...");
+        SceneLoader.LoadSceneByNameOrPath(AIASceneCatalog.GetScenePath(sceneToLoad));
     }
 
     private void TryResolveResponseTextBox()
@@ -695,7 +761,7 @@ public class VoiceIntents : MonoBehaviour
 #endif
     }
 
-    private void SpeakText(string text)
+    public void SpeakText(string text)
     {
         if (!speakAiResponse)
         {

@@ -31,6 +31,8 @@ public class LtvHudController : MonoBehaviour
 
     public int ClickCount { get; private set; } // Exposed for PlayMode tests / proof-of-click
 
+    private string lastSpokenInstructionKey;
+
     private void OnEnable()
     {
         if (queueService != null)
@@ -131,7 +133,9 @@ public class LtvHudController : MonoBehaviour
 
         if (instructionText != null && stepIndex >= 0 && stepIndex < error.Procedures.Count)
         {
-            instructionText.text = error.Procedures[stepIndex];
+            string instruction = error.Procedures[stepIndex];
+            instructionText.text = instruction;
+            SpeakInstructionOnce($"{error.Code}:{stepIndex}", instruction);
         }
 
         if (checkmarkButton != null)
@@ -144,8 +148,20 @@ public class LtvHudController : MonoBehaviour
     {
         if (errorCodeText != null) errorCodeText.text = "DONE";
         if (instructionText != null) instructionText.text = "All LTV errors resolved. Systems nominal.";
+        SpeakInstructionOnce("all-resolved", "All LTV errors resolved. Systems nominal.");
         if (checkmarkButton != null) checkmarkButton.interactable = false;
         if (leftPanelImage != null) leftPanelImage.color = idleColor;
+    }
+
+    private void SpeakInstructionOnce(string key, string instruction)
+    {
+        if (string.IsNullOrWhiteSpace(instruction) || key == lastSpokenInstructionKey)
+        {
+            return;
+        }
+
+        lastSpokenInstructionKey = key;
+        VoiceIntents.Instance?.SpeakText(instruction);
     }
 
     private void ApplyDangerColor(LtvDangerLevel level)

@@ -47,6 +47,7 @@ public class EgressProcedureManager : MonoBehaviour
 
     private List<Step>                  _steps;
     private int                         _current;
+    private int                         _lastSpokenStep = -1;
     private Dictionary<string, object>  _latestData;
     private Coroutine                   _timerCo;
 
@@ -63,6 +64,7 @@ public class EgressProcedureManager : MonoBehaviour
 
         BuildSteps();
         _current    = 0;
+        _lastSpokenStep = -1;
         _latestData = null;
         EnterStep(0);
     }
@@ -174,6 +176,8 @@ public class EgressProcedureManager : MonoBehaviour
         if (stepText != null)
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
+        SpeakStep(index, step.Label);
+
         if (displayImage != null)
             displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
 
@@ -198,6 +202,17 @@ public class EgressProcedureManager : MonoBehaviour
     private void KillTimer()
     {
         if (_timerCo != null) { StopCoroutine(_timerCo); _timerCo = null; }
+    }
+
+    private void SpeakStep(int index, string label)
+    {
+        if (_lastSpokenStep == index || string.IsNullOrWhiteSpace(label))
+        {
+            return;
+        }
+
+        _lastSpokenStep = index;
+        VoiceIntents.Instance?.SpeakText(label);
     }
 
     // ── TSS data ───────────────────────────────────────────────────────

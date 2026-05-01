@@ -6,6 +6,11 @@ public class SceneLoader : MonoBehaviour
 {
     public void LoadScene(string sceneNameOrPath)
     {
+        LoadSceneByNameOrPath(sceneNameOrPath);
+    }
+
+    public static void LoadSceneByNameOrPath(string sceneNameOrPath)
+    {
         if (!string.IsNullOrEmpty(sceneNameOrPath) && sceneNameOrPath.StartsWith("Assets/", StringComparison.Ordinal))
         {
             var path = sceneNameOrPath.EndsWith(".unity", StringComparison.OrdinalIgnoreCase)
