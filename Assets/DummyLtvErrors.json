@@ -1,0 +1,25 @@
+{
+  "errors": [
+    {
+      "code": "4155",
+      "description": "Main Power Bus Error",
+      "needs_resolved": true,
+      "procedures": [
+        "1. Locate the power distribution bus on the right side of the main control panel",
+        "2. Verify the primary switch is set to the OFF position",
+        "3. Engage the backup relay and wait for the green indicator light"
+      ]
+    },
+    {
+      "code": "4761",
+      "description": "Dust Sensor Error",
+      "needs_resolved": true,
+      "procedures": [
+        "1. Open the exterior sensor hatch",
+        "2. Use the compressed air canister to clear debris from the lens",
+        "3. Run recalibration sequence on the terminal"
+      ]
+    }
+  ]
+}
+

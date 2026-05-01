@@ -9,6 +9,7 @@ namespace TssApi
     {
         private const int UdpGetEva = 1;
         private const int UdpGetLtv = 2;
+        private const int UdpGetLtvErrors = 3;
 
         [Header("TSS UDP Source")]
         [SerializeField] private string tssHost = "127.0.0.1";
@@ -285,6 +286,29 @@ namespace TssApi
             return new Dictionary<string, object> { { "procedures", results } };
         }
 
+        public List<Dictionary<string, object>> GetLtvErrorProcedures()
+        {
+            List<Dictionary<string, object>> result = new List<Dictionary<string, object>>();
+            object rawList = GetPath(_ltv, "error_procedures", null);
+            List<object> procedures = rawList as List<object>;
+
+            if (procedures == null)
+            {
+                return result;
+            }
+
+            for (int i = 0; i < procedures.Count; i++)
+            {
+                Dictionary<string, object> entry = procedures[i] as Dictionary<string, object>;
+                if (entry != null)
+                {
+                    result.Add(DeepCopyDict(entry));
+                }
+            }
+
+            return result;
+        }
+
         public Dictionary<string, object> GetLtvProcedure(string procedureId)
         {
             Dictionary<string, object> ltv = GetNestedDict(_procedures, "ltv");
@@ -547,27 +571,9 @@ namespace TssApi
             WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
             while (true)
             {
-                Dictionary<string, object> evaRaw = null;
-                Dictionary<string, object> ltvRaw = null;
-
-                if (_udp == null)
-                {
-                    _lastPollEvaUdpOk = false;
-                    _lastPollLtvUdpOk = false;
-                    string e = string.IsNullOrEmpty(_udpInitError) ? "udp_not_initialized" : _udpInitError;
-                    _lastPollEvaUdpError = e;
-                    _lastPollLtvUdpError = e;
-                }
-                else
-                {
-                    evaRaw = _udp.RequestJson(UdpGetEva);
-                    _lastPollEvaUdpOk = evaRaw != null;
-                    _lastPollEvaUdpError = _lastPollEvaUdpOk ? string.Empty : (_udp.LastRequestError ?? "eva_request_failed");
-
-                    ltvRaw = _udp.RequestJson(UdpGetLtv);
-                    _lastPollLtvUdpOk = ltvRaw != null;
-                    _lastPollLtvUdpError = _lastPollLtvUdpOk ? string.Empty : (_udp.LastRequestError ?? "ltv_request_failed");
-                }
+                Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
+                Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
+                Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
 
                 if (evaRaw != null)
                 {
@@ -578,6 +584,11 @@ namespace TssApi
                 if (ltvRaw != null)
                 {
                     _ltv = ltvRaw;
+                }
+
+                if (ltvErrorsRaw != null)
+                {
+                    MergeLtvErrors(ltvErrorsRaw);
                 }
 
                 _sourceOnline = evaRaw != null && ltvRaw != null;
@@ -625,6 +636,19 @@ namespace TssApi
 
             object parsed = MiniJson.Deserialize(ltvProceduresJson.text);
             _procedures = parsed as Dictionary<string, object> ?? new Dictionary<string, object>();
+        }
+
+        private void MergeLtvErrors(Dictionary<string, object> ltvErrorsRaw)
+        {
+            if (_ltv == null)
+            {
+                _ltv = new Dictionary<string, object>();
+            }
+
+            foreach (KeyValuePair<string, object> kvp in ltvErrorsRaw)
+            {
+                _ltv[kvp.Key] = kvp.Value;
+            }
         }
 
         private static string NormalizeEvaId(string evaId)

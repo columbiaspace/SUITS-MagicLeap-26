@@ -1,51 +1,52 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using LtvDiagnostics;
 using TssApi;
 using UnityEngine;
 
 public class LtvInstructionService : MonoBehaviour
 {
-    [Serializable]
-    private class ErrorProcedureRule
-    {
-        public string errorKey = "recovery_mode";
-        public string procedureId = "erm";
-        public int priority = 100;
-        public bool enabled = true;
-    }
-
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
 
     [Header("Polling")]
-    [SerializeField] private bool autoRefresh = true;
-    [SerializeField] private float pollIntervalSeconds = 0.25f;
+    [SerializeField] private float verificationPollSeconds = 1.0f;
+    [SerializeField] private float verificationTimeoutSeconds = 10.0f;
+    [Tooltip("How often (seconds) to re-request LTV_ERRORS from TSS to catch errors that appear mid-resolution.")]
+    [SerializeField] private float errorListRefreshSeconds = 1.0f;
 
-    [Header("Priority Source")]
-    [SerializeField] private bool preferProcedurePriority = true;
-
-    [Header("Workflow")]
-    [SerializeField] private bool strictSingleErrorFlow = true;
+    [Header("Retry")]
+    [SerializeField] private int maxRetries = 3;
 
     [Header("Debug")]
     [SerializeField] private bool enableDebugLogs = true;
 
-    [Header("LTV Error -> Procedure")]
-    [SerializeField] private List<ErrorProcedureRule> rules = new List<ErrorProcedureRule>();
-
+    // Events for frontend / UI consumers
     public event Action<Dictionary<string, object>> InstructionUpdated;
+    public event Action<LtvError, int> StepChanged;
+    public event Action<LtvError> ErrorChanged;
+    public event Action<LtvError> ResolutionFailed;
+    public event Action<LtvError> MaxRetriesExceeded;
+    public event Action AllErrorsResolved;
 
-    private Coroutine pollCoroutine;
-    private string lastFingerprint = string.Empty;
-    private Dictionary<string, object> currentInstruction = new Dictionary<string, object>();
-    private readonly Dictionary<string, int> procedurePriorityCache = new Dictionary<string, int>();
-    private readonly Dictionary<string, HashSet<string>> manualCompletedStepsByProcedure =
-        new Dictionary<string, HashSet<string>>();
-    private readonly HashSet<string> completedProceduresWhileErrorActive =
-        new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-    private ErrorProcedureRule lockedRule;
-    private int lockedPriority;
+    // Public read-only state
+    public LtvError CurrentError => currentError;
+    public int CurrentStepIndex => currentStepIndex;
+    public bool IsDiagnosisActive => diagnosisActive;
+    public bool IsVerifying => verifying;
+    public int RemainingErrors => errorHeap.Count;
+    public int RetryCount => retryCount;
+
+    private MaxHeap<LtvError> errorHeap = new MaxHeap<LtvError>();
+    private readonly HashSet<string> queuedCodes = new HashSet<string>();
+    private LtvError currentError;
+    private int currentStepIndex;
+    private bool diagnosisActive;
+    private bool verifying;
+    private int retryCount;
+    private Coroutine verificationCoroutine;
+    private Coroutine refreshCoroutine;
 
     private void Awake()
     {
@@ -64,17 +65,10 @@ public class LtvInstructionService : MonoBehaviour
             tssApi = FindObjectOfType<TssUnityApiService>();
         }
 
-        if (rules.Count == 0)
-        {
-            LoadDefaultRules();
-        }
-
         if (enableDebugLogs)
         {
             Debug.Log(
-                $"[LTV] Service ready. TssApi linked={tssApi != null}, " +
-                $"autoRefresh={autoRefresh}, pollInterval={pollIntervalSeconds:0.00}s, " +
-                $"strictFlow={strictSingleErrorFlow}, rules={rules.Count}",
+                $"[LTV] Service ready. TssApi linked={tssApi != null}",
                 this
             );
         }
@@ -82,786 +76,677 @@ public class LtvInstructionService : MonoBehaviour
 
     private void OnEnable()
     {
-        if (!autoRefresh)
+        if (refreshCoroutine == null)
         {
-            return;
+            refreshCoroutine = StartCoroutine(RefreshLoop());
         }
-
-        RefreshNow();
-        pollCoroutine = StartCoroutine(PollLoop());
     }
 
     private void OnDisable()
     {
-        if (pollCoroutine != null)
+        if (refreshCoroutine != null)
         {
-            StopCoroutine(pollCoroutine);
-            pollCoroutine = null;
+            StopCoroutine(refreshCoroutine);
+            refreshCoroutine = null;
         }
     }
 
-    public Dictionary<string, object> GetCurrentInstruction()
-    {
-        return new Dictionary<string, object>(currentInstruction);
-    }
-
-    // UI trigger: marks the currently displayed manual step as complete.
-    // Returns false when there is no active step or when the step is criteria-gated.
-    public bool MarkCurrentStepDone()
-    {
-        string procedureId = Convert.ToString(GetPath(currentInstruction, "procedure_id", string.Empty));
-        string stepId = Convert.ToString(GetPath(currentInstruction, "next_step_id", string.Empty));
-        bool hasCriteria = ToBool(GetPath(currentInstruction, "next_step_has_criteria", false));
-
-        if (string.IsNullOrEmpty(procedureId) || string.IsNullOrEmpty(stepId))
-        {
-            if (enableDebugLogs)
-            {
-                Debug.LogWarning("[LTV] MarkCurrentStepDone ignored: no active step.", this);
-            }
-
-            return false;
-        }
-
-        if (hasCriteria)
-        {
-            if (enableDebugLogs)
-            {
-                Debug.LogWarning(
-                    $"[LTV] MarkCurrentStepDone ignored: step {stepId} is criteria-gated; waiting for telemetry condition.",
-                    this
-                );
-            }
-
-            return false;
-        }
-
-        return MarkStepDone(procedureId, stepId);
-    }
-
-    // UI trigger: mark a specific step complete.
-    public bool MarkStepDone(string procedureId, string stepId)
-    {
-        string normalizedProcedureId = (procedureId ?? string.Empty).Trim();
-        string normalizedStepId = (stepId ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(normalizedProcedureId) || string.IsNullOrEmpty(normalizedStepId))
-        {
-            return false;
-        }
-
-        HashSet<string> completed = GetOrCreateManualCompletedSet(normalizedProcedureId);
-        bool added = completed.Add(normalizedStepId);
-
-        if (enableDebugLogs)
-        {
-            Debug.Log(
-                $"[LTV] MarkStepDone procedure={normalizedProcedureId} step={normalizedStepId} added={added}",
-                this
-            );
-        }
-
-        RefreshNow();
-        return added;
-    }
-
-    // Optional utility for UI reset button.
-    public void ResetManualProgress(string procedureId = null)
-    {
-        string normalizedProcedureId = (procedureId ?? string.Empty).Trim();
-        if (string.IsNullOrEmpty(normalizedProcedureId))
-        {
-            manualCompletedStepsByProcedure.Clear();
-            completedProceduresWhileErrorActive.Clear();
-            UnlockRule("manual reset all");
-            if (enableDebugLogs)
-            {
-                Debug.Log("[LTV] Reset manual progress for all procedures.", this);
-            }
-        }
-        else
-        {
-            manualCompletedStepsByProcedure.Remove(normalizedProcedureId);
-            completedProceduresWhileErrorActive.Remove(normalizedProcedureId);
-            if (lockedRule != null && string.Equals(lockedRule.procedureId, normalizedProcedureId, StringComparison.OrdinalIgnoreCase))
-            {
-                UnlockRule("manual reset procedure");
-            }
-            if (enableDebugLogs)
-            {
-                Debug.Log($"[LTV] Reset manual progress for procedure={normalizedProcedureId}.", this);
-            }
-        }
-
-        RefreshNow();
-    }
-
-    public void RefreshNow()
+    /// <summary>
+    /// Fetches error_procedures from TSS, builds priority queue, and starts
+    /// walking through errors highest-priority-first.
+    /// </summary>
+    public void StartDiagnosisFromTss()
     {
         if (tssApi == null)
         {
             if (enableDebugLogs)
             {
-                Debug.LogWarning("[LTV] Refresh skipped: TssUnityApiService is null.", this);
+                Debug.LogWarning("[LTV] Cannot start diagnosis: TssUnityApiService is null.", this);
             }
+
             return;
         }
 
-        Dictionary<string, object> next = BuildInstructionSnapshot();
-        string fingerprint = BuildFingerprint(next);
-        currentInstruction = next;
+        StopVerification();
+        errorHeap.Clear();
+        queuedCodes.Clear();
+        currentError = null;
+        currentStepIndex = 0;
+        retryCount = 0;
+        diagnosisActive = true;
 
-        if (fingerprint == lastFingerprint)
+        List<Dictionary<string, object>> errorProcedures = tssApi.GetLtvErrorProcedures();
+
+        if (errorProcedures == null || errorProcedures.Count == 0)
         {
+            if (enableDebugLogs)
+            {
+                Debug.Log("[LTV] No error_procedures returned from TSS.", this);
+            }
+
+            diagnosisActive = false;
+            AllErrorsResolved?.Invoke();
+            EmitSnapshot();
             return;
         }
 
-        lastFingerprint = fingerprint;
-        InstructionUpdated?.Invoke(new Dictionary<string, object>(currentInstruction));
-
-        if (enableDebugLogs)
+        for (int i = 0; i < errorProcedures.Count; i++)
         {
-            string errorKey = Convert.ToString(GetPath(currentInstruction, "error_key", string.Empty));
-            string procedureId = Convert.ToString(GetPath(currentInstruction, "procedure_id", string.Empty));
-            string nextInstruction = Convert.ToString(GetPath(currentInstruction, "next_instruction", string.Empty));
-            bool hasActiveError = ToBool(GetPath(currentInstruction, "has_active_error", false));
-            int priority = 0;
-            TryToInt(GetPath(currentInstruction, "priority", 0), out priority);
-            bool procedureComplete = ToBool(GetPath(currentInstruction, "procedure_complete", false));
-
-            Debug.Log(
-                $"[LTV] Update hasError={hasActiveError} error={errorKey} procedure={procedureId} " +
-                $"priority={priority} complete={procedureComplete} next=\"{nextInstruction}\"",
-                this
-            );
-        }
-    }
-
-    private IEnumerator PollLoop()
-    {
-        WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
-        while (true)
-        {
-            RefreshNow();
-            yield return wait;
-        }
-    }
-
-    private Dictionary<string, object> BuildInstructionSnapshot()
-    {
-        Dictionary<string, object> errors = tssApi.GetLtvErrors();
-        PruneCompletedSuppressions(errors);
-
-        ErrorProcedureRule selectedRule = null;
-        int selectedPriority = 0;
-
-        if (strictSingleErrorFlow && lockedRule != null)
-        {
-            selectedRule = lockedRule;
-            selectedPriority = lockedPriority;
-        }
-        else
-        {
-            selectedRule = SelectHighestPriorityActiveRule(errors, out selectedPriority);
-            if (strictSingleErrorFlow && selectedRule != null)
+            Dictionary<string, object> raw = errorProcedures[i];
+            if (raw == null)
             {
-                LockRule(selectedRule, selectedPriority);
+                continue;
             }
-        }
 
-        int selectionGuard = 0;
-        while (selectedRule != null)
-        {
-            Dictionary<string, object> status = EvaluateProcedureProgress(selectedRule.procedureId) ?? new Dictionary<string, object>();
-            bool procedureComplete = ToBool(GetPath(status, "complete", false));
-
-            if (strictSingleErrorFlow && IsProcedure(selectedRule, "erm"))
+            LtvError error = ParseError(raw);
+            if (error == null || !error.NeedsResolved)
             {
-                if (TryBuildErmDelegatedSnapshot(
-                    selectedRule,
-                    selectedPriority,
-                    status,
-                    errors,
-                    out Dictionary<string, object> delegatedSnapshot))
+                continue;
+            }
+
+            if (error.Procedures.Count == 0)
+            {
+                if (enableDebugLogs)
                 {
-                    return delegatedSnapshot;
+                    Debug.Log(
+                        $"[LTV] Skipping error {error.Code} ({error.Description}): no procedures defined.",
+                        this
+                    );
                 }
+
+                continue;
             }
 
-            if (!strictSingleErrorFlow || !procedureComplete)
-            {
-                return BuildActiveSnapshot(selectedRule, selectedPriority, status);
-            }
+            errorHeap.Insert(error);
+            queuedCodes.Add(error.Code);
 
-            completedProceduresWhileErrorActive.Add(selectedRule.procedureId ?? string.Empty);
             if (enableDebugLogs)
             {
                 Debug.Log(
-                    $"[LTV] Procedure complete for error={selectedRule.errorKey}, procedure={selectedRule.procedureId}. Moving to next active error.",
+                    $"[LTV] Queued error {error.Code} ({error.Description}) " +
+                    $"priority={error.Priority} criticality={error.Criticality} subsystem={error.SubsystemId} " +
+                    $"steps={error.Procedures.Count}",
+                    this
+                );
+            }
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[LTV] Diagnosis started. {errorHeap.Count} errors queued.", this);
+        }
+
+        PopNextError();
+    }
+
+    /// <summary>
+    /// Advance to the next step in the current error's procedure.
+    /// After the last step, initiates TSS verification.
+    /// </summary>
+    public void AdvanceStep()
+    {
+        if (currentError == null || verifying)
+        {
+            return;
+        }
+
+        int nextIndex = currentStepIndex + 1;
+
+        if (nextIndex >= currentError.Procedures.Count)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.Log(
+                    $"[LTV] All steps completed for error {currentError.Code}. Verifying with TSS...",
                     this
                 );
             }
 
-            UnlockRule("procedure complete");
-            selectedRule = SelectHighestPriorityActiveRule(errors, out selectedPriority);
-            if (strictSingleErrorFlow && selectedRule != null)
-            {
-                LockRule(selectedRule, selectedPriority);
-            }
-
-            selectionGuard++;
-            if (selectionGuard > rules.Count + 2)
-            {
-                if (enableDebugLogs)
-                {
-                    Debug.LogWarning("[LTV] Strict-flow selection guard reached. Falling back to idle snapshot.", this);
-                }
-
-                break;
-            }
+            StartVerification();
+            return;
         }
 
-        return BuildNoActiveSnapshot();
-    }
-
-    private Dictionary<string, object> BuildNoActiveSnapshot()
-    {
-        return new Dictionary<string, object>
-        {
-            { "has_active_error", false },
-            { "error_key", string.Empty },
-            { "procedure_id", string.Empty },
-            { "priority", 0 },
-            { "procedure_complete", true },
-            { "next_step_id", string.Empty },
-            { "next_step_has_criteria", false },
-            { "next_instruction", "No active LTV errors." },
-            { "hint", string.Empty },
-            { "voice_short", string.Empty },
-            { "strict_flow", strictSingleErrorFlow },
-            { "locked_error_key", string.Empty },
-            { "locked_procedure_id", string.Empty }
-        };
-    }
-
-    private Dictionary<string, object> BuildActiveSnapshot(
-        ErrorProcedureRule selectedRule,
-        int selectedPriority,
-        Dictionary<string, object> status)
-    {
-        Dictionary<string, object> nextStep = GetPath(status, "next_step", null) as Dictionary<string, object>;
-        return new Dictionary<string, object>
-        {
-            { "has_active_error", true },
-            { "error_key", selectedRule.errorKey },
-            { "procedure_id", selectedRule.procedureId },
-            { "priority", selectedPriority },
-            { "procedure_complete", ToBool(GetPath(status, "complete", false)) },
-            { "next_step_id", Convert.ToString(GetPath(nextStep, "id", string.Empty)) },
-            { "next_step_has_criteria", ToBool(GetPath(nextStep, "has_criteria", false)) },
-            { "next_instruction", Convert.ToString(GetPath(nextStep, "instruction", "Follow procedure steps.")) },
-            { "hint", Convert.ToString(GetPath(nextStep, "hint", string.Empty)) },
-            { "voice_short", Convert.ToString(GetPath(nextStep, "voice_short", string.Empty)) },
-            { "strict_flow", strictSingleErrorFlow },
-            { "locked_error_key", lockedRule != null ? lockedRule.errorKey : string.Empty },
-            { "locked_procedure_id", lockedRule != null ? lockedRule.procedureId : string.Empty }
-        };
-    }
-
-    // When ERM is active, if the current ERM step is blocked by an active ltv.errors.* condition,
-    // surface that error's dedicated procedure as the current instruction stream.
-    private bool TryBuildErmDelegatedSnapshot(
-        ErrorProcedureRule ermRule,
-        int ermPriority,
-        Dictionary<string, object> ermStatus,
-        Dictionary<string, object> errors,
-        out Dictionary<string, object> snapshot)
-    {
-        snapshot = null;
-
-        if (!TryGetBlockingErrorKeyFromErmStatus(ermStatus, errors, out string blockingErrorKey))
-        {
-            return false;
-        }
-
-        ErrorProcedureRule dependencyRule = FindRuleByErrorKey(blockingErrorKey);
-        if (dependencyRule == null || IsProcedure(dependencyRule, "erm"))
-        {
-            return false;
-        }
-
-        int dependencyPriority = ResolvePriority(dependencyRule);
-        Dictionary<string, object> dependencyStatus = EvaluateProcedureProgress(dependencyRule.procedureId) ?? new Dictionary<string, object>();
-        bool dependencyComplete = ToBool(GetPath(dependencyStatus, "complete", false));
-        bool errorStillActive = ToBool(GetPath(errors, blockingErrorKey, false));
-
-        Dictionary<string, object> dependencyNextStep = GetPath(dependencyStatus, "next_step", null) as Dictionary<string, object>;
-
-        if (dependencyComplete && errorStillActive)
-        {
-            dependencyNextStep = new Dictionary<string, object>
-            {
-                { "id", "verify-" + blockingErrorKey },
-                { "instruction", $"Verify ltv.errors.{blockingErrorKey} is false before returning to ERM." },
-                { "criticality", "critical" },
-                { "hint", "Check telemetry/state source and confirm the fault flag cleared." },
-                { "voice_short", $"Verify {blockingErrorKey} fault cleared." },
-                { "has_criteria", true },
-                { "complete", false },
-                {
-                    "checks",
-                    new List<object>
-                    {
-                        new Dictionary<string, object>
-                        {
-                            { "path", "ltv.errors." + blockingErrorKey },
-                            { "op", "eq" },
-                            { "value", false },
-                            { "pass", false }
-                        }
-                    }
-                }
-            };
-        }
+        currentStepIndex = nextIndex;
 
         if (enableDebugLogs)
         {
-            string delegatedStepId = Convert.ToString(GetPath(dependencyNextStep, "id", string.Empty));
             Debug.Log(
-                $"[LTV] ERM blocked by error={blockingErrorKey}. Delegating to procedure={dependencyRule.procedureId}, step={delegatedStepId}",
+                $"[LTV] Step {currentStepIndex + 1}/{currentError.Procedures.Count} " +
+                $"for error {currentError.Code}: {currentError.Procedures[currentStepIndex]}",
                 this
             );
         }
 
-        snapshot = new Dictionary<string, object>
-        {
-            { "has_active_error", true },
-            { "error_key", dependencyRule.errorKey },
-            { "procedure_id", dependencyRule.procedureId },
-            { "priority", dependencyPriority },
-            { "procedure_complete", false },
-            { "next_step_id", Convert.ToString(GetPath(dependencyNextStep, "id", string.Empty)) },
-            { "next_step_has_criteria", ToBool(GetPath(dependencyNextStep, "has_criteria", false)) },
-            { "next_instruction", Convert.ToString(GetPath(dependencyNextStep, "instruction", "Follow procedure steps.")) },
-            { "hint", Convert.ToString(GetPath(dependencyNextStep, "hint", string.Empty)) },
-            { "voice_short", Convert.ToString(GetPath(dependencyNextStep, "voice_short", string.Empty)) },
-            { "strict_flow", strictSingleErrorFlow },
-            { "locked_error_key", lockedRule != null ? lockedRule.errorKey : string.Empty },
-            { "locked_procedure_id", lockedRule != null ? lockedRule.procedureId : string.Empty },
-            { "parent_procedure_id", ermRule.procedureId },
-            { "parent_priority", ermPriority },
-            { "delegated_by_error", blockingErrorKey }
-        };
-
-        return true;
+        StepChanged?.Invoke(currentError, currentStepIndex);
+        EmitSnapshot();
     }
 
-    private bool TryGetBlockingErrorKeyFromErmStatus(
-        Dictionary<string, object> ermStatus,
-        Dictionary<string, object> errors,
-        out string errorKey)
+    /// <summary>
+    /// Alias for AdvanceStep. Kept for LtvInstructionDebugPanel compatibility.
+    /// Returns true if the step was advanced.
+    /// </summary>
+    public bool MarkCurrentStepDone()
     {
-        errorKey = string.Empty;
-        Dictionary<string, object> nextStep = GetPath(ermStatus, "next_step", null) as Dictionary<string, object>;
-        if (nextStep == null || !ToBool(GetPath(nextStep, "has_criteria", false)))
+        if (currentError == null || verifying)
         {
+            if (enableDebugLogs)
+            {
+                Debug.LogWarning("[LTV] MarkCurrentStepDone ignored: no active step or verifying.", this);
+            }
+
             return false;
         }
 
-        List<object> checks = GetPath(nextStep, "checks", null) as List<object> ?? new List<object>();
-        for (int i = 0; i < checks.Count; i++)
+        AdvanceStep();
+        return true;
+    }
+
+    /// <summary>
+    /// Returns the current instruction state as a dictionary.
+    /// Compatible with LtvInstructionDebugPanel.
+    /// </summary>
+    public Dictionary<string, object> GetCurrentInstruction()
+    {
+        return BuildSnapshot();
+    }
+
+    /// <summary>
+    /// Returns the current state as a dictionary. Same as GetCurrentInstruction.
+    /// Compatible with LtvErrorQueueService consumers.
+    /// </summary>
+    public Dictionary<string, object> GetCurrentSnapshot()
+    {
+        return BuildSnapshot();
+    }
+
+    /// <summary>
+    /// Forces a snapshot emission. For debug panel compatibility.
+    /// </summary>
+    public void RefreshNow()
+    {
+        EmitSnapshot();
+    }
+
+    /// <summary>
+    /// Stops all diagnosis activity and resets state.
+    /// </summary>
+    public void StopDiagnosis()
+    {
+        StopVerification();
+        errorHeap.Clear();
+        queuedCodes.Clear();
+        currentError = null;
+        currentStepIndex = 0;
+        retryCount = 0;
+        diagnosisActive = false;
+
+        if (enableDebugLogs)
         {
-            Dictionary<string, object> check = checks[i] as Dictionary<string, object>;
-            if (check == null)
+            Debug.Log("[LTV] Diagnosis stopped.", this);
+        }
+
+        EmitSnapshot();
+    }
+
+    private void PopNextError()
+    {
+        if (errorHeap.Count == 0)
+        {
+            RefreshFromTss();
+        }
+
+        if (errorHeap.Count == 0)
+        {
+            currentError = null;
+            currentStepIndex = 0;
+            diagnosisActive = false;
+
+            if (enableDebugLogs)
+            {
+                Debug.Log("[LTV] All errors resolved. Refresh loop continues to watch for new errors.", this);
+            }
+
+            AllErrorsResolved?.Invoke();
+            EmitSnapshot();
+            return;
+        }
+
+        currentError = errorHeap.ExtractMax();
+        currentStepIndex = 0;
+        retryCount = 0;
+
+        if (enableDebugLogs)
+        {
+            Debug.Log(
+                $"[LTV] Now working on error {currentError.Code} ({currentError.Description}) " +
+                $"priority={currentError.Priority}, steps={currentError.Procedures.Count}, " +
+                $"remaining={errorHeap.Count}",
+                this
+            );
+        }
+
+        ErrorChanged?.Invoke(currentError);
+        StepChanged?.Invoke(currentError, currentStepIndex);
+        EmitSnapshot();
+    }
+
+    private void StartVerification()
+    {
+        if (verificationCoroutine != null)
+        {
+            StopCoroutine(verificationCoroutine);
+            verificationCoroutine = null;
+        }
+
+        verifying = true;
+        EmitSnapshot();
+        verificationCoroutine = StartCoroutine(VerifyResolution());
+    }
+
+    private void StopVerification()
+    {
+        if (verificationCoroutine != null)
+        {
+            StopCoroutine(verificationCoroutine);
+            verificationCoroutine = null;
+        }
+
+        verifying = false;
+    }
+
+    private IEnumerator VerifyResolution()
+    {
+        LtvError errorToVerify = currentError;
+        WaitForSeconds wait = new WaitForSeconds(verificationPollSeconds);
+
+        // Keep polling until the error is resolved or diagnosis is stopped.
+        // No fixed timeout — the astronaut turns off the error on the server,
+        // and we detect it whenever TSS reports the flag as false.
+        while (diagnosisActive)
+        {
+            if (tssApi == null || errorToVerify == null)
+            {
+                break;
+            }
+
+            bool stillActive = IsErrorStillActive(errorToVerify);
+
+            if (enableDebugLogs)
+            {
+                string errorKey = MapCodeToErrorKey(errorToVerify.Code);
+                Debug.Log(
+                    $"[LTV] Verification poll: error={errorToVerify.Code} key={errorKey} stillActive={stillActive}",
+                    this
+                );
+            }
+
+            if (!stillActive)
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"[LTV] Error {errorToVerify.Code} verified resolved by TSS.", this);
+                }
+
+                queuedCodes.Remove(errorToVerify.Code);
+                verifying = false;
+                verificationCoroutine = null;
+                PopNextError();
+                yield break;
+            }
+
+            yield return wait;
+        }
+
+        verifying = false;
+        verificationCoroutine = null;
+    }
+
+    private void HandleResolutionFailed()
+    {
+        if (currentError == null)
+        {
+            return;
+        }
+
+        retryCount++;
+
+        if (retryCount > maxRetries)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.LogError(
+                    $"[LTV] Error {currentError.Code} exceeded max retries ({maxRetries}). " +
+                    "Skipping to next error.",
+                    this
+                );
+            }
+
+            queuedCodes.Remove(currentError.Code);
+            MaxRetriesExceeded?.Invoke(currentError);
+            PopNextError();
+            return;
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.LogWarning(
+                $"[LTV] Error {currentError.Code} NOT resolved after completing all steps. " +
+                $"Retry {retryCount}/{maxRetries}. Re-showing all instructions.",
+                this
+            );
+        }
+
+        currentStepIndex = 0;
+        ResolutionFailed?.Invoke(currentError);
+        StepChanged?.Invoke(currentError, currentStepIndex);
+        EmitSnapshot();
+    }
+
+    /// <summary>
+    /// Continuously re-requests LTV_ERRORS from TSS. Additional errors may arise
+    /// while the astronaut is resolving others; this loop ensures every new
+    /// `needs_resolved=true` entry gets queued, and re-activates diagnosis if
+    /// errors appear after we previously reported all-resolved.
+    /// </summary>
+    private IEnumerator RefreshLoop()
+    {
+        WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.1f, errorListRefreshSeconds));
+        while (true)
+        {
+            int addedCount = RefreshFromTss();
+
+            if (addedCount > 0 && currentError == null && !verifying)
+            {
+                bool wasActive = diagnosisActive;
+                diagnosisActive = true;
+
+                if (enableDebugLogs && !wasActive)
+                {
+                    Debug.Log("[LTV] Refresh re-activated diagnosis after new errors arrived post-resolution.", this);
+                }
+
+                PopNextError();
+            }
+            else if (addedCount > 0)
+            {
+                EmitSnapshot();
+            }
+
+            yield return wait;
+        }
+    }
+
+    /// <summary>
+    /// Pulls the latest error_procedures from TSS and enqueues every
+    /// `needs_resolved=true` entry whose code we aren't already tracking.
+    /// Returns the number of newly-queued errors.
+    /// </summary>
+    private int RefreshFromTss()
+    {
+        if (tssApi == null)
+        {
+            return 0;
+        }
+
+        List<Dictionary<string, object>> errorProcedures = tssApi.GetLtvErrorProcedures();
+        if (errorProcedures == null || errorProcedures.Count == 0)
+        {
+            return 0;
+        }
+
+        int addedCount = 0;
+        for (int i = 0; i < errorProcedures.Count; i++)
+        {
+            Dictionary<string, object> raw = errorProcedures[i];
+            if (raw == null)
             {
                 continue;
             }
 
-            bool pass = ToBool(GetPath(check, "pass", false));
-            if (pass)
+            LtvError error = ParseError(raw);
+            if (error == null || !error.NeedsResolved || error.Procedures.Count == 0)
             {
                 continue;
             }
 
-            string path = Convert.ToString(GetPath(check, "path", string.Empty));
-            string op = Convert.ToString(GetPath(check, "op", "eq"));
-            bool targetFalse = !ToBool(GetPath(check, "value", true));
-            if (!string.Equals(op, "eq", StringComparison.OrdinalIgnoreCase) || !targetFalse)
+            if (queuedCodes.Contains(error.Code))
             {
                 continue;
             }
 
-            const string prefix = "ltv.errors.";
-            if (!path.StartsWith(prefix, StringComparison.Ordinal))
+            errorHeap.Insert(error);
+            queuedCodes.Add(error.Code);
+            addedCount++;
+
+            if (enableDebugLogs)
             {
-                continue;
+                Debug.Log(
+                    $"[LTV] Refresh queued new error {error.Code} ({error.Description}) " +
+                    $"priority={error.Priority} steps={error.Procedures.Count}",
+                    this
+                );
+            }
+        }
+
+        return addedCount;
+    }
+
+    private bool IsErrorStillActive(LtvError error)
+    {
+        if (tssApi == null || error == null)
+        {
+            if (enableDebugLogs)
+            {
+                Debug.LogWarning("[LTV] Cannot verify error: TSS or error is null. Assuming still active.", this);
             }
 
-            string candidate = path.Substring(prefix.Length);
-            if (string.IsNullOrEmpty(candidate))
+            return true;
+        }
+
+        string errorKey = MapCodeToErrorKey(error.Code);
+        if (string.IsNullOrEmpty(errorKey))
+        {
+            if (enableDebugLogs)
             {
-                continue;
+                Debug.LogWarning($"[LTV] No TSS key mapping for code {error.Code}. Assuming still active.", this);
             }
 
-            if (ToBool(GetPath(errors, candidate, false)))
+            return true;
+        }
+
+        Dictionary<string, object> errors = tssApi.GetLtvErrors();
+        if (errors == null || errors.Count == 0)
+        {
+            if (enableDebugLogs)
             {
-                errorKey = candidate;
-                return true;
+                Debug.LogWarning(
+                    $"[LTV] TSS returned null/empty errors dict. Checking error_procedures fallback.",
+                    this
+                );
             }
+
+            // Fallback: check error_procedures for needs_resolved flag
+            return IsErrorInProceduresList(error);
+        }
+
+        if (!errors.TryGetValue(errorKey, out object value))
+        {
+            if (enableDebugLogs)
+            {
+                string availableKeys = string.Join(", ", errors.Keys);
+                Debug.LogWarning(
+                    $"[LTV] TSS errors missing key '{errorKey}'. Available keys: [{availableKeys}]. " +
+                    "Falling back to error_procedures check.",
+                    this
+                );
+            }
+
+            // Fallback: check error_procedures for needs_resolved flag
+            return IsErrorInProceduresList(error);
+        }
+
+        bool result = ToBool(value);
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[LTV] Error flag '{errorKey}' = {value} (parsed as {result})", this);
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// Fallback verification: re-fetches error_procedures from TSS and checks
+    /// if this error's needs_resolved is still true.
+    /// </summary>
+    private bool IsErrorInProceduresList(LtvError error)
+    {
+        if (tssApi == null || error == null)
+        {
+            return true;
+        }
+
+        List<Dictionary<string, object>> procedures = tssApi.GetLtvErrorProcedures();
+        for (int i = 0; i < procedures.Count; i++)
+        {
+            Dictionary<string, object> proc = procedures[i];
+            string code = proc.ContainsKey("code") ? Convert.ToString(proc["code"]) : string.Empty;
+            if (code == error.Code)
+            {
+                bool needsResolved = proc.ContainsKey("needs_resolved") && ToBool(proc["needs_resolved"]);
+                if (enableDebugLogs)
+                {
+                    Debug.Log($"[LTV] Fallback check: error {code} needs_resolved={needsResolved}", this);
+                }
+
+                return needsResolved;
+            }
+        }
+
+        // Error not found in procedures list at all — treat as resolved
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[LTV] Fallback check: error {error.Code} not found in procedures list. Treating as resolved.", this);
         }
 
         return false;
     }
 
-    private ErrorProcedureRule FindRuleByErrorKey(string errorKey)
+    private Dictionary<string, object> BuildSnapshot()
     {
-        if (string.IsNullOrEmpty(errorKey))
-        {
-            return null;
-        }
-
-        for (int i = 0; i < rules.Count; i++)
-        {
-            ErrorProcedureRule candidate = rules[i];
-            if (candidate == null || !candidate.enabled)
-            {
-                continue;
-            }
-
-            if (string.Equals(candidate.errorKey, errorKey, StringComparison.OrdinalIgnoreCase))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
-    private static bool IsProcedure(ErrorProcedureRule rule, string procedureId)
-    {
-        if (rule == null)
-        {
-            return false;
-        }
-
-        return string.Equals(rule.procedureId, procedureId, StringComparison.OrdinalIgnoreCase);
-    }
-
-    private void LockRule(ErrorProcedureRule rule, int priority)
-    {
-        if (rule == null)
-        {
-            return;
-        }
-
-        lockedRule = rule;
-        lockedPriority = priority;
-
-        if (enableDebugLogs)
-        {
-            Debug.Log(
-                $"[LTV] Locked error flow to error={rule.errorKey}, procedure={rule.procedureId}, priority={priority}",
-                this
-            );
-        }
-    }
-
-    private void UnlockRule(string reason)
-    {
-        if (lockedRule == null)
-        {
-            return;
-        }
-
-        if (enableDebugLogs)
-        {
-            Debug.Log(
-                $"[LTV] Unlocking error flow from error={lockedRule.errorKey}, procedure={lockedRule.procedureId}. reason={reason}",
-                this
-            );
-        }
-
-        lockedRule = null;
-        lockedPriority = 0;
-    }
-
-    // Once a procedure is completed for a currently-active error, we suppress reselection of that
-    // same procedure until that error goes inactive (which also resets manual progress for that procedure).
-    private void PruneCompletedSuppressions(Dictionary<string, object> errors)
-    {
-        for (int i = 0; i < rules.Count; i++)
-        {
-            ErrorProcedureRule rule = rules[i];
-            if (rule == null || !rule.enabled || string.IsNullOrEmpty(rule.errorKey) || string.IsNullOrEmpty(rule.procedureId))
-            {
-                continue;
-            }
-
-            bool isActive = ToBool(GetPath(errors, rule.errorKey, false));
-            bool isLockedProcedure = lockedRule != null &&
-                string.Equals(lockedRule.procedureId, rule.procedureId, StringComparison.OrdinalIgnoreCase);
-            if (isActive || isLockedProcedure)
-            {
-                continue;
-            }
-
-            if (completedProceduresWhileErrorActive.Remove(rule.procedureId) && enableDebugLogs)
-            {
-                Debug.Log(
-                    $"[LTV] Error {rule.errorKey} is inactive; cleared completion suppression for procedure={rule.procedureId}.",
-                    this
-                );
-            }
-
-            manualCompletedStepsByProcedure.Remove(rule.procedureId);
-        }
-    }
-
-    // Evaluates procedure progress locally so empty completion_criteria steps do not auto-complete.
-    // Checkpoint behavior: criteria-backed steps are telemetry checkpoints; steps between checkpoints
-    // are surfaced sequentially as manual instructions for the astronaut.
-    private Dictionary<string, object> EvaluateProcedureProgress(string procedureId)
-    {
-        Dictionary<string, object> procedure = tssApi != null ? tssApi.GetLtvProcedure(procedureId) : null;
-        if (procedure == null)
-        {
-            return null;
-        }
-
-        HashSet<string> manualCompleted = GetOrCreateManualCompletedSet(procedureId);
-        Dictionary<string, object> mergedState = new Dictionary<string, object>
-        {
-            { "eva", tssApi.GetEva() },
-            { "ltv", tssApi.GetLtv() }
-        };
-
-        List<object> stepsRaw = GetPath(procedure, "steps", null) as List<object> ?? new List<object>();
-        List<Dictionary<string, object>> stepsMutable = new List<Dictionary<string, object>>();
-
-        for (int i = 0; i < stepsRaw.Count; i++)
-        {
-            Dictionary<string, object> step = stepsRaw[i] as Dictionary<string, object>;
-            if (step == null)
-            {
-                continue;
-            }
-
-            List<object> criteria = GetPath(step, "completion_criteria", null) as List<object> ?? new List<object>();
-            List<object> checks = new List<object>();
-            string stepId = Convert.ToString(GetPath(step, "id", string.Empty));
-            bool hasCriteria = criteria.Count > 0;
-            bool criteriaPass = hasCriteria;
-            bool manuallyComplete = manualCompleted.Contains(stepId);
-
-            if (hasCriteria)
-            {
-                for (int c = 0; c < criteria.Count; c++)
-                {
-                    Dictionary<string, object> criterion = criteria[c] as Dictionary<string, object>;
-                    if (criterion == null)
-                    {
-                        continue;
-                    }
-
-                    bool passed = EvaluateCriterion(mergedState, criterion);
-                    checks.Add(new Dictionary<string, object>
-                    {
-                        { "path", GetPath(criterion, "path", string.Empty) },
-                        { "op", GetPath(criterion, "op", "eq") },
-                        { "value", GetPath(criterion, "value", null) },
-                        { "pass", passed }
-                    });
-                    criteriaPass = criteriaPass && passed;
-                }
-            }
-            else
-            {
-                criteriaPass = false;
-            }
-
-            bool complete = hasCriteria ? criteriaPass : manuallyComplete;
-
-            stepsMutable.Add(new Dictionary<string, object>
-            {
-                { "id", GetPath(step, "id", string.Empty) },
-                { "instruction", GetPath(step, "instruction", string.Empty) },
-                { "criticality", GetPath(step, "criticality", "optional") },
-                { "hint", GetPath(step, "hint", string.Empty) },
-                { "voice_short", GetPath(step, "voice_short", string.Empty) },
-                { "checks", checks },
-                { "has_criteria", hasCriteria },
-                { "criteria_pass", criteriaPass },
-                { "complete", complete }
-            });
-        }
-
-        if (stepsMutable.Count == 0)
+        if (currentError == null)
         {
             return new Dictionary<string, object>
             {
-                { "procedure_id", procedureId },
-                { "completed_steps", 0 },
+                { "has_active_error", false },
+                { "active", false },
+                { "error_key", string.Empty },
+                { "error_code", string.Empty },
+                { "error_description", string.Empty },
+                { "procedure_id", string.Empty },
+                { "procedure_complete", true },
+                { "priority", 0 },
+                { "next_step_id", string.Empty },
+                { "next_step_has_criteria", false },
+                { "next_instruction", diagnosisActive ? "Verifying..." : "No active LTV errors." },
+                { "hint", string.Empty },
+                { "voice_short", string.Empty },
+                { "current_step_index", -1 },
                 { "total_steps", 0 },
-                { "complete", true },
-                { "next_step", null },
-                { "steps", new List<object>() }
+                { "remaining_errors", errorHeap.Count },
+                { "verifying", verifying },
+                { "retry_count", retryCount }
             };
         }
 
-        bool procedureComplete;
-        int completedSteps = 0;
-        Dictionary<string, object> nextStep = null;
-        List<object> stepsOut = new List<object>();
-
-        for (int i = 0; i < stepsMutable.Count; i++)
+        string instruction = string.Empty;
+        if (currentStepIndex >= 0 && currentStepIndex < currentError.Procedures.Count)
         {
-            Dictionary<string, object> step = stepsMutable[i];
-            bool complete = ToBool(GetPath(step, "complete", false));
-
-            step["complete"] = complete;
-            step.Remove("criteria_pass");
-            stepsOut.Add(step);
-
-            if (complete)
-            {
-                completedSteps++;
-            }
-
-            if (!complete && nextStep == null)
-            {
-                nextStep = step;
-            }
+            instruction = currentError.Procedures[currentStepIndex];
         }
 
-        procedureComplete = nextStep == null && stepsOut.Count > 0;
+        string errorKey = MapCodeToErrorKey(currentError.Code);
+        bool isLastStep = currentStepIndex >= currentError.Procedures.Count - 1;
 
         return new Dictionary<string, object>
         {
-            { "procedure_id", procedureId },
-            { "completed_steps", completedSteps },
-            { "total_steps", stepsOut.Count },
-            { "complete", procedureComplete },
-            { "next_step", nextStep },
-            { "steps", stepsOut }
+            { "has_active_error", true },
+            { "active", true },
+            { "error_key", errorKey },
+            { "error_code", currentError.Code },
+            { "error_description", currentError.Description },
+            { "procedure_id", errorKey },
+            { "procedure_complete", false },
+            { "priority", currentError.Priority },
+            { "criticality", currentError.Criticality },
+            { "subsystem_id", currentError.SubsystemId },
+            { "next_step_id", $"step-{currentStepIndex + 1}" },
+            { "next_step_has_criteria", isLastStep },
+            { "next_instruction", verifying ? $"Verifying error {currentError.Code} resolved with TSS..." : instruction },
+            { "hint", string.Empty },
+            { "voice_short", instruction },
+            { "current_step_index", currentStepIndex },
+            { "current_instruction", instruction },
+            { "total_steps", currentError.Procedures.Count },
+            { "remaining_errors", errorHeap.Count },
+            { "verifying", verifying },
+            { "retry_count", retryCount }
         };
     }
 
-    private HashSet<string> GetOrCreateManualCompletedSet(string procedureId)
+    private void EmitSnapshot()
     {
-        string key = (procedureId ?? string.Empty).Trim();
-        if (!manualCompletedStepsByProcedure.TryGetValue(key, out HashSet<string> completed))
-        {
-            completed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            manualCompletedStepsByProcedure[key] = completed;
-        }
-
-        return completed;
+        Dictionary<string, object> snapshot = BuildSnapshot();
+        InstructionUpdated?.Invoke(snapshot);
     }
 
-    private ErrorProcedureRule SelectHighestPriorityActiveRule(Dictionary<string, object> errors, out int selectedPriority)
+    private static LtvError ParseError(Dictionary<string, object> raw)
     {
-        ErrorProcedureRule winner = null;
-        selectedPriority = int.MinValue;
-
-        for (int i = 0; i < rules.Count; i++)
+        if (raw == null)
         {
-            ErrorProcedureRule candidate = rules[i];
-            if (candidate == null || !candidate.enabled || string.IsNullOrEmpty(candidate.errorKey))
-            {
-                continue;
-            }
+            return null;
+        }
 
-            bool isActive = ToBool(GetPath(errors, candidate.errorKey, false));
-            if (!isActive)
-            {
-                continue;
-            }
+        string code = raw.ContainsKey("code") ? Convert.ToString(raw["code"]) : "0000";
+        string description = raw.ContainsKey("description") ? Convert.ToString(raw["description"]) : string.Empty;
 
-            if (strictSingleErrorFlow &&
-                !string.IsNullOrEmpty(candidate.procedureId) &&
-                completedProceduresWhileErrorActive.Contains(candidate.procedureId))
-            {
-                continue;
-            }
+        bool needsResolved = false;
+        if (raw.ContainsKey("needs_resolved"))
+        {
+            needsResolved = ToBool(raw["needs_resolved"]);
+        }
 
-            int candidatePriority = ResolvePriority(candidate);
-            if (winner == null || candidatePriority > selectedPriority)
+        List<string> procedures = new List<string>();
+        if (raw.ContainsKey("procedures") && raw["procedures"] is List<object> rawList)
+        {
+            for (int i = 0; i < rawList.Count; i++)
             {
-                winner = candidate;
-                selectedPriority = candidatePriority;
+                procedures.Add(Convert.ToString(rawList[i]));
             }
         }
 
-        if (winner == null)
-        {
-            selectedPriority = 0;
-        }
-
-        return winner;
+        return new LtvError(code, description, needsResolved, procedures);
     }
 
-    private int ResolvePriority(ErrorProcedureRule rule)
+    private static string MapCodeToErrorKey(string code)
     {
-        if (rule == null)
+        if (string.IsNullOrEmpty(code))
         {
-            return 0;
+            return string.Empty;
         }
 
-        int fallback = rule.priority;
-        if (!preferProcedurePriority || string.IsNullOrEmpty(rule.procedureId))
+        switch (code)
         {
-            return fallback;
+            case "0000": return "recovery_mode";
+            case "4155": return "power_distribution";
+            case "4761": return "dust_sensor";
+            case "2129": return "fuse";
+            case "2130": return "nav_system";
+            case "2131": return "lidar_system";
+            case "2132": return "comms";
+            case "3700": return "electronic_heater";
+            case "2900": return "power_subsystem_bus";
+            default: return string.Empty;
         }
-
-        if (procedurePriorityCache.TryGetValue(rule.procedureId, out int cached))
-        {
-            return cached;
-        }
-
-        int resolved = fallback;
-        Dictionary<string, object> procedure = tssApi != null ? tssApi.GetLtvProcedure(rule.procedureId) : null;
-        if (TryToInt(GetPath(procedure, "priority", null), out int parsed))
-        {
-            resolved = parsed;
-        }
-
-        procedurePriorityCache[rule.procedureId] = resolved;
-        return resolved;
-    }
-
-    private void LoadDefaultRules()
-    {
-        rules = new List<ErrorProcedureRule>
-        {
-            new ErrorProcedureRule { errorKey = "recovery_mode", procedureId = "erm", priority = 100 },
-            new ErrorProcedureRule { errorKey = "power_distribution", procedureId = "power_distribution_reset", priority = 90 },
-            new ErrorProcedureRule { errorKey = "electronic_heater", procedureId = "electronic_heater_recover", priority = 80 },
-            new ErrorProcedureRule { errorKey = "nav_system", procedureId = "nav_restart", priority = 70 },
-            new ErrorProcedureRule { errorKey = "fuse", procedureId = "fuse_service", priority = 60 },
-            new ErrorProcedureRule { errorKey = "comms", procedureId = "comms_recover", priority = 50 },
-            new ErrorProcedureRule { errorKey = "power_subsystem_bus", procedureId = "power_subsystem_bus", priority = 40 },
-            new ErrorProcedureRule { errorKey = "dust_sensor", procedureId = "dust_sensor_clean", priority = 20 }
-        };
-    }
-
-    private static object GetPath(Dictionary<string, object> source, string path, object defaultValue)
-    {
-        if (source == null || string.IsNullOrEmpty(path))
-        {
-            return defaultValue;
-        }
-
-        object current = source;
-        string[] parts = path.Split('.');
-        for (int i = 0; i < parts.Length; i++)
-        {
-            Dictionary<string, object> dict = current as Dictionary<string, object>;
-            if (dict == null || !dict.TryGetValue(parts[i], out current))
-            {
-                return defaultValue;
-            }
-        }
-
-        return current ?? defaultValue;
     }
 
     private static bool ToBool(object value)
@@ -878,17 +763,15 @@ public class LtvInstructionService : MonoBehaviour
 
         if (value is string strValue)
         {
-            if (bool.TryParse(strValue, out bool parsedBool))
+            if (bool.TryParse(strValue, out bool parsed))
             {
-                return parsedBool;
+                return parsed;
             }
 
             if (double.TryParse(strValue, out double parsedNumber))
             {
                 return Math.Abs(parsedNumber) > double.Epsilon;
             }
-
-            return false;
         }
 
         if (value is IConvertible convertible)
@@ -904,149 +787,5 @@ public class LtvInstructionService : MonoBehaviour
         }
 
         return false;
-    }
-
-    private static bool TryToInt(object value, out int parsed)
-    {
-        parsed = 0;
-        if (value == null)
-        {
-            return false;
-        }
-
-        if (value is int intValue)
-        {
-            parsed = intValue;
-            return true;
-        }
-
-        if (value is long longValue)
-        {
-            if (longValue > int.MaxValue || longValue < int.MinValue)
-            {
-                return false;
-            }
-
-            parsed = (int)longValue;
-            return true;
-        }
-
-        if (value is double doubleValue)
-        {
-            if (doubleValue > int.MaxValue || doubleValue < int.MinValue)
-            {
-                return false;
-            }
-
-            parsed = (int)doubleValue;
-            return true;
-        }
-
-        if (value is string strValue && int.TryParse(strValue, out int fromString))
-        {
-            parsed = fromString;
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool EvaluateCriterion(Dictionary<string, object> state, Dictionary<string, object> criterion)
-    {
-        object value = GetPath(state, Convert.ToString(GetPath(criterion, "path", string.Empty)), null);
-        string op = Convert.ToString(GetPath(criterion, "op", "eq"));
-        object target = GetPath(criterion, "value", null);
-
-        switch (op)
-        {
-            case "eq":
-                return ValuesEqual(value, target);
-            case "ne":
-                return !ValuesEqual(value, target);
-            case "gt":
-                return CompareNumeric(value, target, out int gtResult) && gtResult > 0;
-            case "gte":
-                return CompareNumeric(value, target, out int gteResult) && gteResult >= 0;
-            case "lt":
-                return CompareNumeric(value, target, out int ltResult) && ltResult < 0;
-            case "lte":
-                return CompareNumeric(value, target, out int lteResult) && lteResult <= 0;
-            default:
-                return false;
-        }
-    }
-
-    private static bool ValuesEqual(object a, object b)
-    {
-        if (a == null && b == null)
-        {
-            return true;
-        }
-
-        if (a == null || b == null)
-        {
-            return false;
-        }
-
-        if (CompareNumeric(a, b, out int numericResult))
-        {
-            return numericResult == 0;
-        }
-
-        return string.Equals(Convert.ToString(a), Convert.ToString(b), StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static bool CompareNumeric(object a, object b, out int result)
-    {
-        result = 0;
-        if (TryToDouble(a, out double da) && TryToDouble(b, out double db))
-        {
-            result = da.CompareTo(db);
-            return true;
-        }
-
-        return false;
-    }
-
-    private static bool TryToDouble(object value, out double result)
-    {
-        result = 0.0d;
-        if (value == null)
-        {
-            return false;
-        }
-
-        try
-        {
-            if (value is bool boolValue)
-            {
-                result = boolValue ? 1.0d : 0.0d;
-                return true;
-            }
-
-            if (value is IConvertible convertible)
-            {
-                result = convertible.ToDouble(null);
-                return true;
-            }
-        }
-        catch
-        {
-        }
-
-        return false;
-    }
-
-    private static string BuildFingerprint(Dictionary<string, object> snapshot)
-    {
-        return string.Join("|",
-            Convert.ToString(GetPath(snapshot, "has_active_error", false)),
-            Convert.ToString(GetPath(snapshot, "error_key", string.Empty)),
-            Convert.ToString(GetPath(snapshot, "procedure_id", string.Empty)),
-            Convert.ToString(GetPath(snapshot, "locked_procedure_id", string.Empty)),
-            Convert.ToString(GetPath(snapshot, "next_step_id", string.Empty)),
-            Convert.ToString(GetPath(snapshot, "next_instruction", string.Empty)),
-            Convert.ToString(GetPath(snapshot, "procedure_complete", false))
-        );
     }
 }

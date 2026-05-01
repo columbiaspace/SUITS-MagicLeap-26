@@ -112,6 +112,12 @@ namespace TssApi
                 return false;
             }
 
+            int payloadOffset = FindJsonObjectStart(raw);
+            if (payloadOffset < 0)
+            {
+                return null;
+            }
+
             string json = Encoding.UTF8
                 .GetString(raw, payloadOffset, raw.Length - payloadOffset)
                 .TrimEnd('\0', ' ', '\n', '\r', '\t');
@@ -141,6 +147,32 @@ namespace TssApi
             }
 
             return true;
+        }
+
+        /// <summary>
+        /// Locates the first byte of the JSON object in the UDP payload.
+        /// TSS2026 GET replies are UTF-8 JSON beginning with '{' (possibly after whitespace).
+        /// </summary>
+        private static int FindJsonObjectStart(byte[] raw)
+        {
+            for (int i = 0; i < raw.Length; i++)
+            {
+                byte b = raw[i];
+                if (b == (byte)'{')
+                {
+                    return i;
+                }
+
+                // Stop scanning if we hit non-whitespace that is not '{' — payload may be legacy "[8-byte prefix][json]".
+                if (b != (byte)' ' && b != (byte)'\t' && b != (byte)'\r' && b != (byte)'\n')
+                {
+                    break;
+                }
+            }
+
+            // Legacy fallback: some older/custom stacks may prepend 8 binary bytes before the JSON body
+            // (mirroring the 8-byte request shape). TSS2026 does not; healthy packets take the '{' branch above.
+            return raw.Length > 8 ? 8 : 0;
         }
 
         /// <summary>
