@@ -11,7 +11,7 @@ public class AIAVoskInputController : MonoBehaviour
     private const string ReadyButtonLabel = "Start Recording";
     private const string RecordingButtonLabel = "Stop Recording";
     private const string BusyButtonLabel = "Loading Vosk...";
-    private const string DefaultVoskModelPath = "vosk-model-en-us-0.22-lgraph.zip";
+    private const string DefaultVoskModelPath = "vosk-model-small-en-us-0.15.zip";
     private static readonly string[] NasaMissionKeyPhrases =
     {
         "ingress",
@@ -414,7 +414,7 @@ public class AIAVoskInputController : MonoBehaviour
             StartInitializationTimeout();
 
             voskSpeechToText.StartVoskStt(
-                keyPhrases: new List<string>(NasaMissionKeyPhrases),
+                keyPhrases: new List<string>(),
                 modelPath: safeModelPath,
                 startMicrophone: startRecordingWhenReady,
                 maxAlternatives: maxAlternatives);

@@ -16,8 +16,6 @@ public static class AIASceneCatalog
 
     private static readonly HashSet<string> SupportedScenes = new HashSet<string>
     {
-        MainScene,
-        AiaScene,
         EgressScene,
         IngressScene,
         LtvScene,
