@@ -315,7 +315,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 957559143414961215, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
       propertyPath: m_LocalPosition.x
-      value: 0
+      value: -0.01
       objectReference: {fileID: 0}
     - target: {fileID: 957559143414961215, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
       propertyPath: m_LocalPosition.y
@@ -948,7 +948,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 10.207.124.137
+  tssHost: 192.168.1.210
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -1194,6 +1194,14 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 5604462856267450383, guid: ce09d09d51cc549ef96d44a36953006b, type: 3}
+      propertyPath: m_LocalPosition.x
+      value: -0.48
+      objectReference: {fileID: 0}
+    - target: {fileID: 5604462856267450383, guid: ce09d09d51cc549ef96d44a36953006b, type: 3}
+      propertyPath: m_LocalPosition.y
+      value: 0.998
+      objectReference: {fileID: 0}
     - target: {fileID: 8358158060413148696, guid: ce09d09d51cc549ef96d44a36953006b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
