@@ -897,7 +897,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 10.207.89.211
+  tssHost: 192.168.1.210
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -956,6 +956,9 @@ MonoBehaviour:
   uiaWaterWasteSprite: {fileID: 21300000, guid: b879001c78f4d46ff889585dfb9f6c71, type: 3}
   dcuPanelSprite: {fileID: 21300000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
   dcuPumpSprite: {fileID: 21300000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
+  dcuCo2Sprite: {fileID: 21300000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}
+  dcuBattLocalUmbSprite: {fileID: 21300000, guid: 89f3543df33d14e0baa0bbb217e0e177, type: 3}
+  dcuBattSecPriSprite: {fileID: 21300000, guid: 01fc080f0836944efa5b79cef7d738c6, type: 3}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
