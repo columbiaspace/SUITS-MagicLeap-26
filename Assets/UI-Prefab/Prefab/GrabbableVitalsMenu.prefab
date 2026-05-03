@@ -2265,8 +2265,8 @@ MonoBehaviour:
   evaElapsedTimeText: {fileID: 0}
   oxygenWarningPanel: {fileID: 0}
   oxygenWarningText: {fileID: 0}
-  persistentWarningPanel: {fileID: 0}
-  persistentWarningText: {fileID: 0}
+  vitalsPanel: {fileID: 0}
+  suitPanel: {fileID: 0}
 --- !u!114 &1100141840345605089
 MonoBehaviour:
   m_ObjectHideFlags: 0

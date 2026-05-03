@@ -524,33 +524,35 @@ namespace TssApi
             WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
             while (true)
             {
-                Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
-                Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
-                Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
-
-                if (evaRaw != null)
+                try
                 {
-                    _eva = evaRaw;
-                    EvaUpdated?.Invoke(GetEva());
+                    Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
+                    Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
+                    Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
+
+                    if (evaRaw != null)
+                    {
+                        _eva = evaRaw;
+                        EvaUpdated?.Invoke(GetEva());
+                    }
+
+                    if (ltvRaw != null)
+                        _ltv = ltvRaw;
+
+                    if (ltvErrorsRaw != null)
+                        MergeLtvErrors(ltvErrorsRaw);
+
+                    _sourceOnline = evaRaw != null && ltvRaw != null;
+                    if (_sourceOnline)
+                        _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogWarning($"[TssApi] PollLoop error: {e.Message}");
+                    _sourceOnline = false;
                 }
 
-                if (ltvRaw != null)
-                {
-                    _ltv = ltvRaw;
-                }
-
-                if (ltvErrorsRaw != null)
-                {
-                    MergeLtvErrors(ltvErrorsRaw);
-                }
-
-                _sourceOnline = evaRaw != null && ltvRaw != null;
-                if (_sourceOnline)
-                {
-                    _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
-                }
-
-                yield return wait;
+                yield return wait; // ← must be outside the try block
             }
         }
 

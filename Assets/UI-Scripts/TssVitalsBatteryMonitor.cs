@@ -1,25 +1,17 @@
 using System;
-using System.Collections;
 using System.Collections.Generic;
 using TssApi;
 using UnityEngine;
 
 public class TssVitalsBatteryMonitor : MonoBehaviour
 {
-    public enum BatteryState
-    {
-        Unknown,
-        Good,
-        RunningLow,
-        CriticallyLow
-    }
+    public enum BatteryState { Unknown, Good, RunningLow, CriticallyLow }
 
     public static event Action<float> CriticalBatteryEntered;
     public static event Action<BatteryState, float> BatteryStateChanged;
 
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
-    [SerializeField] private float refreshIntervalSeconds = 0.25f;
     [SerializeField] private string primaryBatteryPath = "telemetry.eva1.primary_battery_level";
     [SerializeField] private string secondaryBatteryPath = "telemetry.eva1.secondary_battery_level";
     [SerializeField] private bool useLowestAvailableSource = true;
@@ -30,8 +22,6 @@ public class TssVitalsBatteryMonitor : MonoBehaviour
 
     public BatteryState CurrentState { get; private set; } = BatteryState.Unknown;
     public float CurrentBatteryPercent { get; private set; }
-
-    private Coroutine refreshCoroutine;
 
     [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
     private static void EnsureMonitorExists()
@@ -45,25 +35,16 @@ public class TssVitalsBatteryMonitor : MonoBehaviour
     private void OnEnable()
     {
         if (tssApi == null) tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
-        if (tssApi != null) tssApi.EvaUpdated += OnEvaUpdated;
-        if (refreshCoroutine == null) refreshCoroutine = StartCoroutine(RefreshLoop());
+        if (tssApi != null)
+        {
+            tssApi.EvaUpdated += OnEvaUpdated;
+            EvaluatePacket(tssApi.GetEva());
+        }
     }
 
     private void OnDisable()
     {
-        if (refreshCoroutine != null) { StopCoroutine(refreshCoroutine); refreshCoroutine = null; }
         if (tssApi != null) tssApi.EvaUpdated -= OnEvaUpdated;
-    }
-
-    private IEnumerator RefreshLoop()
-    {
-        var wait = new WaitForSeconds(Mathf.Max(0.05f, refreshIntervalSeconds));
-        while (true)
-        {
-            if (tssApi == null) tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
-            if (tssApi != null) EvaluatePacket(tssApi.GetEva());
-            yield return wait;
-        }
     }
 
     private void OnEvaUpdated(Dictionary<string, object> packet) => EvaluatePacket(packet);

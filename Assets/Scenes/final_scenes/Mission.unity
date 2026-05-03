@@ -24,7 +24,7 @@ RenderSettings:
   m_AmbientEquatorColor: {r: 0.114, g: 0.125, b: 0.133, a: 1}
   m_AmbientGroundColor: {r: 0.047, g: 0.043, b: 0.035, a: 1}
   m_AmbientIntensity: 1
-  m_AmbientMode: 0
+  m_AmbientMode: 3
   m_SubtractiveShadowColor: {r: 0.42, g: 0.478, b: 0.627, a: 1}
   m_SkyboxMaterial: {fileID: 10304, guid: 0000000000000000f000000000000000, type: 0}
   m_HaloStrength: 0.5
@@ -32,7 +32,7 @@ RenderSettings:
   m_FlareFadeSpeed: 3
   m_HaloTexture: {fileID: 0}
   m_SpotCookie: {fileID: 10001, guid: 0000000000000000e000000000000000, type: 0}
-  m_DefaultReflectionMode: 0
+  m_DefaultReflectionMode: 1
   m_DefaultReflectionResolution: 128
   m_ReflectionBounces: 1
   m_ReflectionIntensity: 1
@@ -214,6 +214,10 @@ PrefabInstance:
     - target: {fileID: 4220726820455854964, guid: 5a9dda8ac319b4cc5bb61d4d8cad4bce, type: 3}
       propertyPath: m_Name
       value: WarningCanvas
+      objectReference: {fileID: 0}
+    - target: {fileID: 4220726820455854964, guid: 5a9dda8ac319b4cc5bb61d4d8cad4bce, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7733317240801426051, guid: 5a9dda8ac319b4cc5bb61d4d8cad4bce, type: 3}
       propertyPath: m_Camera
@@ -439,6 +443,10 @@ PrefabInstance:
     - target: {fileID: 2139147665216478101, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_Name
       value: VitalsButtonCanvas
+      objectReference: {fileID: 0}
+    - target: {fileID: 2139147665216478101, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 7699461129031171122, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: healthCanvas
@@ -1588,6 +1596,14 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 4818367814018673052, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+      propertyPath: suitPanel
+      value: 
+      objectReference: {fileID: 2000152156}
+    - target: {fileID: 4818367814018673052, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+      propertyPath: vitalsPanel
+      value: 
+      objectReference: {fileID: 1589804077}
+    - target: {fileID: 4818367814018673052, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
       propertyPath: oxygenWarningText
       value: 
       objectReference: {fileID: 1905848483}
@@ -1927,11 +1943,66 @@ PrefabInstance:
       propertyPath: m_Name
       value: GrabbableVitalsMenu
       objectReference: {fileID: 0}
+    - target: {fileID: 8715221860109088846, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+      propertyPath: m_IsActive
+      value: 1
+      objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+--- !u!1 &1262605131
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 1262605133}
+  - component: {fileID: 1262605132}
+  m_Layer: 0
+  m_Name: TSSBattery
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 0
+--- !u!114 &1262605132
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262605131}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: b0cc21a0e54f241fc8556dd18771367a, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  tssApi: {fileID: 0}
+  refreshIntervalSeconds: 0.25
+  primaryBatteryPath: telemetry.eva1.primary_battery_level
+  secondaryBatteryPath: telemetry.eva1.secondary_battery_level
+  useLowestAvailableSource: 1
+  runningLowThresholdPercent: 95
+  criticalThresholdPercent: 90
+--- !u!4 &1262605133
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1262605131}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0.0060306336, y: 0.33596992, z: 2.856003}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1265654827
 GameObject:
   m_ObjectHideFlags: 0
@@ -2113,9 +2184,17 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
+    - target: {fileID: 4276570974324033740, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
+      propertyPath: tssApi
+      value: 
+      objectReference: {fileID: 1138549943}
     - target: {fileID: 5910537829333682753, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
       propertyPath: m_Name
       value: TSSOxygen
+      objectReference: {fileID: 0}
+    - target: {fileID: 5910537829333682753, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 6203826331380625404, guid: b71c79accbab642708bb064f7d91a2a0, type: 3}
       propertyPath: m_LocalPosition.x
@@ -2316,6 +2395,11 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1469075974}
   m_CullTransparentMesh: 1
+--- !u!1 &1589804077 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8937785067362135294, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+  m_PrefabInstance: {fileID: 1170443495}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &1607032825
 GameObject:
   m_ObjectHideFlags: 0
@@ -2383,6 +2467,10 @@ PrefabInstance:
     - target: {fileID: 1312403242291473916, guid: ab81d3691081e4105a2a46ce460b02ce, type: 3}
       propertyPath: m_Name
       value: PopupWarning
+      objectReference: {fileID: 0}
+    - target: {fileID: 1312403242291473916, guid: ab81d3691081e4105a2a46ce460b02ce, type: 3}
+      propertyPath: m_IsActive
+      value: 1
       objectReference: {fileID: 0}
     - target: {fileID: 2338998152392880053, guid: ab81d3691081e4105a2a46ce460b02ce, type: 3}
       propertyPath: m_Pivot.x
@@ -2627,6 +2715,11 @@ CanvasRenderer:
   m_PrefabAsset: {fileID: 0}
   m_GameObject: {fileID: 1963959654}
   m_CullTransparentMesh: 1
+--- !u!1 &2000152156 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 5376722677349134980, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+  m_PrefabInstance: {fileID: 1170443495}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -2639,3 +2732,4 @@ SceneRoots:
   - {fileID: 1350499924}
   - {fileID: 1170443495}
   - {fileID: 1363828444}
+  - {fileID: 1262605133}

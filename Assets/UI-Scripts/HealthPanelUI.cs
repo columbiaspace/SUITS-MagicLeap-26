@@ -60,6 +60,9 @@ public class HealthPanelUI : MonoBehaviour
     private string batteryMessage = null;
     private Coroutine warningHideCoroutine;
 
+    private TssVitalsOxygenMonitor _oxygenMonitor;
+    private TssVitalsBatteryMonitor _batteryMonitor;
+
     private void OnEnable()
     {
         if (TssUnityApiService.Instance != null)
@@ -81,6 +84,9 @@ public class HealthPanelUI : MonoBehaviour
         {
             Debug.LogError("[HealthPanel] TssUnityApiService.Instance is NULL — is the GameObject in the scene?");
         }
+
+        _oxygenMonitor = FindObjectOfType<TssVitalsOxygenMonitor>();
+        _batteryMonitor = FindObjectOfType<TssVitalsBatteryMonitor>();
     }
 
     private void OnDisable()
@@ -95,6 +101,7 @@ public class HealthPanelUI : MonoBehaviour
     private void HandleEvaUpdate(Dictionary<string, object> fullEvaData)
     {
         if (fullEvaData == null) return;
+        if (TssUnityApiService.Instance == null) return;
 
         var health = TssUnityApiService.Instance.GetHealth();
         bool online = health != null && health.ContainsKey("source_online") && (bool)health["source_online"];
@@ -114,20 +121,18 @@ public class HealthPanelUI : MonoBehaviour
 
     private void UpdateWarningsLive()
     {
-        var oxyMonitor = FindObjectOfType<TssVitalsOxygenMonitor>();
-        if (oxyMonitor != null
-            && oxyMonitor.CurrentState != TssVitalsOxygenMonitor.OxygenState.Good
-            && oxyMonitor.CurrentState != TssVitalsOxygenMonitor.OxygenState.Unknown)
+        if (_oxygenMonitor != null
+            && _oxygenMonitor.CurrentState != TssVitalsOxygenMonitor.OxygenState.Good
+            && _oxygenMonitor.CurrentState != TssVitalsOxygenMonitor.OxygenState.Unknown)
         {
-            HandleOxygenStateChanged(oxyMonitor.CurrentState, oxyMonitor.CurrentOxygenPercent, isStateChange: false);
+            HandleOxygenStateChanged(_oxygenMonitor.CurrentState, _oxygenMonitor.CurrentOxygenPercent, isStateChange: false);
         }
 
-        var battMonitor = FindObjectOfType<TssVitalsBatteryMonitor>();
-        if (battMonitor != null
-            && battMonitor.CurrentState != TssVitalsBatteryMonitor.BatteryState.Good
-            && battMonitor.CurrentState != TssVitalsBatteryMonitor.BatteryState.Unknown)
+        if (_batteryMonitor != null
+            && _batteryMonitor.CurrentState != TssVitalsBatteryMonitor.BatteryState.Good
+            && _batteryMonitor.CurrentState != TssVitalsBatteryMonitor.BatteryState.Unknown)
         {
-            HandleBatteryStateChanged(battMonitor.CurrentState, battMonitor.CurrentBatteryPercent, isStateChange: false);
+            HandleBatteryStateChanged(_batteryMonitor.CurrentState, _batteryMonitor.CurrentBatteryPercent, isStateChange: false);
         }
     }
 
@@ -183,7 +188,6 @@ public class HealthPanelUI : MonoBehaviour
         if (!string.IsNullOrEmpty(oxygenMessage)) lines.Add(oxygenMessage);
         if (!string.IsNullOrEmpty(batteryMessage)) lines.Add(batteryMessage);
 
-        // Top panel: only re-show and restart timer on state changes
         if (oxygenWarningPanel != null && oxygenWarningText != null)
         {
             if (lines.Count == 0)
@@ -199,12 +203,10 @@ public class HealthPanelUI : MonoBehaviour
             }
             else if (oxygenWarningPanel.activeSelf)
             {
-                // Still visible: keep text live, but don't restart timer
                 oxygenWarningText.text = string.Join("\n", lines);
             }
         }
 
-        // Persistent panel: always reflects current state
         if (persistentWarningPanel != null && persistentWarningText != null)
         {
             if (lines.Count == 0)
