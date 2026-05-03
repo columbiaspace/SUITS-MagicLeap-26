@@ -166,6 +166,9 @@ public class AIAVoskInputController : MonoBehaviour
     private bool isVoskInitializing;
     private bool isVoskInitialized;
     private bool isRecording;
+    // Set true once a partial transcript routes the LTV-repair command this session,
+    // so subsequent partials don't double-trigger before recording stops.
+    private bool _routedLtvRepairThisSession;
     private Coroutine initializationTimeoutCoroutine;
 
     private void Awake()
@@ -439,6 +442,8 @@ public class AIAVoskInputController : MonoBehaviour
 
         try
         {
+            _routedLtvRepairThisSession = false;
+
             if (voiceIntents != null)
             {
                 voiceIntents.BeginRecordingTranscript();
@@ -584,6 +589,18 @@ public class AIAVoskInputController : MonoBehaviour
             if (voiceIntents != null)
             {
                 voiceIntents.UpdateRecordingTranscript(partialTranscript);
+
+                // VoiceProcessor's silence detection on ML2 doesn't reliably fire, so the
+                // recording stays open and the final transcript never emits. Route LTV-repair
+                // off the live partial stream instead — fires the moment Vosk has heard
+                // enough audio to recognize the command.
+                if (!_routedLtvRepairThisSession &&
+                    voiceIntents.TryRouteLtvRepairCommand(partialTranscript))
+                {
+                    _routedLtvRepairThisSession = true;
+                    Debug.Log($"[Vosk] LTV-repair routed from partial transcript: '{partialTranscript}'. Stopping recording.");
+                    StopRecording();
+                }
             }
             else
             {
