@@ -3,7 +3,6 @@ using TssApi;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.Serialization;
-using System.Collections.Generic;
 
 
 // How pin placement works:
@@ -36,23 +35,20 @@ public class ARMinimapErica : MonoBehaviour
 
     [FormerlySerializedAs("trailDotPrefab")]
     public GameObject pathDotPrefab;
+    public GameObject trailDotPrefab;
 
-    // CHANGED: Replaced hardcoded worldToMapScale = 8f with worldUnitsVisible = 50f.
     // worldUnitsVisible defines how many world units span the full width of the minimap.
     // This makes scale relative to the minimap rect size, so you can freely resize
     // MinimapBackground in the Inspector without breaking dot positions.
     // Tune this value: smaller = zoomed in, larger = zoomed out.
     public float worldUnitsVisible = 50f;
 
-    // ADDED: Computed property that derives pixels-per-world-unit from the rect size.
+    // Computed property that derives pixels-per-world-unit from the rect size.
     // Because it reads minimapRect.sizeDelta.x at runtime, it automatically stays
     // correct if you resize the minimap rect in the Inspector or at runtime.
     float MapScale => minimapRect.sizeDelta.x / worldUnitsVisible;
 
     private List<GameObject> _pathDots = new List<GameObject>();
-
-    void Start() { }
-    public GameObject trailDotPrefab;
 
     [Header("Map Bounds (TSS coordinate ranges the map image covers)")]
     [Tooltip("Leftmost TSS X coordinate shown on the map image")]
@@ -85,6 +81,8 @@ public class ARMinimapErica : MonoBehaviour
             Debug.LogError("[ARMinimap] No TssUnityApiService found — assign it in the Inspector.");
     }
 
+    void Start() { }
+
     private void Update()
     {
         Dictionary<string, object> imuEva = GetImuBucket();
@@ -95,15 +93,6 @@ public class ARMinimapErica : MonoBehaviour
 
     private void UpdatePlayerIcon(Dictionary<string, object> imuEva)
     {
-        Vector3 worldPos = Camera.main.transform.position;
-
-        // CHANGED: was * worldToMapScale (fixed 8f). Now uses MapScale so position
-        // is always proportional to both the rect size and worldUnitsVisible.
-        Vector2 mapPos = new Vector2(worldPos.x, worldPos.z) * MapScale;
-
-        mapPos.x = Mathf.Clamp(mapPos.x, -minimapRect.sizeDelta.x / 2, minimapRect.sizeDelta.x / 2);
-        mapPos.y = Mathf.Clamp(mapPos.y, -minimapRect.sizeDelta.y / 2, minimapRect.sizeDelta.y / 2);
-
         if (playerIcon == null || minimapRect == null) return;
 
         float x       = (float)ToDouble(imuEva, "posx");
@@ -140,24 +129,25 @@ public class ARMinimapErica : MonoBehaviour
         );
     }
 
+    // Called by TileManager after each A* path update. Clears old path dots and
+    // draws new ones. Uses TssCoordsToMapPixels so dots align with the player icon.
     public void DrawPathOnMinimap(HashSet<Vector2Int> pathCells)
-    private void RecordTrail(Dictionary<string, object> imuEva)
     {
         foreach (GameObject dot in _pathDots)
             if (dot) Destroy(dot);
         _pathDots.Clear();
 
+        if (pathCells == null || minimapRect == null || pathDotPrefab == null || pathContainer == null)
+            return;
+
         foreach (Vector2Int cell in pathCells)
         {
-            float worldX = cell.x * NavGridUtilities.TILE_SIZE;
-            float worldZ = cell.y * NavGridUtilities.TILE_SIZE;
+            // Grid cell → approximate TSS coords (valid when TerrainAnalyzer calibration
+            // offsets are zero and scale is 1, which is the default).
+            float tssX = cell.x * NavGridUtilities.TILE_SIZE;
+            float tssZ = cell.y * NavGridUtilities.TILE_SIZE;
 
-            // CHANGED: was * worldToMapScale (fixed 8f). Now uses MapScale for the
-            // same reason as UpdatePlayerIcon — keeps path dots consistent with
-            // player icon position at any rect size or worldUnitsVisible value.
-            Vector2 mapPos = new Vector2(worldX, worldZ) * MapScale;
-            mapPos.x = Mathf.Clamp(mapPos.x, -minimapRect.sizeDelta.x / 2, minimapRect.sizeDelta.x / 2);
-            mapPos.y = Mathf.Clamp(mapPos.y, -minimapRect.sizeDelta.y / 2, minimapRect.sizeDelta.y / 2);
+            Vector2 mapPos = TssCoordsToMapPixels(tssX, tssZ);
 
             GameObject dot = Instantiate(pathDotPrefab, pathContainer);
             dot.GetComponent<RectTransform>().anchoredPosition = mapPos;
@@ -168,7 +158,9 @@ public class ARMinimapErica : MonoBehaviour
             _pathDots.Add(dot);
         }
     }
-}
+
+    private void RecordTrail(Dictionary<string, object> imuEva)
+    {
         Vector2 tssPos = imuEva != null
             ? new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"))
             : Vector2.zero;
