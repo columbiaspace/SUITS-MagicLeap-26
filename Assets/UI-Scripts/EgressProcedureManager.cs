@@ -27,10 +27,13 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private Sprite uiaWaterSupplySprite;  // UIA-water-supply.png
 
     [Header("DCU Sprites")]
-    [SerializeField] private Sprite dcuPanelSprite;        // dcu.png  (default)
+    [SerializeField] private Sprite dcuPanelSprite;        // dcu.png  (default / non-batt)
     [SerializeField] private Sprite dcuOxySprite;          // dcu-oxy.png
     [SerializeField] private Sprite dcuFanSprite;          // dcu-fan.png
     [SerializeField] private Sprite dcuPumpSprite;         // dcu-pump.png
+    [SerializeField] private Sprite dcuCo2Sprite;          // dcu-co2.png — CO₂ / scrubber
+    [SerializeField] private Sprite dcuBattLocalUmbSprite; // dcu-batt-local-umb.png — BATT LOCAL / UMB
+    [SerializeField] private Sprite dcuBattSecPriSprite;  // dcu-batt-sec-pri.png — BATT SEC / PRI
 
     // ── Internals ──────────────────────────────────────────────────────
     private enum CondType { Timed, UiaBool, DcuBool, DcuBattBool }
@@ -59,17 +62,32 @@ public class EgressProcedureManager : MonoBehaviour
     private void OnEnable()
     {
         Resolve();
-        if (tssApi != null) tssApi.EvaUpdated += OnEvaUpdated;
-
         BuildSteps();
         _current    = 0;
         _latestData = null;
+
+        RegisterTssEva();
         EnterStep(0);
+    }
+
+    private void Update()
+    {
+        if (tssApi != null)
+        {
+            return;
+        }
+
+        Resolve();
+        RegisterTssEva();
     }
 
     private void OnDisable()
     {
-        if (tssApi != null) tssApi.EvaUpdated -= OnEvaUpdated;
+        if (tssApi != null)
+        {
+            tssApi.EvaUpdated -= OnEvaUpdated;
+        }
+
         KillTimer();
     }
 
@@ -77,6 +95,23 @@ public class EgressProcedureManager : MonoBehaviour
     {
         if (tssApi == null)
             tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+    }
+
+    /// <summary>
+    /// Binds EVA telemetry once TSS is available. If <see cref="TssUnityApiService"/> wakes up after
+    /// this object, <see cref="Update"/> retries. Seeds with <see cref="TssUnityApiService.GetEva"/> so
+    /// we do not miss a step when telemetry already matches before the next UDP poll.
+    /// </summary>
+    private void RegisterTssEva()
+    {
+        if (tssApi == null)
+        {
+            return;
+        }
+
+        tssApi.EvaUpdated -= OnEvaUpdated;
+        tssApi.EvaUpdated += OnEvaUpdated;
+        OnEvaUpdated(tssApi.GetEva());
     }
 
     // ── Step list ──────────────────────────────────────────────────────
@@ -98,7 +133,7 @@ public class EgressProcedureManager : MonoBehaviour
             U("UIA: EV1 EMU PWR – ON\n",
                 uiaPwrSprite,        "eva1_power",         true),
             B("DCU: BATT – UMB\n",
-                dcuPanelSprite,      "lu",                 true),
+                dcuBattLocalUmbSprite, "lu",               true),
             U("UIA: DEPRESS PUMP – ON\n",
                 uiaDepressPumpSprite, "depress",            true),
 
@@ -139,17 +174,18 @@ public class EgressProcedureManager : MonoBehaviour
             U("UIA: DEPRESS PUMP PWR – OFF\n",
                 uiaDepressPumpSprite, "depress",            false),
             B("DCU: BATT – PRI\n",
-                dcuPanelSprite,      "lu",                 true),
+                dcuBattSecPriSprite, "lu",                 true),
             B("DCU: BATT – LOCAL\n",
-                dcuPanelSprite,      "lu",                 false),
+                dcuBattLocalUmbSprite, "lu",               false),
             U("UIA: EV-1 EMU PWR – OFF\n",
                 uiaPwrSprite,        "eva1_power",         false),
             D("DCU: FAN – PRI\n",
                 dcuFanSprite,        "fan",                true),
             D("DCU: PUMP – CLOSE\n",
                 dcuPumpSprite,       "pump",               false),
+            // Checklist step 28 (UI: “Step 28 of 32”) — `UI-Prefab/PNG/dcu-co2.png`
             D("DCU: CO2 – PRI\n",
-                dcuPanelSprite,      "co2",                true),
+                dcuCo2Sprite,        "co2",                true),
             D("DCU: Verify OXY – PRI\n",
                 dcuOxySprite,        "oxy",                true),
             T("EV-1: Disconnect UIA and DCU umbilical"),
@@ -175,7 +211,18 @@ public class EgressProcedureManager : MonoBehaviour
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
         if (displayImage != null)
-            displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
+        {
+            Sprite sprite = step.Image != null ? step.Image : uiaPanelSprite;
+            // Ensure DCU CO₂ steps always use `dcu-co2.png` even if a sprite slot was cleared in the inspector.
+            if (dcuCo2Sprite != null &&
+                step.Label != null &&
+                step.Label.IndexOf("CO2", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                sprite = dcuCo2Sprite;
+            }
+
+            displayImage.sprite = sprite;
+        }
 
         if (step.Cond == CondType.Timed)
             _timerCo = StartCoroutine(TimedAdvance(step.Secs));
