@@ -41,10 +41,21 @@ MonoBehaviour:
   m_GameObject: {fileID: 4697426947489922596}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: 3b9ba288ab7ae394f8c5fc17bf5ac856, type: 3}
+  m_Script: {fileID: 11500000, guid: 0724b630e9e9ce546a80e63e84ca0ecf, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pingPrefab: {fileID: 2898015928401358699, guid: 47185ef76c719694698812cbbf3d369c, type: 3}
-  pinchThreshold: 0.8
-  pingCooldown: 0.3
+  pingPrefab: {fileID: 2898015928401358699, guid: 31de21ae014df8b479a5df3ba34e995d, type: 3}
+  handTransform: {fileID: 0}
+  handOffset: {x: 0, y: 0, z: 0}
+  pinchThreshold: 0.9
+  releaseThreshold: 0.2
+  requiredPinchHoldTime: 0.45
+  spawnCooldown: 1
+  destroyPingsAfterLifetime: 0
+  pingLifetime: 8
+  cameraFallbackDistance: 1
+  forceCameraPlacement: 0
+  maxPinchDistanceFromCamera: 2
+  spawnTestSphereOnStart: 0
+  startupTestDelay: 2
   useRightHand: 1
