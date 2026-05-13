@@ -61,6 +61,13 @@ public class ARMinimapErica : MonoBehaviour
     [SerializeField] private bool verboseDebug = true;
     [SerializeField] private float logIntervalSeconds = 1f;
 
+    [Header("Weight Debug Overlay")]
+    [Tooltip("Paints a green→red heatmap of terrain weights directly on the minimap. " +
+             "Teal squares = path cells. Disable in production.")]
+    [SerializeField] private bool showTerrainOverlay = false;
+    [Tooltip("Opacity of the heatmap layer (0=invisible, 1=opaque).")]
+    [SerializeField] [Range(0f, 1f)] private float overlayAlpha = 0.55f;
+
     // -------------------------------------------------------------------------
     // Runtime state
     // -------------------------------------------------------------------------
@@ -78,7 +85,10 @@ public class ARMinimapErica : MonoBehaviour
     private Vector2 _lastMinimapSize;
     private Vector2 _lastRecordedTssPos;
     private bool    _trailInitialized;
+    private bool    _terrainPathSucceeded;   // true once A* found a terrain-based path
+    private bool    _terrainPathGaveUp;      // true once terrain was ready but found no path (stop retrying)
     private float   _logTimer;
+    private GameObject _overlayGO;          // weight heatmap Image on the minimap
 
     // -------------------------------------------------------------------------
     // Unity lifecycle
@@ -118,6 +128,33 @@ public class ARMinimapErica : MonoBehaviour
         RecordTrail(imuEva);
         RefreshSegmentsIfResized();
         LogDebug(imuEva);
+
+        // If terrain A* hasn't succeeded yet (TerrainAnalyzer may have been loading),
+        // keep trying every frame until it does.
+        if (showPlannedPath && !_terrainPathSucceeded)
+            TryUpgradeToTerrainPath();
+    }
+
+    // Called every frame until TerrainAnalyzer is ready and produces a valid path.
+    private void TryUpgradeToTerrainPath()
+    {
+        if (_terrainPathGaveUp) return;
+
+        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
+        if (terrain == null || !terrain.IsReady) return;
+
+        // Terrain just became ready — replace the straight-line fallback.
+        ClearPlannedPath();
+        ComputeAndDrawAStarPath();
+
+        // If terrain was available but A* still found no path, stop retrying every frame.
+        if (!_terrainPathSucceeded)
+        {
+            _terrainPathGaveUp = true;
+            Debug.LogWarning("[ARMinimap] TerrainAnalyzer was ready but A* found no path — " +
+                             "keeping straight-line fallback. Check that the keepout image is " +
+                             "assigned and that start/goal TSS positions fall within the map bounds.");
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -243,23 +280,49 @@ public class ARMinimapErica : MonoBehaviour
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.
+    // Each failure branch logs an actionable warning so the console explains what to fix.
     private List<Vector2> TryTerrainAStarPath()
     {
         TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
-        if (terrain == null || !terrain.IsReady)
+        if (terrain == null)
+        {
+            Debug.LogWarning("[ARMinimap] TerrainAnalyzer.Instance is null. " +
+                             "Add a TerrainAnalyzer component to a GameObject in this scene.");
             return null;
+        }
+        if (!terrain.IsReady)
+        {
+            // Logged at most once per cycle — silently skip until ready
+            return null;
+        }
 
         HashSet<Vector2Int> walkable = terrain.WalkableSet;
         if (walkable.Count == 0)
+        {
+            Debug.LogWarning("[ARMinimap] TerrainAnalyzer.WalkableSet is empty — " +
+                             "the keepout image may not be assigned, or every cell contains red pixels. " +
+                             "Call TerrainAnalyzer.LogDiagnostics() for details.");
             return null;
+        }
 
-        Vector2Int startCell = NavGridUtilities.SnapToWalkable(terrain.PosToGrid(pathStart.x, pathStart.y), walkable);
-        Vector2Int goalCell  = NavGridUtilities.SnapToWalkable(terrain.PosToGrid(pathGoal.x,  pathGoal.y),  walkable);
+        Vector2Int rawStart = terrain.PosToGrid(pathStart.x, pathStart.y);
+        Vector2Int rawGoal  = terrain.PosToGrid(pathGoal.x,  pathGoal.y);
+        Vector2Int startCell = NavGridUtilities.SnapToWalkable(rawStart, walkable);
+        Vector2Int goalCell  = NavGridUtilities.SnapToWalkable(rawGoal,  walkable);
+
+        Debug.Log($"[ARMinimap] A* solving: TSS({pathStart}) → grid{rawStart} → snapped{startCell}" +
+                  $"  |  TSS({pathGoal}) → grid{rawGoal} → snapped{goalCell}" +
+                  $"  |  walkable cells: {walkable.Count}");
 
         List<Vector2Int> path = NavPathfinder.FindPath(walkable, terrain, startCell, goalCell);
 
         if (path == null || path.Count < 2)
+        {
+            Debug.LogWarning($"[ARMinimap] A* returned no path from {startCell} to {goalCell}. " +
+                             "Possible causes: start and goal snapped to the same cell, or the walkable " +
+                             "region is disconnected. Check the keepout image and map bounds.");
             return null;
+        }
 
         var normPoints = new List<Vector2>(path.Count);
         foreach (Vector2Int cell in path)
@@ -268,8 +331,129 @@ public class ARMinimapErica : MonoBehaviour
             normPoints.Add(TssCoordsToNormalized(tss.x, tss.y));
         }
 
-        Debug.Log($"[ARMinimap] A* path (terrain): {path.Count} cells, {path.Count - 1} segments.");
+        Debug.Log($"[ARMinimap] A* path (terrain): {path.Count} waypoints, {path.Count - 1} segments drawn.");
+        if (verboseDebug) LogPathWeights(path, terrain);
+        if (showTerrainOverlay) BuildWeightOverlay(path, terrain);
+
+        _terrainPathSucceeded = true;
         return normPoints;
+    }
+
+    // Logs each path cell's terrain weight and highlights the heaviest detour points.
+    private void LogPathWeights(List<Vector2Int> path, TerrainAnalyzer terrain)
+    {
+        float totalExtraCost = 0f;
+        float maxWeight = 0f;
+        int   maxWeightIdx = 0;
+
+        var sb = new System.Text.StringBuilder(
+            $"[ARMinimap] Path weight breakdown ({path.Count} cells) ─────────────────\n");
+
+        for (int i = 0; i < path.Count; i++)
+        {
+            float w = Mathf.Max(0f, terrain.GetWeight(path[i]));
+            totalExtraCost += w;
+            if (w > maxWeight) { maxWeight = w; maxWeightIdx = i; }
+
+            // Only print cells with non-trivial weight to keep the log readable.
+            if (w > 0.05f)
+            {
+                Vector2 tss = terrain.GridToTssPos(path[i]);
+                string bar = new string('█', Mathf.RoundToInt(w * 20));
+                sb.Append($"  [{i:D3}] cell{path[i],12}  w={w:F3}  {bar}  TSS({tss.x:F0},{tss.y:F0})\n");
+            }
+        }
+
+        Vector2 heaviest = terrain.GridToTssPos(path[maxWeightIdx]);
+        sb.Append($"  ── Heaviest cell: [{maxWeightIdx:D3}] w={maxWeight:F3}  TSS({heaviest.x:F0},{heaviest.y:F0})\n");
+        sb.Append($"  ── Total extra terrain cost vs. straight line: {totalExtraCost:F2}");
+        Debug.Log(sb.ToString());
+    }
+
+    // Builds a Texture2D weight heatmap and displays it as a semi-transparent Image
+    // stretched over the entire minimap rect. Each pixel = one grid cell.
+    // Green = easy (weight≈0), yellow = moderate, red/orange = high, bright-red = blocked.
+    // Teal pixels = the computed A* path cells.
+    private void BuildWeightOverlay(List<Vector2Int> pathCells, TerrainAnalyzer terrain)
+    {
+        if (minimapRect == null) return;
+
+        terrain.GetGridBounds(out Vector2Int minCell, out Vector2Int maxCell);
+        int texW = maxCell.x - minCell.x + 1;
+        int texH = maxCell.y - minCell.y + 1;
+        if (texW <= 0 || texH <= 0) return;
+
+        float threshold = terrain.ImpassableThreshold;
+        var tex = new Texture2D(texW, texH, TextureFormat.RGBA32, false)
+        {
+            filterMode = FilterMode.Point,
+            wrapMode   = TextureWrapMode.Clamp
+        };
+
+        // Fill transparent by default (cells outside the image stay clear).
+        Color[] pixels = new Color[texW * texH];
+
+        // Walkable cells: green (cost≈0) → orange (cost near threshold).
+        foreach (Vector2Int cell in terrain.AllCells)
+        {
+            float w  = Mathf.Max(0f, terrain.GetWeight(cell));
+            int   px = cell.x - minCell.x;
+            int   py = cell.y - minCell.y;
+            if (px < 0 || px >= texW || py < 0 || py >= texH) continue;
+
+            float t = Mathf.Clamp01(w / threshold);
+            pixels[py * texW + px] = Color.Lerp(
+                new Color(0.1f, 0.85f, 0.1f, overlayAlpha * 0.5f),   // green  = cheap
+                new Color(1f,   0.55f, 0f,   overlayAlpha),           // orange = expensive
+                t);
+        }
+
+        // Blocked cells (red keepout pixels): always solid red.
+        foreach (Vector2Int cell in terrain.BlockedCells)
+        {
+            int px = cell.x - minCell.x;
+            int py = cell.y - minCell.y;
+            if (px >= 0 && px < texW && py >= 0 && py < texH)
+                pixels[py * texW + px] = new Color(1f, 0.1f, 0.1f, overlayAlpha);
+        }
+
+        // Overlay the A* path cells in teal.
+        HashSet<Vector2Int> pathSet = new HashSet<Vector2Int>(pathCells);
+        foreach (Vector2Int cell in pathSet)
+        {
+            int px = cell.x - minCell.x;
+            int py = cell.y - minCell.y;
+            if (px >= 0 && px < texW && py >= 0 && py < texH)
+                pixels[py * texW + px] = new Color(0.2f, 1f, 0.85f, Mathf.Min(1f, overlayAlpha + 0.3f));
+        }
+
+        tex.SetPixels(pixels);
+        tex.Apply();
+
+        // Destroy any previous overlay.
+        if (_overlayGO != null) Destroy(_overlayGO);
+
+        _overlayGO = new GameObject("WeightOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        _overlayGO.transform.SetParent(minimapRect, false);
+
+        // Place it just above the background but below everything else.
+        _overlayGO.transform.SetSiblingIndex(0);
+
+        RectTransform rt = _overlayGO.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+
+        Image img = _overlayGO.GetComponent<Image>();
+        img.sprite = Sprite.Create(tex,
+            new Rect(0, 0, texW, texH),
+            new Vector2(0.5f, 0.5f));
+        img.type = Image.Type.Simple;
+        img.preserveAspect = false;
+
+        Debug.Log($"[ARMinimap] Weight overlay built: {texW}×{texH} px, " +
+                  $"{pathCells.Count} path cells teal, blocked shown in red.");
     }
 
     public void ClearPlannedPath()

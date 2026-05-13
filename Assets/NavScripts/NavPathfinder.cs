@@ -2,11 +2,10 @@ using System.Collections.Generic;
 using UnityEngine;
 
 /// <summary>
-/// Stateless grid pathfinding utilities consumed by <see cref="TileManager.ComputePath"/>.
-/// Operates entirely in the lunar-mesh grid frame produced by <see cref="TerrainAnalyzer"/>:
-/// inputs and outputs are <see cref="Vector2Int"/> cells, no world-space concerns. The
-/// returned path is later mapped back to headset world space via
-/// <c>NavGridUtilities.CellToLocalTilePos</c> + <c>TileManager.AlignPathRootUnderRigForEvaCell</c>.
+/// Stateless A* pathfinding over the image-based walkability grid produced by
+/// <see cref="TerrainAnalyzer"/>. Inputs and outputs are <see cref="Vector2Int"/> grid cells;
+/// all world-space conversion is handled by the caller via
+/// <see cref="TerrainAnalyzer.GridToTssPos"/>.
 /// </summary>
 public static class NavPathfinder
 {
