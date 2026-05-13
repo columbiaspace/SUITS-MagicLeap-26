@@ -10,11 +10,17 @@ using UnityEngine.XR.MagicLeap;
 
 public class VoiceIntents : MonoBehaviour
 {
+    public static VoiceIntents Instance { get; private set; }
+
     private const uint AskLunaEventId = 105;
     // MLVoice intent IDs that route directly to LTV-repair (bypasses Vosk).
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint LtvRepairEventIdMin = 106;
     private const uint LtvRepairEventIdMax = 108;
+    // MLVoice intent IDs that route to generic scene transitions via SceneVoiceCoordinator.
+    // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
+    private const uint SceneTransitionEventIdMin = 109;
+    private const uint SceneTransitionEventIdMax = 113;
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
     private const int MaxVisibleConversationTurns = 3;
@@ -42,6 +48,11 @@ public class VoiceIntents : MonoBehaviour
     [Tooltip("Optional LTV-repair voice coordinator. If present and the transcript matches its " +
              "trigger phrases, the prompt is consumed locally instead of being forwarded to Gemma.")]
     [SerializeField] private LtvVoiceCoordinator ltvVoiceCoordinator;
+
+    [Tooltip("Optional generic scene-transition voice coordinator (persistent singleton). " +
+             "Handles all voice transitions other than the Mission→LTV entry, which stays " +
+             "on LtvVoiceCoordinator so LtvSceneBootstrapper still sees PendingVoiceTrigger.")]
+    [SerializeField] private SceneVoiceCoordinator sceneVoiceCoordinator;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -143,6 +154,15 @@ public class VoiceIntents : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
         permissionCallbacks.OnPermissionGranted += OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied += OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain += OnPermissionDenied;
@@ -150,6 +170,11 @@ public class VoiceIntents : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+
         permissionCallbacks.OnPermissionGranted -= OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnPermissionDenied;
@@ -290,9 +315,20 @@ public class VoiceIntents : MonoBehaviour
                     string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
                         ? "ltv repair"
                         : voiceEvent.EventName;
-                    if (!TryRouteLtvRepairCommand(spokenPhrase))
+                    if (!TryRouteSceneVoiceCommand(spokenPhrase))
                     {
                         Debug.LogWarning("[Luna] LTV-repair MLVoice intent matched but coordinator did not accept it.");
+                    }
+                }
+                else if (voiceEvent.EventID >= SceneTransitionEventIdMin && voiceEvent.EventID <= SceneTransitionEventIdMax)
+                {
+                    Debug.Log($"[Luna] Scene-transition MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
+                    string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
+                        ? string.Empty
+                        : voiceEvent.EventName;
+                    if (!TryRouteSceneVoiceCommand(spokenPhrase))
+                    {
+                        Debug.LogWarning($"[Luna] Scene-transition MLVoice intent '{voiceEvent.EventName}' did not match any configured transition in the current scene.");
                     }
                 }
                 else
@@ -359,23 +395,33 @@ public class VoiceIntents : MonoBehaviour
     }
 
     /// <summary>
-    /// Public so AIAVoskInputController can fire LTV-repair routing on partial Vosk
-    /// transcripts (without waiting for the recording to stop and a final result to
-    /// emit). Returns true when the transcript matched and the LTV scene was loaded.
+    /// Public so AIAVoskInputController can fire scene-transition routing on partial
+    /// Vosk transcripts (without waiting for the recording to stop and a final result
+    /// to emit). Tries the generic <see cref="SceneVoiceCoordinator"/> first (any
+    /// scene-to-scene transition), then falls back to <see cref="LtvVoiceCoordinator"/>
+    /// (kept for the Mission→LTV entry because LtvSceneBootstrapper consumes its
+    /// PendingVoiceTrigger flag). Returns true when a transition fired.
     /// </summary>
-    public bool TryRouteLtvRepairCommand(string trimmedPrompt)
+    public bool TryRouteSceneVoiceCommand(string trimmedPrompt)
     {
+        if (sceneVoiceCoordinator == null)
+        {
+            sceneVoiceCoordinator = SceneVoiceCoordinator.Instance != null
+                ? SceneVoiceCoordinator.Instance
+                : FindObjectOfType<SceneVoiceCoordinator>();
+        }
+
+        if (sceneVoiceCoordinator != null && sceneVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt))
+        {
+            return true;
+        }
+
         if (ltvVoiceCoordinator == null)
         {
             ltvVoiceCoordinator = FindObjectOfType<LtvVoiceCoordinator>();
         }
 
-        if (ltvVoiceCoordinator == null)
-        {
-            return false;
-        }
-
-        return ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+        return ltvVoiceCoordinator != null && ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
     }
 
     private void UpdateResponseTextBox(string text)
@@ -468,11 +514,11 @@ public class VoiceIntents : MonoBehaviour
             return;
         }
 
-        if (TryRouteLtvRepairCommand(trimmedPrompt))
+        if (TryRouteSceneVoiceCommand(trimmedPrompt))
         {
-            // The coordinator will load the LTV scene and run the repair flow.
+            // A scene-transition coordinator consumed the prompt and queued a LoadScene.
             // We intentionally do NOT forward this transcript to Gemma.
-            CompleteActiveConversation("Loading LTV repair console.");
+            CompleteActiveConversation("Loading next scene.");
             return;
         }
 
