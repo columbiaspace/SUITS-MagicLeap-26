@@ -11,11 +11,11 @@ public class MinimapExpandZoom : MonoBehaviour
     public RectTransform button;
 
     [Header("Collapsed")]
-    public Vector2 collapsedSize = new Vector2(200f, 200f);
+    public Vector2 collapsedSize = new Vector2(300f, 190f);
     public Vector3 collapsedLocalPosition = new Vector3(-250f, 150f, 0f);
 
     [Header("Expanded")]
-    public Vector2 expandedSize = new Vector2(600f, 600f);
+    public Vector2 expandedSize = new Vector2(600f, 380f);
     public Vector3 expandedLocalPosition = Vector3.zero;
 
     [Header("Animation")]

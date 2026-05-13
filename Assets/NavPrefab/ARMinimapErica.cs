@@ -10,12 +10,10 @@ using UnityEngine.UI;
 //  anchoredPosition (-halfWidth, -halfHeight) = bottom-left corner.
 //
 //  TSS gives posx/posy in meters (real-world coords).
-//  We multiply by worldToMapScale to convert meters → pixels on the minimap.
-//
-//  Example: posx=10, worldToMapScale=8 → anchoredPosition.x = 80 px from center.
+//  Map bounds (mapMinX…mapMaxX, mapMinY…mapMaxY) define which TSS region the image covers.
+//  TssCoordsToNormalized maps those coords to 0..1, then TssCoordsToMapPixels scales to UI pixels.
 //
 //  If the pin is stuck at center: TSS posx/posy are 0 (check STEP debug output).
-//  If the pin flies off the edge: worldToMapScale is too large — reduce it.
 //  If the pin moves in the wrong direction: TSS axes may differ from UI axes —
 //    try negating x or y in the mapPos assignment below.
 
@@ -45,6 +43,10 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("Minimum TSS distance (meters) moved before a trail dot is placed.")]
     public float recordDistance = 0.25f;
 
+    [Header("Waypoints")]
+    [Tooltip("Spawn the three fixed reference waypoints (blue/green/yellow) at Start.")]
+    [SerializeField] private bool showWaypoints = true;
+
     [Header("Debug")]
     [Tooltip("Log pin placement details every second so you can see if TSS data is arriving.")]
     [SerializeField] private bool verboseDebug = true;
@@ -61,6 +63,11 @@ public class ARMinimapErica : MonoBehaviour
 
         if (tssApi == null)
             Debug.LogError("[ARMinimap] No TssUnityApiService found — assign it in the Inspector.");
+    }
+
+    private void Start()
+    {
+        if (showWaypoints) SpawnWaypoints();
     }
 
     private void Update()
@@ -84,28 +91,24 @@ public class ARMinimapErica : MonoBehaviour
         playerIcon.localEulerAngles = new Vector3(0f, 0f, -heading);
     }
 
+    // Maps TSS coords to 0..1 fractions within the configured map bounds.
+    // (0,0) = bottom-left corner of the map image, (1,1) = top-right corner.
+    private Vector2 TssCoordsToNormalized(float tssX, float tssY)
+    {
+        return new Vector2(
+            Mathf.Clamp01((tssX - mapMinX) / (mapMaxX - mapMinX)),
+            Mathf.Clamp01((tssY - mapMinY) / (mapMaxY - mapMinY))
+        );
+    }
+
     // Converts absolute TSS coords to anchoredPosition pixels on the minimap.
-    //
-    // How it works:
-    //   1. Normalize: (tssX - mapMinX) / (mapMaxX - mapMinX) → 0..1 across the map width
-    //   2. Shift to centered: subtract 0.5 → -0.5..+0.5
-    //   3. Scale to pixels: multiply by minimap pixel width
-    //
-    // Result: left edge of map → -halfWidth px, right edge → +halfWidth px, center → 0 px
+    // Left edge → -halfWidth px, right edge → +halfWidth px, center → 0 px.
     private Vector2 TssCoordsToMapPixels(float tssX, float tssY)
     {
-        float halfW = minimapRect.sizeDelta.x / 2f;
-        float halfH = minimapRect.sizeDelta.y / 2f;
-
-        float nx = (tssX - mapMinX) / (mapMaxX - mapMinX);  // 0..1
-        float ny = (tssY - mapMinY) / (mapMaxY - mapMinY);  // 0..1
-
-        float px = (nx - 0.5f) * minimapRect.sizeDelta.x;
-        float py = (ny - 0.5f) * minimapRect.sizeDelta.y;
-
+        Vector2 n = TssCoordsToNormalized(tssX, tssY);
         return new Vector2(
-            Mathf.Clamp(px, -halfW, halfW),
-            Mathf.Clamp(py, -halfH, halfH)
+            (n.x - 0.5f) * minimapRect.sizeDelta.x,
+            (n.y - 0.5f) * minimapRect.sizeDelta.y
         );
     }
 
@@ -148,8 +151,9 @@ public class ARMinimapErica : MonoBehaviour
         float y       = (float)ToDouble(imuEva, "posy");
         float heading = (float)ToDouble(imuEva, "heading");
         Vector2 mapPos = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
-        float nx = (x - mapMinX) / (mapMaxX - mapMinX);
-        float ny = (y - mapMinY) / (mapMaxY - mapMinY);
+        Vector2 n  = TssCoordsToNormalized(x, y);
+        float   nx = n.x;
+        float   ny = n.y;
 
         string bucketStatus = imuEva == null
             ? $"NULL — imu[\"{evaId}\"] not found (wrong evaId or TSS not connected)"
@@ -182,6 +186,35 @@ public class ARMinimapErica : MonoBehaviour
             imuEva = bucketObj as Dictionary<string, object>;
 
         return imuEva;
+    }
+
+    private void SpawnWaypoints()
+    {
+        if (minimapRect == null) return;
+        SpawnWaypointDot(new Vector2(-5670f, -10060f), Color.blue,   "WP_Blue");
+        SpawnWaypointDot(new Vector2(-5635f, -9960f),  Color.green,  "WP_Green");
+        SpawnWaypointDot(new Vector2(-5515f, -9995f),  Color.yellow, "WP_Yellow");
+    }
+
+    // Places a coloured dot at the given TSS position, parented directly to minimapRect
+    // using fractional anchors so the position stays correct when the rect is resized.
+    private void SpawnWaypointDot(Vector2 tssPos, Color color, string dotName)
+    {
+        Vector2 norm = TssCoordsToNormalized(tssPos.x, tssPos.y);
+
+        GameObject dot = new GameObject(dotName,
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        dot.transform.SetParent(minimapRect, false);
+        dot.transform.SetAsFirstSibling();  // render behind player icon and trail
+
+        RectTransform rt    = dot.GetComponent<RectTransform>();
+        rt.anchorMin        = norm;
+        rt.anchorMax        = norm;
+        rt.pivot            = new Vector2(0.5f, 0.5f);
+        rt.sizeDelta        = new Vector2(8f, 8f);
+        rt.anchoredPosition = Vector2.zero;
+
+        dot.GetComponent<Image>().color = color;
     }
 
     private static double ToDouble(Dictionary<string, object> dict, string key)
