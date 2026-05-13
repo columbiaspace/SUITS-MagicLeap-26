@@ -3,32 +3,26 @@ using TssApi;
 using UnityEngine;
 using UnityEngine.UI;
 
-// How pin placement works:
-//
-//  The minimap image is a RectTransform (minimapRect) centered at (0,0) in UI space.
-//  anchoredPosition (0,0) = center of the image.
-//  anchoredPosition (-halfWidth, -halfHeight) = bottom-left corner.
-//
-//  TSS gives posx/posy in meters (real-world coords).
-//  Map bounds (mapMinX…mapMaxX, mapMinY…mapMaxY) define which TSS region the image covers.
-//  TssCoordsToNormalized maps those coords to 0..1, then TssCoordsToMapPixels scales to UI pixels.
-//
-//  If the pin is stuck at center: TSS posx/posy are 0 (check STEP debug output).
-//  If the pin moves in the wrong direction: TSS axes may differ from UI axes —
-//    try negating x or y in the mapPos assignment below.
+// Minimap pin placement:
+//   TSS posx/posy (meters) → TssCoordsToNormalized → 0..1 fraction on the map image
+//   → TssCoordsToMapPixels → anchoredPosition on the RectTransform.
+//   Map bounds define which TSS region the image covers; adjust them in the Inspector
+//   to match whatever area rock-yard.tiff was exported from.
 
 public class ARMinimapErica : MonoBehaviour
 {
+    // -------------------------------------------------------------------------
+    // Inspector fields
+    // -------------------------------------------------------------------------
+
     [Header("TSS")]
     [SerializeField] private TssUnityApiService tssApi;
-    [Tooltip("Key inside the imu bucket — must match what TSS sends")]
+    [Tooltip("Key inside the imu bucket — must match what TSS sends (e.g. eva1)")]
     [SerializeField] private string evaId = "eva1";
 
     [Header("Minimap")]
     public RectTransform minimapRect;
     public RectTransform playerIcon;
-    public RectTransform pathContainer;   // kept for external callers; not used by trail
-    public GameObject    trailDotPrefab;  // kept for backward compat; not used by trail
 
     [Header("Map Bounds (TSS coordinate ranges the map image covers)")]
     [Tooltip("Leftmost TSS X coordinate shown on the map image")]
@@ -40,53 +34,81 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("Top TSS Y coordinate shown on the map image")]
     public float mapMaxY = -9940f;
 
-    [Tooltip("Minimum TSS distance (meters) the EVA must travel before a new trail point is recorded.")]
-    public float recordDistance = 0.5f;
-
-    [Header("Trail")]
-    [Tooltip("Color of the traveled-path line.")]
+    [Header("Trail (traveled path)")]
+    [Tooltip("Color of the line drawn as the EVA moves.")]
     public Color trailColor = new Color(1f, 0.55f, 0f, 1f);
-    [Tooltip("Width of the trail line in UI pixels.")]
     public float trailLineWidth = 2.5f;
-    [Tooltip("Maximum number of trail points kept; oldest are pruned when exceeded.")]
+    [Tooltip("Minimum TSS distance (m) the EVA must move before a new segment is recorded.")]
+    public float recordDistance = 0.5f;
+    [Tooltip("Maximum trail points kept; oldest are pruned when exceeded.")]
     public int maxTrailPoints = 500;
 
+    [Header("A* Planned Path")]
+    [Tooltip("Compute and draw an A* path from the blue to green waypoint at Start.")]
+    [SerializeField] private bool showPlannedPath = true;
+    [Tooltip("Color of the A* path line.")]
+    public Color plannedPathColor = new Color(0.2f, 1f, 0.8f, 1f);
+    public float plannedPathLineWidth = 2.5f;
+    [Tooltip("TSS position used as the A* path start (blue waypoint).")]
+    public Vector2 pathStart = new Vector2(-5670f, -10060f);
+    [Tooltip("TSS position used as the A* path goal (green waypoint).")]
+    public Vector2 pathGoal  = new Vector2(-5635f, -9960f);
+
     [Header("Waypoints")]
-    [Tooltip("Spawn the three fixed reference waypoints (blue/green/yellow) at Start.")]
     [SerializeField] private bool showWaypoints = true;
 
     [Header("Debug")]
-    [Tooltip("Log pin placement details every second so you can see if TSS data is arriving.")]
     [SerializeField] private bool verboseDebug = true;
     [SerializeField] private float logIntervalSeconds = 1f;
 
-    // Trail state — normalized (0..1) positions and their connecting segment objects
+    // -------------------------------------------------------------------------
+    // Runtime state
+    // -------------------------------------------------------------------------
+
+    // Trail
     private readonly List<Vector2>    _trailPoints   = new List<Vector2>();
     private readonly List<GameObject> _trailLines    = new List<GameObject>();
     private RectTransform _trailContainer;
-    private Vector2       _lastMinimapSize;
 
+    // Planned A* path
+    private readonly List<Vector2>    _pathPoints    = new List<Vector2>();
+    private readonly List<GameObject> _pathSegments  = new List<GameObject>();
+    private RectTransform _pathContainer;
+
+    private Vector2 _lastMinimapSize;
     private Vector2 _lastRecordedTssPos;
-    private bool    _trailInitialized = false;
-    private float   _logTimer         = 0f;
+    private bool    _trailInitialized;
+    private float   _logTimer;
+
+    // -------------------------------------------------------------------------
+    // Unity lifecycle
+    // -------------------------------------------------------------------------
 
     private void Awake()
     {
         if (tssApi == null) tssApi = TssUnityApiService.Instance;
         if (tssApi == null) tssApi = FindObjectOfType<TssUnityApiService>();
-
         if (tssApi == null)
             Debug.LogError("[ARMinimap] No TssUnityApiService found — assign it in the Inspector.");
     }
 
     private void Start()
     {
-        CreateTrailContainer();
+        _trailContainer = CreateSegmentContainer("TrailContainer");
+        _pathContainer  = CreateSegmentContainer("PathContainer");
+
         if (showWaypoints) SpawnWaypoints();
 
-        // Trail renders above waypoints but below the player icon
-        if (_trailContainer != null && playerIcon != null)
+        // Render order (bottom → top): waypoints → trail → planned path → player icon
+        if (playerIcon != null)
+        {
             _trailContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
+            _pathContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
+        }
+
+        if (showPlannedPath) ComputeAndDrawAStarPath();
+
+        _lastMinimapSize = minimapRect != null ? minimapRect.rect.size : Vector2.zero;
     }
 
     private void Update()
@@ -94,7 +116,7 @@ public class ARMinimapErica : MonoBehaviour
         Dictionary<string, object> imuEva = GetImuBucket();
         UpdatePlayerIcon(imuEva);
         RecordTrail(imuEva);
-        RefreshTrailIfResized();
+        RefreshSegmentsIfResized();
         LogDebug(imuEva);
     }
 
@@ -118,8 +140,8 @@ public class ARMinimapErica : MonoBehaviour
     // Coordinate helpers
     // -------------------------------------------------------------------------
 
-    // Maps TSS coords to 0..1 fractions within the configured map bounds.
-    // (0,0) = bottom-left corner of the map image, (1,1) = top-right corner.
+    // Returns the position as a 0..1 fraction within the configured map bounds.
+    // (0,0) = bottom-left of the image, (1,1) = top-right.
     private Vector2 TssCoordsToNormalized(float tssX, float tssY)
     {
         return new Vector2(
@@ -128,8 +150,7 @@ public class ARMinimapErica : MonoBehaviour
         );
     }
 
-    // Converts absolute TSS coords to anchoredPosition pixels on the minimap.
-    // Left edge → -halfWidth px, right edge → +halfWidth px, center → 0 px.
+    // Returns an anchoredPosition relative to the center of minimapRect.
     private Vector2 TssCoordsToMapPixels(float tssX, float tssY)
     {
         Vector2 n = TssCoordsToNormalized(tssX, tssY);
@@ -140,7 +161,7 @@ public class ARMinimapErica : MonoBehaviour
     }
 
     // -------------------------------------------------------------------------
-    // Trail recording
+    // Trail (EVA traveled path)
     // -------------------------------------------------------------------------
 
     private void RecordTrail(Dictionary<string, object> imuEva)
@@ -164,114 +185,157 @@ public class ARMinimapErica : MonoBehaviour
         _lastRecordedTssPos = tssPos;
     }
 
-    // -------------------------------------------------------------------------
-    // Trail container + line-segment management
-    // -------------------------------------------------------------------------
-
-    private void CreateTrailContainer()
+    private void AddTrailPoint(Vector2 norm)
     {
-        if (minimapRect == null) return;
+        if (_trailContainer == null) return;
 
-        GameObject go = new GameObject("TrailContainer", typeof(RectTransform));
+        if (_trailPoints.Count > 0)
+            _trailLines.Add(CreateSegment(_trailContainer, _trailPoints[_trailPoints.Count - 1], norm, trailColor, trailLineWidth));
+
+        _trailPoints.Add(norm);
+
+        while (_trailPoints.Count > maxTrailPoints)
+        {
+            _trailPoints.RemoveAt(0);
+            if (_trailLines.Count > 0) { Destroy(_trailLines[0]); _trailLines.RemoveAt(0); }
+        }
+    }
+
+    public void ClearTrail()
+    {
+        foreach (GameObject seg in _trailLines) if (seg != null) Destroy(seg);
+        _trailLines.Clear();
+        _trailPoints.Clear();
+        _trailInitialized = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // A* planned path
+    // -------------------------------------------------------------------------
+
+    private void ComputeAndDrawAStarPath()
+    {
+        if (_pathContainer == null || minimapRect == null) return;
+
+        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
+        if (terrain == null || !terrain.IsReady)
+        {
+            Debug.LogWarning("[ARMinimap] TerrainAnalyzer not ready — A* path skipped. " +
+                             "Ensure TerrainAnalyzer is in the scene with a mesh assigned.");
+            return;
+        }
+
+        HashSet<Vector2Int> walkable = terrain.WalkableSet;
+
+        // Map TSS positions to grid cells, snapping to nearest walkable if needed
+        Vector2Int startCell = NavGridUtilities.SnapToWalkable(terrain.PosToGrid(pathStart.x, pathStart.y), walkable);
+        Vector2Int goalCell  = NavGridUtilities.SnapToWalkable(terrain.PosToGrid(pathGoal.x,  pathGoal.y),  walkable);
+
+        List<Vector2Int> path = NavPathfinder.FindPath(walkable, terrain, startCell, goalCell);
+
+        if (path == null || path.Count < 2)
+        {
+            Debug.LogWarning($"[ARMinimap] A* found no path from {pathStart} to {pathGoal}. " +
+                             "Check that both points fall within the walkable terrain.");
+            return;
+        }
+
+        // Draw each step as a line segment on the minimap
+        for (int i = 0; i < path.Count - 1; i++)
+        {
+            Vector2 normA = TssCoordsToNormalized(terrain.GridToTssPos(path[i]).x,     terrain.GridToTssPos(path[i]).y);
+            Vector2 normB = TssCoordsToNormalized(terrain.GridToTssPos(path[i + 1]).x, terrain.GridToTssPos(path[i + 1]).y);
+            _pathPoints.Add(normA);
+            _pathSegments.Add(CreateSegment(_pathContainer, normA, normB, plannedPathColor, plannedPathLineWidth));
+        }
+        _pathPoints.Add(TssCoordsToNormalized(terrain.GridToTssPos(path[path.Count - 1]).x,
+                                              terrain.GridToTssPos(path[path.Count - 1]).y));
+
+        Debug.Log($"[ARMinimap] A* path: {path.Count} cells, {_pathSegments.Count} segments drawn.");
+    }
+
+    public void ClearPlannedPath()
+    {
+        foreach (GameObject seg in _pathSegments) if (seg != null) Destroy(seg);
+        _pathSegments.Clear();
+        _pathPoints.Clear();
+    }
+
+    // -------------------------------------------------------------------------
+    // Shared segment infrastructure
+    // -------------------------------------------------------------------------
+
+    // Creates a stretch-fill container parented to minimapRect.
+    // Not added to MinimapExpandZoom's scale list, so its children are never squished.
+    private RectTransform CreateSegmentContainer(string containerName)
+    {
+        if (minimapRect == null) return null;
+        GameObject go = new GameObject(containerName, typeof(RectTransform));
         go.transform.SetParent(minimapRect, false);
-
-        // Stretch to fill minimapRect exactly; no scale modification by MinimapExpandZoom
         RectTransform rt = go.GetComponent<RectTransform>();
         rt.anchorMin = Vector2.zero;
         rt.anchorMax = Vector2.one;
         rt.offsetMin = Vector2.zero;
         rt.offsetMax = Vector2.zero;
         rt.pivot     = new Vector2(0.5f, 0.5f);
-
-        _trailContainer  = rt;
-        _lastMinimapSize = minimapRect.rect.size;
+        return rt;
     }
 
-    // Adds a new normalized position to the trail and draws a line segment from the previous point.
-    private void AddTrailPoint(Vector2 norm)
+    // Creates a thin colored Image rect spanning normA → normB inside the given container.
+    private GameObject CreateSegment(RectTransform container, Vector2 normA, Vector2 normB, Color color, float width)
     {
-        if (_trailContainer == null) return;
-
-        if (_trailPoints.Count > 0)
-            _trailLines.Add(CreateLineSegment(_trailPoints[_trailPoints.Count - 1], norm));
-
-        _trailPoints.Add(norm);
-
-        // Prune oldest point + its outgoing segment when the trail exceeds the limit
-        while (_trailPoints.Count > maxTrailPoints)
-        {
-            _trailPoints.RemoveAt(0);
-            if (_trailLines.Count > 0)
-            {
-                Destroy(_trailLines[0]);
-                _trailLines.RemoveAt(0);
-            }
-        }
-    }
-
-    // Creates a thin Image rect that visually connects normA to normB on the minimap.
-    private GameObject CreateLineSegment(Vector2 normA, Vector2 normB)
-    {
-        GameObject seg = new GameObject("TrailSeg",
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        seg.transform.SetParent(_trailContainer, false);
-
-        UpdateSegmentGeometry(seg.GetComponent<RectTransform>(), normA, normB);
-        seg.GetComponent<Image>().color = trailColor;
+        GameObject seg = new GameObject("Seg", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        seg.transform.SetParent(container, false);
+        UpdateSegmentGeometry(container, seg.GetComponent<RectTransform>(), normA, normB, width);
+        seg.GetComponent<Image>().color = color;
         return seg;
     }
 
-    // Positions, sizes, and rotates a line-segment rect to span from normA to normB.
-    // Uses fractional anchors for the midpoint so the segment moves with the rect,
-    // and recomputes the pixel length from the current rect dimensions.
-    private void UpdateSegmentGeometry(RectTransform rt, Vector2 normA, Vector2 normB)
+    // Positions, sizes, and rotates a segment rect to visually span from normA to normB.
+    // Uses a fractional anchor at the midpoint so position stays proportionally correct
+    // when the minimap rect resizes, and recomputes pixel length from the current rect size.
+    private static void UpdateSegmentGeometry(RectTransform container, RectTransform rt,
+                                              Vector2 normA, Vector2 normB, float lineWidth)
     {
-        // Anchor the midpoint so the segment stays proportionally positioned on resize
         Vector2 mid  = (normA + normB) * 0.5f;
         rt.anchorMin = mid;
         rt.anchorMax = mid;
         rt.pivot     = new Vector2(0.5f, 0.5f);
         rt.anchoredPosition = Vector2.zero;
 
-        // Pixel length of this segment at the current rect dimensions
-        float w   = _trailContainer.rect.width;
-        float h   = _trailContainer.rect.height;
+        float w   = container.rect.width;
+        float h   = container.rect.height;
         float dx  = (normB.x - normA.x) * w;
         float dy  = (normB.y - normA.y) * h;
         float len = Mathf.Max(Mathf.Sqrt(dx * dx + dy * dy), 1f);
 
-        rt.sizeDelta        = new Vector2(len, trailLineWidth);
+        rt.sizeDelta        = new Vector2(len, lineWidth);
         rt.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(dy, dx) * Mathf.Rad2Deg);
     }
 
-    // Recomputes segment geometries whenever the minimap rect has been resized
-    // (e.g., during the expand/collapse animation driven by MinimapExpandZoom).
-    private void RefreshTrailIfResized()
+    // Recomputes all segment lengths when the minimap is resized (e.g. expand/collapse animation).
+    private void RefreshSegmentsIfResized()
     {
         if (minimapRect == null) return;
         Vector2 curSize = minimapRect.rect.size;
-        if (Vector2.Distance(curSize, _lastMinimapSize) > 0.5f)
-        {
-            for (int i = 0; i < _trailLines.Count; i++)
-            {
-                if (_trailLines[i] == null) continue;
-                RectTransform rt = _trailLines[i].GetComponent<RectTransform>();
-                if (rt != null)
-                    UpdateSegmentGeometry(rt, _trailPoints[i], _trailPoints[i + 1]);
-            }
-            _lastMinimapSize = curSize;
-        }
+        if (Vector2.Distance(curSize, _lastMinimapSize) <= 0.5f) return;
+
+        RefreshSegmentList(_trailContainer,  _trailLines,    _trailPoints,  trailLineWidth);
+        RefreshSegmentList(_pathContainer,   _pathSegments,  _pathPoints,   plannedPathLineWidth);
+        _lastMinimapSize = curSize;
     }
 
-    // Removes all trail segments and resets the trail state.
-    public void ClearTrail()
+    private static void RefreshSegmentList(RectTransform container, List<GameObject> segs,
+                                           List<Vector2> points, float lineWidth)
     {
-        foreach (GameObject seg in _trailLines)
-            if (seg != null) Destroy(seg);
-
-        _trailLines.Clear();
-        _trailPoints.Clear();
-        _trailInitialized = false;
+        if (container == null) return;
+        for (int i = 0; i < segs.Count; i++)
+        {
+            if (segs[i] == null) continue;
+            RectTransform rt = segs[i].GetComponent<RectTransform>();
+            if (rt != null)
+                UpdateSegmentGeometry(container, rt, points[i], points[i + 1], lineWidth);
+        }
     }
 
     // -------------------------------------------------------------------------
@@ -286,16 +350,13 @@ public class ARMinimapErica : MonoBehaviour
         SpawnWaypointDot(new Vector2(-5515f, -9995f),  Color.yellow, "WP_Yellow");
     }
 
-    // Places a coloured dot at the given TSS position, parented directly to minimapRect
-    // using fractional anchors so the position stays correct when the rect is resized.
+    // Uses fractional anchors so the dot stays at the correct map position on resize.
     private void SpawnWaypointDot(Vector2 tssPos, Color color, string dotName)
     {
         Vector2 norm = TssCoordsToNormalized(tssPos.x, tssPos.y);
-
-        GameObject dot = new GameObject(dotName,
-            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        GameObject dot = new GameObject(dotName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         dot.transform.SetParent(minimapRect, false);
-        dot.transform.SetAsFirstSibling();  // render beneath trail and player icon
+        dot.transform.SetAsFirstSibling();
 
         RectTransform rt    = dot.GetComponent<RectTransform>();
         rt.anchorMin        = norm;
@@ -314,7 +375,6 @@ public class ARMinimapErica : MonoBehaviour
     private void LogDebug(Dictionary<string, object> imuEva)
     {
         if (!verboseDebug) return;
-
         _logTimer += Time.deltaTime;
         if (_logTimer < logIntervalSeconds) return;
         _logTimer = 0f;
@@ -322,23 +382,18 @@ public class ARMinimapErica : MonoBehaviour
         float x       = (float)ToDouble(imuEva, "posx");
         float y       = (float)ToDouble(imuEva, "posy");
         float heading = (float)ToDouble(imuEva, "heading");
-        Vector2 mapPos = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
-        Vector2 n  = TssCoordsToNormalized(x, y);
+        Vector2 n     = TssCoordsToNormalized(x, y);
+        Vector2 px    = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
 
-        string bucketStatus = imuEva == null
-            ? $"NULL — imu[\"{evaId}\"] not found (wrong evaId or TSS not connected)"
-            : $"OK — keys: [{string.Join(", ", new List<string>(imuEva.Keys))}]";
+        string bucket = imuEva == null
+            ? $"NULL (wrong evaId or TSS not connected)"
+            : $"OK [{string.Join(", ", new List<string>(imuEva.Keys))}]";
 
         Debug.Log(
-            $"[ARMinimap] ───────────────────────────────\n" +
-            $"  imu[\"{evaId}\"] bucket : {bucketStatus}\n" +
-            $"  TSS  posx={x:F1}  posy={y:F1}  heading={heading:F1}°\n" +
-            $"  normalized  nx={n.x:F3} (0=left, 1=right)  ny={n.y:F3} (0=bottom, 1=top)\n" +
-            $"  map  anchoredPos=({mapPos.x:F1}, {mapPos.y:F1}) px\n" +
-            $"  minimap size: {(minimapRect != null ? minimapRect.sizeDelta.ToString() : "null")}\n" +
-            $"  bounds X:[{mapMinX},{mapMaxX}]  Y:[{mapMinY},{mapMaxY}]\n" +
-            $"  trail points: {_trailPoints.Count}  segments: {_trailLines.Count}\n" +
-            $"  playerIcon assigned: {(playerIcon != null ? "YES" : "NO — assign in Inspector")}"
+            $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
+            $"  TSS ({x:F1}, {y:F1})  heading {heading:F1}°\n" +
+            $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
+            $"  trail pts:{_trailPoints.Count}  path segs:{_pathSegments.Count}"
         );
     }
 
@@ -349,27 +404,22 @@ public class ARMinimapErica : MonoBehaviour
     private Dictionary<string, object> GetImuBucket()
     {
         if (tssApi == null) return null;
-
         Dictionary<string, object> eva = tssApi.GetEva();
 
-        Dictionary<string, object> imu = null;
-        if (eva != null && eva.TryGetValue("imu", out object imuObj))
-            imu = imuObj as Dictionary<string, object>;
+        if (eva == null || !eva.TryGetValue("imu", out object imuObj)) return null;
+        Dictionary<string, object> imu = imuObj as Dictionary<string, object>;
 
-        Dictionary<string, object> imuEva = null;
-        if (imu != null && imu.TryGetValue(evaId, out object bucketObj))
-            imuEva = bucketObj as Dictionary<string, object>;
-
-        return imuEva;
+        if (imu == null || !imu.TryGetValue(evaId, out object bucket)) return null;
+        return bucket as Dictionary<string, object>;
     }
 
     private static double ToDouble(Dictionary<string, object> dict, string key)
     {
         if (dict == null || !dict.TryGetValue(key, out object val) || val == null) return 0d;
-        if (val is double d)  return d;
-        if (val is float  f)  return f;
-        if (val is int    i)  return i;
-        if (val is long   l)  return l;
+        if (val is double d) return d;
+        if (val is float  f) return f;
+        if (val is int    i) return i;
+        if (val is long   l) return l;
         if (val is string s && double.TryParse(s,
                 System.Globalization.NumberStyles.Float,
                 System.Globalization.CultureInfo.InvariantCulture, out double p)) return p;

@@ -191,6 +191,27 @@ public class TerrainAnalyzer : MonoBehaviour
         return ObjToGrid(meshX, meshZ);
     }
 
+    /// <summary>
+    /// Inverse of <see cref="PosToGrid"/>: converts a grid cell back to its TSS-frame center
+    /// position by reversing the tileSize quantization and the posOffset/posScale calibration.
+    /// Used by the minimap to place A* path segments at the correct fractional position on the
+    /// map image. Returns the cell center (cell + 0.5) * tileSize in mesh frame, then
+    /// un-calibrates to TSS frame.
+    /// </summary>
+    public Vector2 GridToTssPos(Vector2Int cell)
+    {
+        float safeScaleX = Mathf.Approximately(posScaleX, 0f) ? 1f : posScaleX;
+        float safeScaleY = Mathf.Approximately(posScaleY, 0f) ? 1f : posScaleY;
+
+        float meshX = (cell.x + 0.5f) * tileSize;
+        float meshZ = (cell.y + 0.5f) * tileSize;
+
+        return new Vector2(
+            meshX * safeScaleX + posOffsetX,
+            meshZ * safeScaleY + posOffsetY
+        );
+    }
+
     // --- Grid construction pipeline ---
 
     /// <summary>
