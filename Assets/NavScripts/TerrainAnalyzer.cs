@@ -16,20 +16,30 @@ using UnityEngine;
 public class TerrainAnalyzer : MonoBehaviour
 {
     [Header("Terrain Source")]
+    [Tooltip("Assign the Mesh sub-asset directly (expand the .obj in the Project panel to find it).")]
     [SerializeField] private Mesh terrainMesh;
+    [Tooltip("Alternative: drag any scene GameObject that has a MeshFilter containing the lunar mesh. " +
+             "Easier than finding the Mesh sub-asset inside the .obj file.")]
+    [SerializeField] private MeshFilter meshFilterSource;
 
     [Header("Grid Settings")]
     [SerializeField] private float tileSize = 0.6096f;
 
     [Header("Position → Mesh Calibration")]
-    [Tooltip("Source (TSS) X value that corresponds to mesh X = 0. Used to shift EVA/LTV posx onto the mesh frame.")]
-    [SerializeField] private float posOffsetX = 0f;
-    [Tooltip("Source (TSS) Y value that corresponds to mesh Z = 0. Used to shift EVA/LTV posy onto the mesh frame.")]
-    [SerializeField] private float posOffsetY = 0f;
-    [Tooltip("Source units per mesh unit along X. 1 = raw posx is already in mesh units.")]
-    [SerializeField] private float posScaleX = 1f;
-    [Tooltip("Source units per mesh unit along Z. 1 = raw posy is already in mesh units.")]
-    [SerializeField] private float posScaleY = 1f;
+    [Tooltip("TSS X value that maps to mesh X = 0 (mesh centre). " +
+             "Default = centre of the minimap TSS X range: (mapMinX + mapMaxX) / 2 = (-5765 + -5545) / 2 = -5655.")]
+    [SerializeField] private float posOffsetX = -5655f;
+    [Tooltip("TSS Y value that maps to mesh Z = 0 (mesh centre). " +
+             "Default = centre of the minimap TSS Y range: (mapMinY + mapMaxY) / 2 = (-10075 + -9940) / 2 = -10007.5.")]
+    [SerializeField] private float posOffsetY = -10007.5f;
+    [Tooltip("TSS units per mesh unit along X. " +
+             "Default = (mapMaxX - mapMinX) / mesh_X_extent = 220 / 54.638 ≈ 4.027. " +
+             "Increase if path appears compressed east-west; decrease if stretched.")]
+    [SerializeField] private float posScaleX = 4.027f;
+    [Tooltip("TSS units per mesh unit along Z. " +
+             "Default = (mapMaxY - mapMinY) / mesh_Z_extent = 135 / 56.735 ≈ 2.380. " +
+             "Increase if path appears compressed north-south; decrease if stretched.")]
+    [SerializeField] private float posScaleY = 2.380f;
 
     [Header("Walkability Thresholds")]
     [Tooltip("Higher = allow steeper triangles before maxing difficulty.")]
@@ -243,16 +253,25 @@ public class TerrainAnalyzer : MonoBehaviour
         verts = null;
         tris = null;
 
-        if (terrainMesh == null)
+        // Prefer the direct Mesh field; fall back to the MeshFilter on a scene object.
+        Mesh mesh = terrainMesh;
+        if (mesh == null && meshFilterSource != null)
+            mesh = meshFilterSource.sharedMesh;
+
+        if (mesh == null)
         {
+            Debug.LogWarning("[TerrainAnalyzer] No mesh assigned. " +
+                "Assign the Mesh sub-asset (expand the .obj in the Project panel) to 'Terrain Mesh', " +
+                "OR drag a scene object with a MeshFilter into 'Mesh Filter Source'.");
             return false;
         }
 
-        verts = terrainMesh.vertices;
-        tris = terrainMesh.triangles;
+        verts = mesh.vertices;
+        tris  = mesh.triangles;
 
         if (verts.Length == 0 || tris.Length == 0)
         {
+            Debug.LogWarning("[TerrainAnalyzer] Assigned mesh has no vertices or triangles.");
             return false;
         }
 

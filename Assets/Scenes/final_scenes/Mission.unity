@@ -183,6 +183,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 3538298739891595076, guid: 7708feb849a6a496bbb65d267f28cf23, type: 3}
       insertIndex: -1
       addedObject: {fileID: 224362100}
+    - targetCorrespondingSourceObject: {fileID: 3538298739891595076, guid: 7708feb849a6a496bbb65d267f28cf23, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 224362101}
   m_SourcePrefab: {fileID: 100100000, guid: 7708feb849a6a496bbb65d267f28cf23, type: 3}
 --- !u!1 &224362099 stripped
 GameObject:
@@ -205,15 +208,45 @@ MonoBehaviour:
   evaId: eva1
   minimapRect: {fileID: 878749584}
   playerIcon: {fileID: 498685380}
-  pathContainer: {fileID: 498685380}
-  trailDotPrefab: {fileID: 7200025896239442515, guid: 6cdfbe42c70d7407dad326a68c5f9f79, type: 3}
   mapMinX: -5765
   mapMaxX: -5545
   mapMinY: -10075
   mapMaxY: -9940
+  trailColor: {r: 1, g: 0.55, b: 0, a: 1}
+  trailLineWidth: 2.5
   recordDistance: 0.25
+  maxTrailPoints: 500
+  showPlannedPath: 1
+  plannedPathColor: {r: 0.2, g: 1, b: 0.8, a: 1}
+  plannedPathLineWidth: 2.5
+  pathStart: {x: -5670, y: -10060}
+  pathGoal: {x: -5635, y: -9960}
+  showWaypoints: 1
   verboseDebug: 1
   logIntervalSeconds: 1
+--- !u!114 &224362101
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 224362099}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: be0da4e0a66ce415bb6eb0cadde696e5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  terrainMesh: {fileID: -2432090755550338912, guid: 5674cc1989f9049b9918ae498b012f06, type: 3}
+  meshFilterSource: {fileID: 0}
+  tileSize: 0.6096
+  posOffsetX: 0
+  posOffsetY: 0
+  posScaleX: 1
+  posScaleY: 1
+  maxSlopeDegrees: 40
+  maxHeightRange: 0.45
+  slopeBlendFactor: 0.6
+  impassableThreshold: 0.82
 --- !u!1 &275567183
 GameObject:
   m_ObjectHideFlags: 0

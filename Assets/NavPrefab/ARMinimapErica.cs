@@ -217,41 +217,59 @@ public class ARMinimapErica : MonoBehaviour
     {
         if (_pathContainer == null || minimapRect == null) return;
 
-        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
-        if (terrain == null || !terrain.IsReady)
+        // Try terrain-aware A* first; fall back to a straight line if unavailable.
+        List<Vector2> normPoints = TryTerrainAStarPath();
+
+        if (normPoints == null)
         {
-            Debug.LogWarning("[ARMinimap] TerrainAnalyzer not ready — A* path skipped. " +
-                             "Ensure TerrainAnalyzer is in the scene with a mesh assigned.");
-            return;
+            // Straight line is the optimal A* result with no obstacles — valid fallback.
+            normPoints = new List<Vector2>
+            {
+                TssCoordsToNormalized(pathStart.x, pathStart.y),
+                TssCoordsToNormalized(pathGoal.x,  pathGoal.y)
+            };
+            Debug.Log("[ARMinimap] A* path: drawing straight-line fallback " +
+                      "(TerrainAnalyzer unavailable or found no path — " +
+                      "check Inspector calibration on TerrainAnalyzer).");
         }
 
-        HashSet<Vector2Int> walkable = terrain.WalkableSet;
+        for (int i = 0; i < normPoints.Count - 1; i++)
+        {
+            _pathPoints.Add(normPoints[i]);
+            _pathSegments.Add(CreateSegment(_pathContainer, normPoints[i], normPoints[i + 1],
+                                            plannedPathColor, plannedPathLineWidth));
+        }
+        _pathPoints.Add(normPoints[normPoints.Count - 1]);
+    }
 
-        // Map TSS positions to grid cells, snapping to nearest walkable if needed
+    // Returns terrain-following A* path as normalized minimap positions, or null on failure.
+    private List<Vector2> TryTerrainAStarPath()
+    {
+        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
+        if (terrain == null || !terrain.IsReady)
+            return null;
+
+        HashSet<Vector2Int> walkable = terrain.WalkableSet;
+        if (walkable.Count == 0)
+            return null;
+
         Vector2Int startCell = NavGridUtilities.SnapToWalkable(terrain.PosToGrid(pathStart.x, pathStart.y), walkable);
         Vector2Int goalCell  = NavGridUtilities.SnapToWalkable(terrain.PosToGrid(pathGoal.x,  pathGoal.y),  walkable);
 
         List<Vector2Int> path = NavPathfinder.FindPath(walkable, terrain, startCell, goalCell);
 
         if (path == null || path.Count < 2)
+            return null;
+
+        var normPoints = new List<Vector2>(path.Count);
+        foreach (Vector2Int cell in path)
         {
-            Debug.LogWarning($"[ARMinimap] A* found no path from {pathStart} to {pathGoal}. " +
-                             "Check that both points fall within the walkable terrain.");
-            return;
+            Vector2 tss = terrain.GridToTssPos(cell);
+            normPoints.Add(TssCoordsToNormalized(tss.x, tss.y));
         }
 
-        // Draw each step as a line segment on the minimap
-        for (int i = 0; i < path.Count - 1; i++)
-        {
-            Vector2 normA = TssCoordsToNormalized(terrain.GridToTssPos(path[i]).x,     terrain.GridToTssPos(path[i]).y);
-            Vector2 normB = TssCoordsToNormalized(terrain.GridToTssPos(path[i + 1]).x, terrain.GridToTssPos(path[i + 1]).y);
-            _pathPoints.Add(normA);
-            _pathSegments.Add(CreateSegment(_pathContainer, normA, normB, plannedPathColor, plannedPathLineWidth));
-        }
-        _pathPoints.Add(TssCoordsToNormalized(terrain.GridToTssPos(path[path.Count - 1]).x,
-                                              terrain.GridToTssPos(path[path.Count - 1]).y));
-
-        Debug.Log($"[ARMinimap] A* path: {path.Count} cells, {_pathSegments.Count} segments drawn.");
+        Debug.Log($"[ARMinimap] A* path (terrain): {path.Count} cells, {path.Count - 1} segments.");
+        return normPoints;
     }
 
     public void ClearPlannedPath()
