@@ -27,8 +27,8 @@ public class ARMinimapErica : MonoBehaviour
     [Header("Minimap")]
     public RectTransform minimapRect;
     public RectTransform playerIcon;
-    public RectTransform pathContainer;
-    public GameObject trailDotPrefab;
+    public RectTransform pathContainer;   // kept for external callers; not used by trail
+    public GameObject    trailDotPrefab;  // kept for backward compat; not used by trail
 
     [Header("Map Bounds (TSS coordinate ranges the map image covers)")]
     [Tooltip("Leftmost TSS X coordinate shown on the map image")]
@@ -40,8 +40,16 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("Top TSS Y coordinate shown on the map image")]
     public float mapMaxY = -9940f;
 
-    [Tooltip("Minimum TSS distance (meters) moved before a trail dot is placed.")]
-    public float recordDistance = 0.25f;
+    [Tooltip("Minimum TSS distance (meters) the EVA must travel before a new trail point is recorded.")]
+    public float recordDistance = 0.5f;
+
+    [Header("Trail")]
+    [Tooltip("Color of the traveled-path line.")]
+    public Color trailColor = new Color(1f, 0.55f, 0f, 1f);
+    [Tooltip("Width of the trail line in UI pixels.")]
+    public float trailLineWidth = 2.5f;
+    [Tooltip("Maximum number of trail points kept; oldest are pruned when exceeded.")]
+    public int maxTrailPoints = 500;
 
     [Header("Waypoints")]
     [Tooltip("Spawn the three fixed reference waypoints (blue/green/yellow) at Start.")]
@@ -52,9 +60,15 @@ public class ARMinimapErica : MonoBehaviour
     [SerializeField] private bool verboseDebug = true;
     [SerializeField] private float logIntervalSeconds = 1f;
 
+    // Trail state — normalized (0..1) positions and their connecting segment objects
+    private readonly List<Vector2>    _trailPoints   = new List<Vector2>();
+    private readonly List<GameObject> _trailLines    = new List<GameObject>();
+    private RectTransform _trailContainer;
+    private Vector2       _lastMinimapSize;
+
     private Vector2 _lastRecordedTssPos;
-    private bool _trailInitialized = false;
-    private float _logTimer = 0f;
+    private bool    _trailInitialized = false;
+    private float   _logTimer         = 0f;
 
     private void Awake()
     {
@@ -67,7 +81,12 @@ public class ARMinimapErica : MonoBehaviour
 
     private void Start()
     {
+        CreateTrailContainer();
         if (showWaypoints) SpawnWaypoints();
+
+        // Trail renders above waypoints but below the player icon
+        if (_trailContainer != null && playerIcon != null)
+            _trailContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
     }
 
     private void Update()
@@ -75,8 +94,13 @@ public class ARMinimapErica : MonoBehaviour
         Dictionary<string, object> imuEva = GetImuBucket();
         UpdatePlayerIcon(imuEva);
         RecordTrail(imuEva);
+        RefreshTrailIfResized();
         LogDebug(imuEva);
     }
+
+    // -------------------------------------------------------------------------
+    // Player icon
+    // -------------------------------------------------------------------------
 
     private void UpdatePlayerIcon(Dictionary<string, object> imuEva)
     {
@@ -86,10 +110,13 @@ public class ARMinimapErica : MonoBehaviour
         float y       = (float)ToDouble(imuEva, "posy");
         float heading = (float)ToDouble(imuEva, "heading");
 
-        Vector2 mapPos = TssCoordsToMapPixels(x, y);
-        playerIcon.anchoredPosition = mapPos;
+        playerIcon.anchoredPosition = TssCoordsToMapPixels(x, y);
         playerIcon.localEulerAngles = new Vector3(0f, 0f, -heading);
     }
+
+    // -------------------------------------------------------------------------
+    // Coordinate helpers
+    // -------------------------------------------------------------------------
 
     // Maps TSS coords to 0..1 fractions within the configured map bounds.
     // (0,0) = bottom-left corner of the map image, (1,1) = top-right corner.
@@ -112,6 +139,10 @@ public class ARMinimapErica : MonoBehaviour
         );
     }
 
+    // -------------------------------------------------------------------------
+    // Trail recording
+    // -------------------------------------------------------------------------
+
     private void RecordTrail(Dictionary<string, object> imuEva)
     {
         Vector2 tssPos = imuEva != null
@@ -123,70 +154,129 @@ public class ARMinimapErica : MonoBehaviour
         if (!_trailInitialized)
         {
             _lastRecordedTssPos = tssPos;
-            _trailInitialized = true;
+            _trailInitialized   = true;
             return;
         }
 
-        if (Vector2.Distance(tssPos, _lastRecordedTssPos) > recordDistance)
+        if (Vector2.Distance(tssPos, _lastRecordedTssPos) < recordDistance) return;
+
+        AddTrailPoint(TssCoordsToNormalized(tssPos.x, tssPos.y));
+        _lastRecordedTssPos = tssPos;
+    }
+
+    // -------------------------------------------------------------------------
+    // Trail container + line-segment management
+    // -------------------------------------------------------------------------
+
+    private void CreateTrailContainer()
+    {
+        if (minimapRect == null) return;
+
+        GameObject go = new GameObject("TrailContainer", typeof(RectTransform));
+        go.transform.SetParent(minimapRect, false);
+
+        // Stretch to fill minimapRect exactly; no scale modification by MinimapExpandZoom
+        RectTransform rt = go.GetComponent<RectTransform>();
+        rt.anchorMin = Vector2.zero;
+        rt.anchorMax = Vector2.one;
+        rt.offsetMin = Vector2.zero;
+        rt.offsetMax = Vector2.zero;
+        rt.pivot     = new Vector2(0.5f, 0.5f);
+
+        _trailContainer  = rt;
+        _lastMinimapSize = minimapRect.rect.size;
+    }
+
+    // Adds a new normalized position to the trail and draws a line segment from the previous point.
+    private void AddTrailPoint(Vector2 norm)
+    {
+        if (_trailContainer == null) return;
+
+        if (_trailPoints.Count > 0)
+            _trailLines.Add(CreateLineSegment(_trailPoints[_trailPoints.Count - 1], norm));
+
+        _trailPoints.Add(norm);
+
+        // Prune oldest point + its outgoing segment when the trail exceeds the limit
+        while (_trailPoints.Count > maxTrailPoints)
         {
-            Vector2 mapPos = TssCoordsToMapPixels(tssPos.x, tssPos.y);
-            if (trailDotPrefab != null && pathContainer != null)
+            _trailPoints.RemoveAt(0);
+            if (_trailLines.Count > 0)
             {
-                GameObject dot = Instantiate(trailDotPrefab, pathContainer);
-                dot.GetComponent<RectTransform>().anchoredPosition = mapPos;
+                Destroy(_trailLines[0]);
+                _trailLines.RemoveAt(0);
             }
-            _lastRecordedTssPos = tssPos;
         }
     }
 
-    private void LogDebug(Dictionary<string, object> imuEva)
+    // Creates a thin Image rect that visually connects normA to normB on the minimap.
+    private GameObject CreateLineSegment(Vector2 normA, Vector2 normB)
     {
-        if (!verboseDebug) return;
+        GameObject seg = new GameObject("TrailSeg",
+            typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
+        seg.transform.SetParent(_trailContainer, false);
 
-        _logTimer += Time.deltaTime;
-        if (_logTimer < logIntervalSeconds) return;
-        _logTimer = 0f;
-
-        float x       = (float)ToDouble(imuEva, "posx");
-        float y       = (float)ToDouble(imuEva, "posy");
-        float heading = (float)ToDouble(imuEva, "heading");
-        Vector2 mapPos = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
-        Vector2 n  = TssCoordsToNormalized(x, y);
-        float   nx = n.x;
-        float   ny = n.y;
-
-        string bucketStatus = imuEva == null
-            ? $"NULL — imu[\"{evaId}\"] not found (wrong evaId or TSS not connected)"
-            : $"OK — keys: [{string.Join(", ", new List<string>(imuEva.Keys))}]";
-
-        Debug.Log(
-            $"[ARMinimap] ───────────────────────────────\n" +
-            $"  imu[\"{evaId}\"] bucket : {bucketStatus}\n" +
-            $"  TSS  posx={x:F1}  posy={y:F1}  heading={heading:F1}°\n" +
-            $"  normalized  nx={nx:F3} (0=left, 1=right)  ny={ny:F3} (0=bottom, 1=top)\n" +
-            $"  map  anchoredPos=({mapPos.x:F1}, {mapPos.y:F1}) px\n" +
-            $"  minimap size: {(minimapRect != null ? minimapRect.sizeDelta.ToString() : "null")}\n" +
-            $"  bounds X:[{mapMinX},{mapMaxX}]  Y:[{mapMinY},{mapMaxY}]\n" +
-            $"  playerIcon assigned: {(playerIcon != null ? "YES" : "NO — assign in Inspector")}"
-        );
+        UpdateSegmentGeometry(seg.GetComponent<RectTransform>(), normA, normB);
+        seg.GetComponent<Image>().color = trailColor;
+        return seg;
     }
 
-    private Dictionary<string, object> GetImuBucket()
+    // Positions, sizes, and rotates a line-segment rect to span from normA to normB.
+    // Uses fractional anchors for the midpoint so the segment moves with the rect,
+    // and recomputes the pixel length from the current rect dimensions.
+    private void UpdateSegmentGeometry(RectTransform rt, Vector2 normA, Vector2 normB)
     {
-        if (tssApi == null) return null;
+        // Anchor the midpoint so the segment stays proportionally positioned on resize
+        Vector2 mid  = (normA + normB) * 0.5f;
+        rt.anchorMin = mid;
+        rt.anchorMax = mid;
+        rt.pivot     = new Vector2(0.5f, 0.5f);
+        rt.anchoredPosition = Vector2.zero;
 
-        Dictionary<string, object> eva = tssApi.GetEva();
+        // Pixel length of this segment at the current rect dimensions
+        float w   = _trailContainer.rect.width;
+        float h   = _trailContainer.rect.height;
+        float dx  = (normB.x - normA.x) * w;
+        float dy  = (normB.y - normA.y) * h;
+        float len = Mathf.Max(Mathf.Sqrt(dx * dx + dy * dy), 1f);
 
-        Dictionary<string, object> imu = null;
-        if (eva != null && eva.TryGetValue("imu", out object imuObj))
-            imu = imuObj as Dictionary<string, object>;
-
-        Dictionary<string, object> imuEva = null;
-        if (imu != null && imu.TryGetValue(evaId, out object bucketObj))
-            imuEva = bucketObj as Dictionary<string, object>;
-
-        return imuEva;
+        rt.sizeDelta        = new Vector2(len, trailLineWidth);
+        rt.localEulerAngles = new Vector3(0f, 0f, Mathf.Atan2(dy, dx) * Mathf.Rad2Deg);
     }
+
+    // Recomputes segment geometries whenever the minimap rect has been resized
+    // (e.g., during the expand/collapse animation driven by MinimapExpandZoom).
+    private void RefreshTrailIfResized()
+    {
+        if (minimapRect == null) return;
+        Vector2 curSize = minimapRect.rect.size;
+        if (Vector2.Distance(curSize, _lastMinimapSize) > 0.5f)
+        {
+            for (int i = 0; i < _trailLines.Count; i++)
+            {
+                if (_trailLines[i] == null) continue;
+                RectTransform rt = _trailLines[i].GetComponent<RectTransform>();
+                if (rt != null)
+                    UpdateSegmentGeometry(rt, _trailPoints[i], _trailPoints[i + 1]);
+            }
+            _lastMinimapSize = curSize;
+        }
+    }
+
+    // Removes all trail segments and resets the trail state.
+    public void ClearTrail()
+    {
+        foreach (GameObject seg in _trailLines)
+            if (seg != null) Destroy(seg);
+
+        _trailLines.Clear();
+        _trailPoints.Clear();
+        _trailInitialized = false;
+    }
+
+    // -------------------------------------------------------------------------
+    // Waypoint dots
+    // -------------------------------------------------------------------------
 
     private void SpawnWaypoints()
     {
@@ -205,7 +295,7 @@ public class ARMinimapErica : MonoBehaviour
         GameObject dot = new GameObject(dotName,
             typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         dot.transform.SetParent(minimapRect, false);
-        dot.transform.SetAsFirstSibling();  // render behind player icon and trail
+        dot.transform.SetAsFirstSibling();  // render beneath trail and player icon
 
         RectTransform rt    = dot.GetComponent<RectTransform>();
         rt.anchorMin        = norm;
@@ -215,6 +305,62 @@ public class ARMinimapErica : MonoBehaviour
         rt.anchoredPosition = Vector2.zero;
 
         dot.GetComponent<Image>().color = color;
+    }
+
+    // -------------------------------------------------------------------------
+    // Debug logging
+    // -------------------------------------------------------------------------
+
+    private void LogDebug(Dictionary<string, object> imuEva)
+    {
+        if (!verboseDebug) return;
+
+        _logTimer += Time.deltaTime;
+        if (_logTimer < logIntervalSeconds) return;
+        _logTimer = 0f;
+
+        float x       = (float)ToDouble(imuEva, "posx");
+        float y       = (float)ToDouble(imuEva, "posy");
+        float heading = (float)ToDouble(imuEva, "heading");
+        Vector2 mapPos = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
+        Vector2 n  = TssCoordsToNormalized(x, y);
+
+        string bucketStatus = imuEva == null
+            ? $"NULL — imu[\"{evaId}\"] not found (wrong evaId or TSS not connected)"
+            : $"OK — keys: [{string.Join(", ", new List<string>(imuEva.Keys))}]";
+
+        Debug.Log(
+            $"[ARMinimap] ───────────────────────────────\n" +
+            $"  imu[\"{evaId}\"] bucket : {bucketStatus}\n" +
+            $"  TSS  posx={x:F1}  posy={y:F1}  heading={heading:F1}°\n" +
+            $"  normalized  nx={n.x:F3} (0=left, 1=right)  ny={n.y:F3} (0=bottom, 1=top)\n" +
+            $"  map  anchoredPos=({mapPos.x:F1}, {mapPos.y:F1}) px\n" +
+            $"  minimap size: {(minimapRect != null ? minimapRect.sizeDelta.ToString() : "null")}\n" +
+            $"  bounds X:[{mapMinX},{mapMaxX}]  Y:[{mapMinY},{mapMaxY}]\n" +
+            $"  trail points: {_trailPoints.Count}  segments: {_trailLines.Count}\n" +
+            $"  playerIcon assigned: {(playerIcon != null ? "YES" : "NO — assign in Inspector")}"
+        );
+    }
+
+    // -------------------------------------------------------------------------
+    // TSS data helpers
+    // -------------------------------------------------------------------------
+
+    private Dictionary<string, object> GetImuBucket()
+    {
+        if (tssApi == null) return null;
+
+        Dictionary<string, object> eva = tssApi.GetEva();
+
+        Dictionary<string, object> imu = null;
+        if (eva != null && eva.TryGetValue("imu", out object imuObj))
+            imu = imuObj as Dictionary<string, object>;
+
+        Dictionary<string, object> imuEva = null;
+        if (imu != null && imu.TryGetValue(evaId, out object bucketObj))
+            imuEva = bucketObj as Dictionary<string, object>;
+
+        return imuEva;
     }
 
     private static double ToDouble(Dictionary<string, object> dict, string key)
