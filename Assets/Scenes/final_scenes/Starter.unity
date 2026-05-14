@@ -904,6 +904,182 @@ Transform:
   m_Children: []
   m_Father: {fileID: 0}
   m_LocalEulerAnglesHint: {x: 50, y: -30, z: 0}
+--- !u!1 &3100000001
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3100000003}
+  - component: {fileID: 3100000002}
+  m_Layer: 0
+  m_Name: LunaTtsBridge
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &3100000002
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3100000001}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 3ded4bc3dabc04449a056109cffa72db, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  logSpokenText: 1
+--- !u!4 &3100000003
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3100000001}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &3100000011
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3100000013}
+  - component: {fileID: 3100000012}
+  m_Layer: 0
+  m_Name: VoiceIntent
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &3100000012
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3100000011}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 4f0d4c99cad10499c874c5f87a0f0960, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  VoiceIntentsConfiguration: {fileID: 11400000, guid: bc0d55f56ba294532829093db7f9abb8, type: 2}
+  targetObject: {fileID: 0}
+  rotationSpeed: 50
+  sendVoicePromptToAi: 1
+  aiGenerateUrl: http://10.206.9.135:13853/chat
+  aiModel: gemma4:26b
+  logAiResponse: 1
+  speakAiResponse: 1
+  responseTextBox: {fileID: 0}
+  aiaInputController: {fileID: 0}
+  responseScrollRect: {fileID: 0}
+  ltvVoiceCoordinator: {fileID: 0}
+  sceneVoiceCoordinator: {fileID: 3100000022}
+  verboseVoiceLogging: 1
+--- !u!4 &3100000013
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3100000011}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
+--- !u!1 &3100000021
+GameObject:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  serializedVersion: 6
+  m_Component:
+  - component: {fileID: 3100000023}
+  - component: {fileID: 3100000022}
+  m_Layer: 0
+  m_Name: SceneVoiceCoordinator
+  m_TagString: Untagged
+  m_Icon: {fileID: 0}
+  m_NavMeshLayer: 0
+  m_StaticEditorFlags: 0
+  m_IsActive: 1
+--- !u!114 &3100000022
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3100000021}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2c4f30f8028d4e798497b6ab1926bcbf, type: 3}
+  m_Name:
+  m_EditorClassIdentifier:
+  transitions:
+  - sourceSceneName: Starter
+    triggerPhrases:
+    - start egress
+    targetSceneName: Egress
+    announcement: Starting egress.
+  - sourceSceneName: Egress
+    triggerPhrases:
+    - start mission
+    targetSceneName: Mission
+    announcement: Starting mission.
+  - sourceSceneName: Mission
+    triggerPhrases:
+    - start ingress
+    targetSceneName: Ingress
+    announcement: Starting ingress.
+  - sourceSceneName: Ingress
+    triggerPhrases:
+    - end ingress
+    targetSceneName: Starter
+    announcement: Ending ingress.
+  - sourceSceneName: LTV
+    triggerPhrases:
+    - end ltv repair
+    - end l t v repair
+    - end ltv-repair
+    targetSceneName: Mission
+    announcement: Returning to Mission.
+  enableDebugLogs: 1
+--- !u!4 &3100000023
+Transform:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 3100000021}
+  serializedVersion: 2
+  m_LocalRotation: {x: 0, y: 0, z: 0, w: 1}
+  m_LocalPosition: {x: 0, y: 0, z: 0}
+  m_LocalScale: {x: 1, y: 1, z: 1}
+  m_ConstrainProportionsScale: 0
+  m_Children: []
+  m_Father: {fileID: 0}
+  m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0
@@ -913,3 +1089,6 @@ SceneRoots:
   - {fileID: 1502506524}
   - {fileID: 446509664}
   - {fileID: 766268442}
+  - {fileID: 3100000003}
+  - {fileID: 3100000013}
+  - {fileID: 3100000023}
