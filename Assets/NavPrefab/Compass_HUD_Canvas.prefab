@@ -137,7 +137,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -821.9999, y: -435}
-  m_SizeDelta: {x: 100, y: 100}
+  m_SizeDelta: {x: 50, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4240651166084428095
 CanvasRenderer:
@@ -212,7 +212,7 @@ RectTransform:
   m_AnchorMin: {x: 0.5, y: 0.5}
   m_AnchorMax: {x: 0.5, y: 0.5}
   m_AnchoredPosition: {x: -821.99994, y: -435}
-  m_SizeDelta: {x: 100, y: 100}
+  m_SizeDelta: {x: 50, y: 50}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!222 &4418737949135695679
 CanvasRenderer:
@@ -298,6 +298,8 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 0ae66a638550e49bdaad75f24463fda3, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  NorthDirection: {x: 0, y: 0, z: 0}
-  Player: {fileID: 0}
+  tssApi: {fileID: 0}
+  evaId: eva1
   NorthArrow: {fileID: 5063552030763377528}
+  useTssHeading: 1
+  debugHeading: 0
