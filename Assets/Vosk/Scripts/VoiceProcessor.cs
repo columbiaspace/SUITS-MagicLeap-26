@@ -94,8 +94,13 @@ public class VoiceProcessor : MonoBehaviour
     }
 
     [Header("Voice Detection Settings")]
+    // Lowered from the upstream 0.05f default. Magic Leap 2's headset mic regularly
+    // peaks around 0.02–0.04 for normal indoor speech, so the old threshold caused
+    // Vosk to receive zero frames and return an empty transcript ("Vosk could not
+    // transcribe that recording"). 0.01 lets typical speech through while still
+    // rejecting room tone (which is usually well under 0.005).
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingSampleValue = 0.05f;
+    private float _minimumSpeakingSampleValue = 0.01f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;
@@ -108,6 +113,19 @@ public class VoiceProcessor : MonoBehaviour
         get { return _silenceTimer; }
         set { _silenceTimer = Mathf.Max(0f, value); }
     }
+
+    public float MinimumSpeakingSampleValue
+    {
+        get { return _minimumSpeakingSampleValue; }
+        set { _minimumSpeakingSampleValue = Mathf.Clamp01(value); }
+    }
+
+    /// <summary>
+    /// Highest absolute sample amplitude observed in the most recent capture frame.
+    /// Useful for diagnosing "no audio detected" issues: if this never exceeds the
+    /// threshold during a recording, the mic is too quiet or the threshold too high.
+    /// </summary>
+    public float LastFrameMaxAmplitude { get; private set; }
 
     public bool StopRecordingAfterSilence { get; set; }
 
@@ -302,15 +320,18 @@ public class VoiceProcessor : MonoBehaviour
             }
             else
             {
+                // Absolute value: speech waveforms swing both positive and negative,
+                // so checking sampleBuffer[i] > maxVolume alone misses every trough.
                 float maxVolume = 0.0f;
-
                 for (int i = 0; i < sampleBuffer.Length; i++)
                 {
-                    if (sampleBuffer[i] > maxVolume)
+                    float abs = sampleBuffer[i] < 0 ? -sampleBuffer[i] : sampleBuffer[i];
+                    if (abs > maxVolume)
                     {
-                        maxVolume = sampleBuffer[i];
+                        maxVolume = abs;
                     }
                 }
+                LastFrameMaxAmplitude = maxVolume;
 
                 if (maxVolume >= _minimumSpeakingSampleValue)
                 {
