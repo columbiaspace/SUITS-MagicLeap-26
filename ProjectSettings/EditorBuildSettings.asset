@@ -8,7 +8,7 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/working_scenes/Thea-UI.unity
     guid: 3b8f2cec444e84f17aa046c9e583d07b
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/final_scenes/Starter.unity
     guid: 6002158857ea7482ea8717f7bfd0efb1
   - enabled: 1
@@ -24,5 +24,6 @@ EditorBuildSettings:
     path: Assets/Scenes/final_scenes/Egress.unity
     guid: 42d12380eb057498ab3d79e5f84e8a90
   m_configObjects:
+    com.unity.xr.arfoundation.simulation_settings: {fileID: 11400000, guid: 81fe73fad731b4c30af147196646e16a, type: 2}
     com.unity.xr.management.loader_settings: {fileID: 11400000, guid: c761bc8a9a07b4bbd896483595753c2d, type: 2}
     com.unity.xr.openxr.settings4: {fileID: 11400000, guid: 8ed9a45425179499dbcea186030840ed, type: 2}

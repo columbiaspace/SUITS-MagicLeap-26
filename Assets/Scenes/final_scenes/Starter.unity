@@ -1055,7 +1055,7 @@ MonoBehaviour:
   - sourceSceneName: Ingress
     triggerPhrases:
     - end ingress
-    targetSceneName: Starter
+    targetSceneName: Mission
     announcement: Ending ingress.
   - sourceSceneName: LTV
     triggerPhrases:
