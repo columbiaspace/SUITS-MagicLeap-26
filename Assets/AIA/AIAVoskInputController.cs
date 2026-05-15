@@ -166,6 +166,9 @@ public class AIAVoskInputController : MonoBehaviour
     private bool isVoskInitializing;
     private bool isVoskInitialized;
     private bool isRecording;
+    // Set true once a partial transcript routes a scene-transition command this session,
+    // so subsequent partials don't double-trigger before recording stops.
+    private bool _routedSceneVoiceThisSession;
     private Coroutine initializationTimeoutCoroutine;
 
     private void Awake()
@@ -273,10 +276,17 @@ public class AIAVoskInputController : MonoBehaviour
     {
         if (voiceIntents == null)
         {
-            GameObject voiceIntentObject = GameObject.Find("VoiceIntent");
-            if (voiceIntentObject != null)
+            // Prefer the persistent singleton: a freshly-loaded scene's local VoiceIntent
+            // briefly coexists with the persistent one during the same frame, and
+            // GameObject.Find can return the doomed duplicate before its Destroy resolves.
+            voiceIntents = VoiceIntents.Instance;
+            if (voiceIntents == null)
             {
-                voiceIntents = voiceIntentObject.GetComponent<VoiceIntents>();
+                GameObject voiceIntentObject = GameObject.Find("VoiceIntent");
+                if (voiceIntentObject != null)
+                {
+                    voiceIntents = voiceIntentObject.GetComponent<VoiceIntents>();
+                }
             }
         }
 
@@ -439,6 +449,8 @@ public class AIAVoskInputController : MonoBehaviour
 
         try
         {
+            _routedSceneVoiceThisSession = false;
+
             if (voiceIntents != null)
             {
                 voiceIntents.BeginRecordingTranscript();
@@ -584,6 +596,18 @@ public class AIAVoskInputController : MonoBehaviour
             if (voiceIntents != null)
             {
                 voiceIntents.UpdateRecordingTranscript(partialTranscript);
+
+                // VoiceProcessor's silence detection on ML2 doesn't reliably fire, so the
+                // recording stays open and the final transcript never emits. Route scene
+                // transitions off the live partial stream instead — fires the moment Vosk
+                // has heard enough audio to recognize a configured command.
+                if (!_routedSceneVoiceThisSession &&
+                    voiceIntents.TryRouteSceneVoiceCommand(partialTranscript))
+                {
+                    _routedSceneVoiceThisSession = true;
+                    Debug.Log($"[Vosk] Scene-voice command routed from partial transcript: '{partialTranscript}'. Stopping recording.");
+                    StopRecording();
+                }
             }
             else
             {
