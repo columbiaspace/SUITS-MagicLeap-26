@@ -34,6 +34,12 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
     [SerializeField] private Vector2 popupSize = new Vector2(420f, 72f);
     [SerializeField] private Vector2 popupMargin = new Vector2(16f, 16f);
 
+    [Header("Mock / Testing")]
+    [Tooltip("When enabled, the real TSS oxygen values are ignored and the mock value below is used instead. Everything else (telemetry, LTV, etc.) still reads from TSS.")]
+    [SerializeField] private bool mockOxygenEnabled = false;
+    [Tooltip("Mock oxygen percentage to feed into the warning system. Set below 30 for yellow warning, below 15 for red.")]
+    [SerializeField] [Range(0f, 100f)] private float mockOxygenPercent = 85f;
+
     [Header("Debug Output")]
     [SerializeField] private bool logStateTransitions = true;
     [SerializeField] private bool logEverySample = false;
@@ -109,18 +115,52 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, refreshIntervalSeconds));
         while (true)
         {
-            if (tssApi == null)
+            if (mockOxygenEnabled)
             {
-                TryResolveApiService();
+                EvaluatePacket(BuildMockPacket(mockOxygenPercent));
             }
-
-            if (tssApi != null)
+            else
             {
-                EvaluatePacket(tssApi.GetEva());
+                if (tssApi == null)
+                {
+                    TryResolveApiService();
+                }
+
+                if (tssApi != null)
+                {
+                    EvaluatePacket(tssApi.GetEva());
+                }
             }
 
             yield return wait;
         }
+    }
+
+    private Dictionary<string, object> BuildMockPacket(float oxyPercent)
+    {
+        var eva1 = new Dictionary<string, object>
+        {
+            { "oxy_pri_storage", oxyPercent },
+            { "oxy_sec_storage", oxyPercent }
+        };
+        var telemetry = new Dictionary<string, object> { { "eva1", eva1 } };
+        return new Dictionary<string, object> { { "telemetry", telemetry } };
+    }
+
+    /// <summary>
+    /// Injects a warning state directly — useful from Editor test buttons or automated tests.
+    /// Does not affect real TSS polling.
+    /// </summary>
+    public void SimulateMockState(OxygenState state, float percent)
+    {
+        mockOxygenEnabled = true;
+        mockOxygenPercent = state switch
+        {
+            OxygenState.CriticallyLow => Mathf.Min(percent, criticalThresholdPercent),
+            OxygenState.RunningLow    => Mathf.Clamp(percent, criticalThresholdPercent + 0.1f, runningLowThresholdPercent),
+            _                         => Mathf.Max(percent, runningLowThresholdPercent + 0.1f)
+        };
+        EvaluatePacket(BuildMockPacket(mockOxygenPercent));
     }
 
     private void TryResolveApiService()
@@ -139,6 +179,7 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
 
     private void OnEvaUpdated(Dictionary<string, object> packet)
     {
+        if (mockOxygenEnabled) return;
         EvaluatePacket(packet);
     }
 
