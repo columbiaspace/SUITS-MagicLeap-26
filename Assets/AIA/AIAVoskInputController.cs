@@ -273,10 +273,17 @@ public class AIAVoskInputController : MonoBehaviour
     {
         if (voiceIntents == null)
         {
-            GameObject voiceIntentObject = GameObject.Find("VoiceIntent");
-            if (voiceIntentObject != null)
+            // Prefer the persistent singleton: a freshly-loaded scene's local VoiceIntent
+            // briefly coexists with the persistent one during the same frame, and
+            // GameObject.Find can return the doomed duplicate before its Destroy resolves.
+            voiceIntents = VoiceIntents.Instance;
+            if (voiceIntents == null)
             {
-                voiceIntents = voiceIntentObject.GetComponent<VoiceIntents>();
+                GameObject voiceIntentObject = GameObject.Find("VoiceIntent");
+                if (voiceIntentObject != null)
+                {
+                    voiceIntents = voiceIntentObject.GetComponent<VoiceIntents>();
+                }
             }
         }
 

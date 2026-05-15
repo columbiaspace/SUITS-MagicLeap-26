@@ -22,8 +22,11 @@ public class IngressProcedureManager : MonoBehaviour
     [SerializeField] private Sprite uiaWaterWasteSprite;  // UIA-water-waste.png
 
     [Header("DCU Sprites")]
-    [SerializeField] private Sprite dcuPanelSprite;       // dcu.png — BATT and disconnect
+    [SerializeField] private Sprite dcuPanelSprite;       // dcu.png — disconnect and non-batt controls
     [SerializeField] private Sprite dcuPumpSprite;
+    [SerializeField] private Sprite dcuCo2Sprite;         // dcu-co2.png — CO₂ / scrubber
+    [SerializeField] private Sprite dcuBattLocalUmbSprite; // dcu-batt-local-umb.png — BATT LOCAL / UMB
+    [SerializeField] private Sprite dcuBattSecPriSprite;   // dcu-batt-sec-pri.png — BATT SEC / PRI
 
     private enum CondType
     {
@@ -124,7 +127,7 @@ public class IngressProcedureManager : MonoBehaviour
             U("UIA: EV-1 EMU PWR – ON\n",
                 uiaPwrSprite, "eva1_power", true),
             B("DCU: BATT – UMB\n",
-                dcuPanelSprite, "ps", false),
+                dcuBattLocalUmbSprite, "ps", false),
             U("UIA: OXYGEN O2 VENT – OPEN (Vent O2 tanks)\n",
                 uiaO2VentSprite, "oxy_vent", true),
             T("HMD: Wait until both Primary and Secondary OXY tanks are < 10 psi\n",
