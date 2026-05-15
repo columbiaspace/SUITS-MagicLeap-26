@@ -11,6 +11,10 @@ using UnityEngine.XR.MagicLeap;
 public class VoiceIntents : MonoBehaviour
 {
     private const uint AskLunaEventId = 105;
+    // MLVoice intent IDs that route directly to LTV-repair (bypasses Vosk).
+    // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
+    private const uint LtvRepairEventIdMin = 106;
+    private const uint LtvRepairEventIdMax = 108;
     private const int AiRequestTimeoutSeconds = 30;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
     private const int MaxVisibleConversationTurns = 3;
@@ -33,6 +37,11 @@ public class VoiceIntents : MonoBehaviour
     [SerializeField] private Text responseTextBox;
     [SerializeField] private AIAVoskInputController aiaInputController;
     [SerializeField] private ScrollRect responseScrollRect;
+
+    [Header("Voice command routing")]
+    [Tooltip("Optional LTV-repair voice coordinator. If present and the transcript matches its " +
+             "trigger phrases, the prompt is consumed locally instead of being forwarded to Gemma.")]
+    [SerializeField] private LtvVoiceCoordinator ltvVoiceCoordinator;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -94,7 +103,18 @@ public class VoiceIntents : MonoBehaviour
         TryResolveResponseScrollRect();
         TryResolveAiaInputController();
         MLPermissions.RequestPermission(MLPermission.VoiceInput, permissionCallbacks);
-        InitializeTextToSpeech();
+
+        // Prefer LunaTtsBridge (persistent, scene-spanning) when one exists in the scene.
+        // Only initialize the inline Android TTS if no bridge is wired up — this avoids
+        // two TextToSpeech engines competing for the audio service on ML2.
+        if (FindObjectOfType<LunaTtsBridge>() == null)
+        {
+            InitializeTextToSpeech();
+        }
+        else
+        {
+            Debug.Log("[Luna] LunaTtsBridge present; routing TTS through it instead of inline engine.");
+        }
 
         if (responseTextBox != null && string.IsNullOrWhiteSpace(responseTextBox.text))
         {
@@ -264,7 +284,21 @@ public class VoiceIntents : MonoBehaviour
                 break;
 
             default:
-                Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
+                if (voiceEvent.EventID >= LtvRepairEventIdMin && voiceEvent.EventID <= LtvRepairEventIdMax)
+                {
+                    Debug.Log($"[Luna] LTV-repair MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
+                    string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
+                        ? "ltv repair"
+                        : voiceEvent.EventName;
+                    if (!TryRouteLtvRepairCommand(spokenPhrase))
+                    {
+                        Debug.LogWarning("[Luna] LTV-repair MLVoice intent matched but coordinator did not accept it.");
+                    }
+                }
+                else
+                {
+                    Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
+                }
                 break;
         }
     }
@@ -322,6 +356,26 @@ public class VoiceIntents : MonoBehaviour
         }
 
         aiaInputController = FindObjectOfType<AIAVoskInputController>();
+    }
+
+    /// <summary>
+    /// Public so AIAVoskInputController can fire LTV-repair routing on partial Vosk
+    /// transcripts (without waiting for the recording to stop and a final result to
+    /// emit). Returns true when the transcript matched and the LTV scene was loaded.
+    /// </summary>
+    public bool TryRouteLtvRepairCommand(string trimmedPrompt)
+    {
+        if (ltvVoiceCoordinator == null)
+        {
+            ltvVoiceCoordinator = FindObjectOfType<LtvVoiceCoordinator>();
+        }
+
+        if (ltvVoiceCoordinator == null)
+        {
+            return false;
+        }
+
+        return ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
     }
 
     private void UpdateResponseTextBox(string text)
@@ -411,6 +465,14 @@ public class VoiceIntents : MonoBehaviour
         {
             Debug.LogWarning("[Luna] Ignoring empty text prompt.");
             FailActiveRecording("Luna could not hear a question.");
+            return;
+        }
+
+        if (TryRouteLtvRepairCommand(trimmedPrompt))
+        {
+            // The coordinator will load the LTV scene and run the repair flow.
+            // We intentionally do NOT forward this transcript to Gemma.
+            CompleteActiveConversation("Loading LTV repair console.");
             return;
         }
 
@@ -699,6 +761,14 @@ public class VoiceIntents : MonoBehaviour
     {
         if (!speakAiResponse)
         {
+            return;
+        }
+
+        // Prefer the persistent bridge — it survives scene transitions and is the only TTS
+        // we initialize when present. Inline path below only runs as a fallback.
+        if (LunaTtsBridge.Instance != null)
+        {
+            LunaTtsBridge.Instance.Speak(text);
             return;
         }
 

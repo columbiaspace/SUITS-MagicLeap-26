@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.Text.RegularExpressions;
 using LtvDiagnostics;
 using TssApi;
 using UnityEngine;
@@ -29,6 +30,12 @@ public class LtvInstructionService : MonoBehaviour
     public event Action<LtvError> ResolutionFailed;
     public event Action<LtvError> MaxRetriesExceeded;
     public event Action AllErrorsResolved;
+    /// <summary>
+    /// Fired when StartDiagnosisFromTss completes its initial enqueue. The int is the
+    /// number of errors with needs_resolved=true at start; 0 means TSS reported nothing
+    /// to fix (the LTV-repair flow uses this to decide whether to skip the procedure).
+    /// </summary>
+    public event Action<int> DiagnosisStarted;
 
     // Public read-only state
     public LtvError CurrentError => currentError;
@@ -50,14 +57,20 @@ public class LtvInstructionService : MonoBehaviour
 
     private void Awake()
     {
-        if (tssApi == null)
-        {
-            tssApi = GetComponent<TssUnityApiService>();
-        }
-
-        if (tssApi == null)
+        // Prefer the persistent singleton over scene-local references. Reason: when this
+        // service lives in the LTV scene (Mission already has its own TssUnityApiService
+        // marked DontDestroyOnLoad), the LTV scene's local component gets self-destroyed
+        // by the singleton check in TssUnityApiService.Awake. A serialized [SerializeField]
+        // tssApi reference here would still point at that destroyed component — its _ltv
+        // dictionary is empty, so GetLtvErrorProcedures() returns 0 even when the Mission
+        // singleton has fresh data.
+        if (TssUnityApiService.Instance != null)
         {
             tssApi = TssUnityApiService.Instance;
+        }
+        else if (tssApi == null)
+        {
+            tssApi = GetComponent<TssUnityApiService>();
         }
 
         if (tssApi == null)
@@ -68,7 +81,8 @@ public class LtvInstructionService : MonoBehaviour
         if (enableDebugLogs)
         {
             Debug.Log(
-                $"[LTV] Service ready. TssApi linked={tssApi != null}",
+                $"[LTV] Service ready. TssApi linked={tssApi != null}" +
+                (tssApi != null ? $" (instanceId={tssApi.GetInstanceID()}, isSingleton={ReferenceEquals(tssApi, TssUnityApiService.Instance)})" : ""),
                 this
             );
         }
@@ -117,14 +131,38 @@ public class LtvInstructionService : MonoBehaviour
 
         List<Dictionary<string, object>> errorProcedures = tssApi.GetLtvErrorProcedures();
 
+        int rawCount = errorProcedures?.Count ?? 0;
+        int rawNeedsResolved = 0;
+        if (errorProcedures != null)
+        {
+            for (int i = 0; i < errorProcedures.Count; i++)
+            {
+                Dictionary<string, object> raw = errorProcedures[i];
+                if (raw != null && raw.ContainsKey("needs_resolved") && ToBool(raw["needs_resolved"]))
+                {
+                    rawNeedsResolved++;
+                }
+            }
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.Log(
+                $"[LTV] TSS returned {rawCount} error_procedures entries " +
+                $"(needs_resolved=true on {rawNeedsResolved} of them).",
+                this
+            );
+        }
+
         if (errorProcedures == null || errorProcedures.Count == 0)
         {
             if (enableDebugLogs)
             {
-                Debug.Log("[LTV] No error_procedures returned from TSS.", this);
+                Debug.Log("[LTV] No error_procedures returned from TSS — likely UDP timeout or empty response.", this);
             }
 
             diagnosisActive = false;
+            DiagnosisStarted?.Invoke(0);
             AllErrorsResolved?.Invoke();
             EmitSnapshot();
             return;
@@ -139,8 +177,24 @@ public class LtvInstructionService : MonoBehaviour
             }
 
             LtvError error = ParseError(raw);
-            if (error == null || !error.NeedsResolved)
+            if (error == null)
             {
+                if (enableDebugLogs)
+                {
+                    Debug.Log("[LTV] Skipping error: ParseError returned null.", this);
+                }
+                continue;
+            }
+
+            if (!error.NeedsResolved)
+            {
+                if (enableDebugLogs)
+                {
+                    Debug.Log(
+                        $"[LTV] Skipping error {error.Code} ({error.Description}): needs_resolved=false.",
+                        this
+                    );
+                }
                 continue;
             }
 
@@ -171,10 +225,14 @@ public class LtvInstructionService : MonoBehaviour
             }
         }
 
+        int initialCount = errorHeap.Count;
+
         if (enableDebugLogs)
         {
-            Debug.Log($"[LTV] Diagnosis started. {errorHeap.Count} errors queued.", this);
+            Debug.Log($"[LTV] Diagnosis started. {initialCount} errors queued.", this);
         }
+
+        DiagnosisStarted?.Invoke(initialCount);
 
         PopNextError();
     }
@@ -724,7 +782,111 @@ public class LtvInstructionService : MonoBehaviour
             }
         }
 
+        procedures = NormalizeProcedures(procedures);
+
         return new LtvError(code, description, needsResolved, procedures);
+    }
+
+    /// <summary>
+    /// Some TSS feeds deliver a multi-step procedure as a single concatenated
+    /// string ("1. Do X 2. Do Y 3. Do Z"). The HUD shows one entry of this list
+    /// per click, so without splitting the user sees every step at once. This
+    /// detects sequential "N. " markers and splits the string into individual
+    /// steps. Entries that already arrive as separate items pass through unchanged.
+    /// </summary>
+    private static List<string> NormalizeProcedures(List<string> input)
+    {
+        List<string> output = new List<string>();
+        if (input == null) return output;
+
+        for (int i = 0; i < input.Count; i++)
+        {
+            string raw = input[i];
+            if (string.IsNullOrWhiteSpace(raw))
+            {
+                continue;
+            }
+
+            List<string> split = SplitSequentialNumberedSteps(raw);
+            if (split != null && split.Count > 1)
+            {
+                output.AddRange(split);
+            }
+            else
+            {
+                output.Add(raw.Trim());
+            }
+        }
+
+        return output;
+    }
+
+    /// <summary>
+    /// Splits a string on sequential numbered markers ("1.", "2.", "3.", ...) only
+    /// when at least two consecutive numbers in proper sequence are present.
+    /// Returns null when no valid split can be made; the caller falls back to
+    /// keeping the original string as a single step.
+    /// </summary>
+    private static List<string> SplitSequentialNumberedSteps(string text)
+    {
+        if (string.IsNullOrEmpty(text)) return null;
+
+        // Word-boundary + digits + "." + (NOT another digit). Tolerates both
+        // "17. To" and the no-space "17.To" shape that appears in the actual
+        // 4800 feed, while excluding decimal numbers like "17.5".
+        MatchCollection matches = Regex.Matches(text, @"\b(\d+)\.(?!\d)");
+        if (matches.Count < 2) return null;
+
+        // Walk matches and keep only those that form a strictly +1 sequence
+        // starting at 1 or 2 (the first marker may legitimately be "1." or, if
+        // the first step has no leading number, "2.").
+        List<int> startIndices = new List<int>();
+        int prevNum = -1;
+        for (int i = 0; i < matches.Count; i++)
+        {
+            int num;
+            if (!int.TryParse(matches[i].Groups[1].Value, out num)) continue;
+
+            if (startIndices.Count == 0)
+            {
+                if (num != 1 && num != 2) continue;
+            }
+            else if (num != prevNum + 1)
+            {
+                // Number out of sequence — likely a reference inside a step
+                // ("go back to step 1."). Skip without breaking the chain.
+                continue;
+            }
+
+            startIndices.Add(matches[i].Index);
+            prevNum = num;
+        }
+
+        if (startIndices.Count < 2) return null;
+
+        List<string> result = new List<string>();
+
+        // If the first valid marker is "2." (i.e., step 1 had no leading number),
+        // capture the prefix before it as the first step so we don't drop content.
+        int firstNum;
+        int.TryParse(Regex.Match(text.Substring(startIndices[0]), @"^(\d+)\.").Groups[1].Value, out firstNum);
+        if (firstNum == 2 && startIndices[0] > 0)
+        {
+            string prefix = text.Substring(0, startIndices[0]).Trim();
+            if (prefix.Length > 0) result.Add(prefix);
+        }
+
+        for (int i = 0; i < startIndices.Count; i++)
+        {
+            int start = startIndices[i];
+            int end = (i + 1 < startIndices.Count) ? startIndices[i + 1] : text.Length;
+            string segment = text.Substring(start, end - start).Trim();
+            // Normalize "17.To" → "17. To" so the user-facing text reads consistently.
+            segment = Regex.Replace(segment, @"^(\d+)\.(\S)", "$1. $2");
+            if (segment.Length > 0) result.Add(segment);
+        }
+
+        return result;
     }
 
     private static string MapCodeToErrorKey(string code)
@@ -734,17 +896,19 @@ public class LtvInstructionService : MonoBehaviour
             return string.Empty;
         }
 
+        // Codes match the LTV_ERRORS.json schema released by NASA SUITS 2026 (see
+        // documents/updates/updates.pdf, 4/24 entry). The mapping is a best-effort
+        // translation to the keys TSS may expose in GetLtvErrors(); when no mapping
+        // exists the verifier falls back to re-checking needs_resolved on the same code.
         switch (code)
         {
-            case "0000": return "recovery_mode";
-            case "4155": return "power_distribution";
-            case "4761": return "dust_sensor";
-            case "2129": return "fuse";
-            case "2130": return "nav_system";
-            case "2131": return "lidar_system";
-            case "2132": return "comms";
-            case "3700": return "electronic_heater";
-            case "2900": return "power_subsystem_bus";
+            case "4800": return "recovery_mode";
+            case "4509": return "nav_system";
+            case "1969": return "fuse";
+            case "3452": return "comms_rssi";
+            case "4968": return "power_subsystem_bus";
+            case "2441": return "comms_reboot";
+            case "2235": return "dust_sensor";
             default: return string.Empty;
         }
     }
