@@ -21,7 +21,7 @@ namespace TssApi
         [Header("TSS UDP Source")]
         [SerializeField] private string tssHost = "192.168.1.210";
         [SerializeField] private int tssPort = 14141;
-        [SerializeField] private float pollIntervalSeconds = 0.25f;
+        [SerializeField] private float pollIntervalSeconds = 1f;
         [SerializeField] private int udpTimeoutMs = 500;
         [SerializeField] private int udpRetries = 2;
 
