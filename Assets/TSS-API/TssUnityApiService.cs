@@ -1,7 +1,6 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace TssApi
@@ -33,14 +32,6 @@ namespace TssApi
         private Dictionary<string, object> _procedures = new Dictionary<string, object>();
         private bool _sourceOnline;
         private double _lastUpdatedUnix;
-
-        private sealed class PollResult
-        {
-            public Dictionary<string, object> EvaRaw;
-            public Dictionary<string, object> LtvRaw;
-            public Dictionary<string, object> LtvErrorsRaw;
-            public string ErrorMessage;
-        }
 
         private void Awake()
         {
@@ -533,81 +524,33 @@ namespace TssApi
             WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
             while (true)
             {
-                TssUdpClient udp = _udp;
-                if (udp == null)
+                Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
+                Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
+                Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
+
+                if (evaRaw != null)
                 {
-                    yield return wait;
-                    continue;
+                    _eva = evaRaw;
+                    EvaUpdated?.Invoke(GetEva());
                 }
 
-                Task<PollResult> pollTask = Task.Run(() => PollTssOnce(udp));
-                while (!pollTask.IsCompleted)
+                if (ltvRaw != null)
                 {
-                    yield return null;
+                    _ltv = ltvRaw;
                 }
 
-                if (pollTask.IsFaulted)
+                if (ltvErrorsRaw != null)
                 {
-                    Debug.LogWarning($"TssUnityApiService poll failed: {pollTask.Exception?.GetBaseException().Message}");
+                    MergeLtvErrors(ltvErrorsRaw);
                 }
-                else
+
+                _sourceOnline = evaRaw != null && ltvRaw != null;
+                if (_sourceOnline)
                 {
-                    ApplyPollResult(pollTask.Result);
+                    _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                 }
 
                 yield return wait;
-            }
-        }
-
-        private static PollResult PollTssOnce(TssUdpClient udp)
-        {
-            PollResult result = new PollResult();
-            try
-            {
-                result.EvaRaw = udp.RequestJson(UdpGetEva);
-                result.LtvRaw = udp.RequestJson(UdpGetLtv);
-                result.LtvErrorsRaw = udp.RequestJson(UdpGetLtvErrors);
-            }
-            catch (Exception e)
-            {
-                result.ErrorMessage = e.Message;
-            }
-
-            return result;
-        }
-
-        private void ApplyPollResult(PollResult result)
-        {
-            if (result == null)
-            {
-                return;
-            }
-
-            if (!string.IsNullOrWhiteSpace(result.ErrorMessage))
-            {
-                Debug.LogWarning($"TssUnityApiService poll failed: {result.ErrorMessage}");
-            }
-
-            if (result.EvaRaw != null)
-            {
-                _eva = result.EvaRaw;
-                EvaUpdated?.Invoke(GetEva());
-            }
-
-            if (result.LtvRaw != null)
-            {
-                _ltv = result.LtvRaw;
-            }
-
-            if (result.LtvErrorsRaw != null)
-            {
-                MergeLtvErrors(result.LtvErrorsRaw);
-            }
-
-            _sourceOnline = result.EvaRaw != null && result.LtvRaw != null;
-            if (_sourceOnline)
-            {
-                _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
             }
         }
 
