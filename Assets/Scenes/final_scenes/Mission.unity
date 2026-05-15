@@ -1562,7 +1562,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 10.207.89.182
+  tssHost: 192.168.1.210
   tssPort: 14141
   pollIntervalSeconds: 0.25
   udpTimeoutMs: 500
@@ -2391,6 +2391,11 @@ PrefabInstance:
       insertIndex: -1
       addedObject: {fileID: 5000010002}
   m_SourcePrefab: {fileID: 100100000, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+--- !u!1 &5000010003 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 2139147665216478101, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+  m_PrefabInstance: {fileID: 5000010000}
+  m_PrefabAsset: {fileID: 0}
 --- !u!114 &5000010002
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -2405,11 +2410,6 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameraTransform: {fileID: 1350499926}
   smoothTime: 0.15
---- !u!1 &5000010003 stripped
-GameObject:
-  m_CorrespondingSourceObject: {fileID: 2139147665216478101, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
-  m_PrefabInstance: {fileID: 5000010000}
-  m_PrefabAsset: {fileID: 0}
 --- !u!1001 &5000020000
 PrefabInstance:
   m_ObjectHideFlags: 0
@@ -2517,7 +2517,7 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: -0.053, y: 1.035}
+  m_AnchoredPosition: {x: 0.01, y: 1.2}
   m_SizeDelta: {x: 360, y: 420}
   m_Pivot: {x: 0.5, y: 0.5}
 --- !u!223 &5000030002

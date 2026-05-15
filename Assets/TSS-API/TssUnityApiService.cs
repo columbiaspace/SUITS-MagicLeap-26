@@ -11,6 +11,13 @@ namespace TssApi
         private const int UdpGetLtv = 2;
         private const int UdpGetLtvErrors = 3;
 
+        // Optional override: if `TSS_HOST` / `TSS_PORT` are set in the process environment
+        // (Editor on macOS reads `.env` automatically via shell; on Android these are usually
+        // unset, so the serialized inspector values win) they trump whatever the scene says.
+        // Keeps the five final_scenes from drifting apart when the lab network changes.
+        private const string TssHostEnvironmentVariable = "TSS_HOST";
+        private const string TssPortEnvironmentVariable = "TSS_PORT";
+
         [Header("TSS UDP Source")]
         [SerializeField] private string tssHost = "192.168.1.210";
         [SerializeField] private int tssPort = 14141;
@@ -32,6 +39,11 @@ namespace TssApi
         private Dictionary<string, object> _procedures = new Dictionary<string, object>();
         private bool _sourceOnline;
         private double _lastUpdatedUnix;
+        // Diagnostics for "server is running but client sees nothing" issues — logs every
+        // online/offline transition and warns once per OfflineWarnIntervalSeconds while down.
+        private const float OfflineWarnIntervalSeconds = 5f;
+        private float _offlineWarnTimer;
+        private bool _firstPollLogged;
 
         private void Awake()
         {
@@ -43,7 +55,34 @@ namespace TssApi
 
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            ApplyEndpointOverrideFromEnvironment();
             LoadProcedures();
+        }
+
+        private void ApplyEndpointOverrideFromEnvironment()
+        {
+            string hostOverride = Environment.GetEnvironmentVariable(TssHostEnvironmentVariable);
+            if (!string.IsNullOrWhiteSpace(hostOverride))
+            {
+                string trimmedHost = hostOverride.Trim();
+                if (!string.Equals(tssHost, trimmedHost, StringComparison.Ordinal))
+                {
+                    Debug.Log($"[TSS] Host override from {TssHostEnvironmentVariable}: '{tssHost}' -> '{trimmedHost}'.");
+                    tssHost = trimmedHost;
+                }
+            }
+
+            string portOverride = Environment.GetEnvironmentVariable(TssPortEnvironmentVariable);
+            if (!string.IsNullOrWhiteSpace(portOverride) && int.TryParse(portOverride.Trim(), out int parsedPort) && parsedPort > 0 && parsedPort <= 65535)
+            {
+                if (parsedPort != tssPort)
+                {
+                    Debug.Log($"[TSS] Port override from {TssPortEnvironmentVariable}: {tssPort} -> {parsedPort}.");
+                    tssPort = parsedPort;
+                }
+            }
+
+            Debug.Log($"[TSS] UDP target = {tssHost}:{tssPort} (poll {pollIntervalSeconds:F2}s, timeout {udpTimeoutMs}ms, retries {udpRetries}).");
         }
 
         private void OnEnable()
@@ -544,14 +583,48 @@ namespace TssApi
                     MergeLtvErrors(ltvErrorsRaw);
                 }
 
-                _sourceOnline = evaRaw != null && ltvRaw != null;
-                if (_sourceOnline)
+                bool newOnline = evaRaw != null && ltvRaw != null;
+                if (newOnline)
                 {
                     _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    if (!_sourceOnline || !_firstPollLogged)
+                    {
+                        Debug.Log($"[TSS] ONLINE — first poll succeeded from {tssHost}:{tssPort}. EVA keys: {DescribeKeys(evaRaw)}; LTV keys: {DescribeKeys(ltvRaw)}.");
+                        _firstPollLogged = true;
+                    }
+                    _offlineWarnTimer = 0f;
+                }
+                else
+                {
+                    if (_sourceOnline)
+                    {
+                        Debug.LogWarning($"[TSS] OFFLINE — UDP poll returned no data from {tssHost}:{tssPort}. eva={(evaRaw == null ? "null" : "ok")}, ltv={(ltvRaw == null ? "null" : "ok")}.");
+                    }
+
+                    _offlineWarnTimer += Mathf.Max(0.05f, pollIntervalSeconds);
+                    if (_offlineWarnTimer >= OfflineWarnIntervalSeconds)
+                    {
+                        _offlineWarnTimer = 0f;
+                        Debug.LogWarning($"[TSS] Still offline — verify the server is reachable at {tssHost}:{tssPort} from this device. " +
+                                         "On Android, set TSS_HOST in the scene; on macOS Editor, set TSS_HOST=... before launching Unity.");
+                    }
                 }
 
+                _sourceOnline = newOnline;
                 yield return wait;
             }
+        }
+
+        private static string DescribeKeys(Dictionary<string, object> dict)
+        {
+            if (dict == null || dict.Count == 0) return "(empty)";
+            List<string> keys = new List<string>(dict.Keys);
+            keys.Sort(StringComparer.OrdinalIgnoreCase);
+            if (keys.Count > 8)
+            {
+                return "[" + string.Join(", ", keys.GetRange(0, 8)) + ", ...]";
+            }
+            return "[" + string.Join(", ", keys) + "]";
         }
 
         private void InitializeUdp()
