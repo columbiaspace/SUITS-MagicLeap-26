@@ -541,7 +541,7 @@ public class ARMinimapErica : MonoBehaviour
     }
 
     // -------------------------------------------------------------------------
-    // Waypoint dots
+    // Waypoint / pin dots
     // -------------------------------------------------------------------------
 
     private void SpawnWaypoints()
@@ -552,22 +552,48 @@ public class ARMinimapErica : MonoBehaviour
         SpawnWaypointDot(new Vector2(-5515f, -9995f),  Color.yellow, "WP_Yellow");
     }
 
-    // Uses fractional anchors so the dot stays at the correct map position on resize.
     private void SpawnWaypointDot(Vector2 tssPos, Color color, string dotName)
     {
-        Vector2 norm = TssCoordsToNormalized(tssPos.x, tssPos.y);
+        AddMapPin(tssPos.x, tssPos.y, color, 8f, dotName);
+    }
+
+    /// <summary>
+    /// Spawns a colored dot on the minimap at the given TSS position and returns the
+    /// GameObject so the caller can track or remove it later. Uses fractional anchors
+    /// so the dot stays in the correct relative position when the minimap resizes.
+    /// </summary>
+    public GameObject AddMapPin(float tssX, float tssY, Color color, float size = 8f, string dotName = "Pin")
+    {
+        if (minimapRect == null) return null;
+        Vector2 norm = TssCoordsToNormalized(tssX, tssY);
+
         GameObject dot = new GameObject(dotName, typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
         dot.transform.SetParent(minimapRect, false);
         dot.transform.SetAsFirstSibling();
 
-        RectTransform rt    = dot.GetComponent<RectTransform>();
+        RectTransform rt = dot.GetComponent<RectTransform>();
         rt.anchorMin        = norm;
         rt.anchorMax        = norm;
         rt.pivot            = new Vector2(0.5f, 0.5f);
-        rt.sizeDelta        = new Vector2(8f, 8f);
+        rt.sizeDelta        = new Vector2(size, size);
         rt.anchoredPosition = Vector2.zero;
 
         dot.GetComponent<Image>().color = color;
+        return dot;
+    }
+
+    /// <summary>
+    /// Returns the current TSS (posx, posy) for the configured EVA ID, or Vector2.zero
+    /// if the TSS data is not yet available. Used by external scripts (e.g. PinchPingSpawner)
+    /// that need the EVA position without duplicating the IMU-bucket parsing logic.
+    /// </summary>
+    public Vector2 GetEvaTssPosition()
+    {
+        Dictionary<string, object> imuEva = GetImuBucket();
+        return new Vector2(
+            (float)ToDouble(imuEva, "posx"),
+            (float)ToDouble(imuEva, "posy")
+        );
     }
 
     // -------------------------------------------------------------------------
