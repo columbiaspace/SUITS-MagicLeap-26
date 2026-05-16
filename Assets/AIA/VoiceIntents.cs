@@ -21,8 +21,15 @@ public class VoiceIntents : MonoBehaviour
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint SceneTransitionEventIdMin = 109;
     private const uint SceneTransitionEventIdMax = 113;
-    private const int AiRequestTimeoutSeconds = 30;
+    // Bumped from 30s: gemma4:26b on Apple Silicon regularly takes 60-90s for first-token
+    // latency on a cold model load (and 30-60s per generation while warm), so 30s caused
+    // every Luna call to fail with "Luna request failed" before the orchestrator finished.
+    // If the orchestrator is reachable but slow, the user now waits up to this many seconds.
+    private const int AiRequestTimeoutSeconds = 180;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
+    // Optional full-URL override. Takes precedence over LUNA_OLLAMA_IP and lets the
+    // orchestrator live on a non-default port / path (e.g. behind a reverse proxy).
+    private const string OllamaUrlEnvironmentVariable = "LUNA_OLLAMA_URL";
     private const int MaxVisibleConversationTurns = 3;
     private const string DefaultResponsePlaceholder = "Luna response will appear here.";
     private const string RecordingPlaceholder = "Recording your question...";
@@ -36,7 +43,7 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://10.206.9.135:13853/chat";
+    [SerializeField] private string aiGenerateUrl = "http://192.168.1.210:13853/chat";
     [SerializeField] private string aiModel = "gemma4:26b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
@@ -135,13 +142,34 @@ public class VoiceIntents : MonoBehaviour
 
     private void ApplyOllamaIpOverrideFromEnvironment()
     {
-        string ollamaIp = Environment.GetEnvironmentVariable(OllamaIpEnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(ollamaIp))
+        // LUNA_OLLAMA_URL wins outright — lets the user point at any host:port/path
+        // (e.g. behind a reverse proxy). LUNA_OLLAMA_IP is the simpler legacy override:
+        // it only swaps the host portion of the existing URL, preserving port and path.
+        string urlOverride = Environment.GetEnvironmentVariable(OllamaUrlEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(urlOverride))
         {
-            return;
+            string trimmed = urlOverride.Trim();
+            if (!string.Equals(trimmed, aiGenerateUrl, StringComparison.Ordinal))
+            {
+                Debug.Log($"[Luna] URL override from {OllamaUrlEnvironmentVariable}: '{aiGenerateUrl}' -> '{trimmed}'.");
+                aiGenerateUrl = trimmed;
+            }
+        }
+        else
+        {
+            string ollamaIp = Environment.GetEnvironmentVariable(OllamaIpEnvironmentVariable);
+            if (!string.IsNullOrWhiteSpace(ollamaIp))
+            {
+                string newUrl = $"http://{ollamaIp.Trim()}:13853/chat";
+                if (!string.Equals(newUrl, aiGenerateUrl, StringComparison.Ordinal))
+                {
+                    Debug.Log($"[Luna] IP override from {OllamaIpEnvironmentVariable}: '{aiGenerateUrl}' -> '{newUrl}'.");
+                    aiGenerateUrl = newUrl;
+                }
+            }
         }
 
-        aiGenerateUrl = $"http://{ollamaIp.Trim()}:13853/chat";
+        Debug.Log($"[Luna] AI endpoint = {aiGenerateUrl} (timeout {AiRequestTimeoutSeconds}s, model '{aiModel}').");
     }
 
     void Update()
@@ -603,10 +631,28 @@ public class VoiceIntents : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
+                bool wasTimeout = request.result == UnityWebRequest.Result.ConnectionError
+                                  && (string.IsNullOrEmpty(request.error)
+                                      || request.error.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0
+                                      || request.error.IndexOf("aborted", StringComparison.OrdinalIgnoreCase) >= 0);
                 Debug.LogError(
-                    $"[Gemma] Request failed (HTTP {request.responseCode}): {request.error}. " +
-                    $"Body: {request.downloadHandler?.text}");
-                CompleteActiveConversation("Luna request failed.");
+                    $"[Gemma] Request failed (HTTP {request.responseCode}, result={request.result}): {request.error}. " +
+                    $"URL: {aiGenerateUrl}. Body: {request.downloadHandler?.text}");
+
+                string userMessage;
+                if (wasTimeout)
+                {
+                    userMessage = $"Luna timed out after {AiRequestTimeoutSeconds}s. The model is slow or unreachable at {aiGenerateUrl}.";
+                }
+                else if (request.responseCode == 0)
+                {
+                    userMessage = $"Luna unreachable at {aiGenerateUrl} — check the orchestrator is running and on the same network.";
+                }
+                else
+                {
+                    userMessage = $"Luna request failed (HTTP {request.responseCode}).";
+                }
+                CompleteActiveConversation(userMessage);
             }
             else
             {

@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TssApi;
 
@@ -16,6 +17,14 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private Image               displayImage;
     [SerializeField] private Text                stepText;
     [SerializeField] private TssUnityApiService  tssApi;
+
+    [Header("Completion")]
+    [Tooltip("Optional speaker for spoken announcements. Auto-found in scene if left empty.")]
+    [SerializeField] private ProcedureStepSpeaker stepSpeaker;
+    [Tooltip("Scene to load once Egress completes.")]
+    [SerializeField] private string completionScene = "Mission";
+    [Tooltip("Seconds to wait between announcement and scene transition.")]
+    [SerializeField] private float completionRedirectDelay = 4f;
 
     // ── Sprites ────────────────────────────────────────────────────────
     [Header("UIA Sprites")]
@@ -95,6 +104,9 @@ public class EgressProcedureManager : MonoBehaviour
     {
         if (tssApi == null)
             tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+
+        if (stepSpeaker == null)
+            stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
     }
 
     /// <summary>
@@ -201,7 +213,7 @@ public class EgressProcedureManager : MonoBehaviour
 
         if (index >= _steps.Count)
         {
-            if (stepText != null) stepText.text = "Egress procedure complete.";
+            _timerCo = StartCoroutine(AnnounceAndRedirect());
             return;
         }
 
@@ -234,6 +246,24 @@ public class EgressProcedureManager : MonoBehaviour
     {
         yield return new WaitForSeconds(secs);
         Advance();
+    }
+
+    private IEnumerator AnnounceAndRedirect()
+    {
+        const string completionMessage = "Egress procedure complete.";
+        if (stepText != null) stepText.text = completionMessage;
+
+        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
+        if (stepSpeaker != null) stepSpeaker.Announce(completionMessage);
+
+        if (!string.IsNullOrEmpty(completionScene))
+        {
+            yield return new WaitForSeconds(Mathf.Max(0f, completionRedirectDelay));
+            try { SceneManager.LoadScene(completionScene); }
+            catch (Exception e) { Debug.LogWarning($"[Egress] Failed to load '{completionScene}': {e.Message}"); }
+        }
+
+        _timerCo = null;
     }
 
     private void Advance()

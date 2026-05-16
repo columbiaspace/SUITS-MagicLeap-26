@@ -982,7 +982,7 @@ MonoBehaviour:
   targetObject: {fileID: 0}
   rotationSpeed: 50
   sendVoicePromptToAi: 1
-  aiGenerateUrl: http://10.206.9.135:13853/chat
+  aiGenerateUrl: http://192.168.1.210:13853/chat
   aiModel: gemma4:26b
   logAiResponse: 1
   speakAiResponse: 1
@@ -1055,7 +1055,7 @@ MonoBehaviour:
   - sourceSceneName: Ingress
     triggerPhrases:
     - end ingress
-    targetSceneName: Starter
+    targetSceneName: Mission
     announcement: Ending ingress.
   - sourceSceneName: LTV
     triggerPhrases:
