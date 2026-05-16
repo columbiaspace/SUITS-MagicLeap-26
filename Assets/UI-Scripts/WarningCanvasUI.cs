@@ -4,23 +4,24 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Drives the WarningCanvas world-space panel.
-/// Listens to TssVitalsOxygenMonitor.OxygenStateChanged and shows a
-/// yellow (RunningLow) or red (CriticallyLow) banner accordingly.
+/// Drives a warning banner. The root GameObject of this canvas should stay
+/// active at all times so the script keeps running; only the child <c>warningPanel</c>
+/// (the visible banner) is toggled on/off.
+///
+/// Listens to <see cref="TssVitalsOxygenMonitor.OxygenStateChanged"/> and shows
+/// yellow (RunningLow) or red (CriticallyLow) accordingly.
 ///
 /// Mock / Test cycle
 /// -----------------
-/// Enable "Run Test Cycle" in the Inspector at runtime to automatically
-/// walk through Good → RunningLow → CriticallyLow → Good so you can
-/// verify both warning colours without needing a live TSS feed.
-/// The test cycle only drives the OxygenMonitor's mock mode — all other
-/// TSS data (telemetry, LTV, navigation, etc.) continues reading from
-/// the real server.
+/// Tick "Run Test Cycle" in the Inspector at runtime to walk through
+/// Good → Yellow → Red → Good. Lets you eyeball both colours without a live TSS.
 /// </summary>
 public class WarningCanvasUI : MonoBehaviour
 {
     [Header("Panel References")]
-    [Tooltip("The root WarningPanel Image whose colour changes per state.")]
+    [Tooltip("The child GameObject that holds the visible banner. Toggled on/off based on state.")]
+    [SerializeField] private GameObject warningPanel;
+    [Tooltip("The Image whose colour reflects yellow vs red.")]
     [SerializeField] private Image warningPanelImage;
     [Tooltip("The TMP text element that displays the warning message.")]
     [SerializeField] private TextMeshProUGUI warningText;
@@ -30,7 +31,7 @@ public class WarningCanvasUI : MonoBehaviour
     [SerializeField] private Color criticallyLowColor = new Color(0.85f, 0.12f, 0.12f, 0.92f);
 
     [Header("Mock / Test Cycle")]
-    [Tooltip("Tick at runtime to auto-cycle Good → Yellow → Red → Good for visual QA.")]
+    [Tooltip("Tick at runtime to auto-cycle Good → Yellow → Red for visual QA.")]
     [SerializeField] private bool runTestCycle = false;
     [Tooltip("Seconds to spend in each state during the test cycle.")]
     [SerializeField] private float testCycleDurationSeconds = 4f;
@@ -38,10 +39,20 @@ public class WarningCanvasUI : MonoBehaviour
     private TssVitalsOxygenMonitor _monitor;
     private Coroutine _testCoroutine;
 
+    private void Reset()
+    {
+        AutoWireReferences();
+    }
+
+    private void Awake()
+    {
+        AutoWireReferences();
+    }
+
     private void OnEnable()
     {
         TssVitalsOxygenMonitor.OxygenStateChanged += HandleOxygenStateChanged;
-        SetVisible(false);
+        SetPanelVisible(false);
     }
 
     private void OnDisable()
@@ -62,6 +73,18 @@ public class WarningCanvasUI : MonoBehaviour
         }
     }
 
+    private void AutoWireReferences()
+    {
+        if (warningPanel == null && transform.childCount > 0)
+            warningPanel = transform.GetChild(0).gameObject;
+
+        if (warningPanelImage == null && warningPanel != null)
+            warningPanelImage = warningPanel.GetComponent<Image>();
+
+        if (warningText == null && warningPanel != null)
+            warningText = warningPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+    }
+
     private void HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState state, float percent)
     {
         switch (state)
@@ -75,21 +98,21 @@ public class WarningCanvasUI : MonoBehaviour
                 break;
 
             default:
-                SetVisible(false);
+                SetPanelVisible(false);
                 break;
         }
     }
 
     private void ShowWarning(Color color, string message)
     {
-        SetVisible(true);
+        SetPanelVisible(true);
         if (warningPanelImage != null) warningPanelImage.color = color;
         if (warningText != null)       warningText.text         = message;
     }
 
-    private void SetVisible(bool visible)
+    private void SetPanelVisible(bool visible)
     {
-        gameObject.SetActive(visible);
+        if (warningPanel != null) warningPanel.SetActive(visible);
     }
 
     private void StopTestCycle()
@@ -98,27 +121,6 @@ public class WarningCanvasUI : MonoBehaviour
         {
             StopCoroutine(_testCoroutine);
             _testCoroutine = null;
-        }
-
-        // Restore monitor to live TSS mode when the test cycle is stopped.
-        if (_monitor != null)
-        {
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.Good, 85f);
-            // A brief delay then disable mock so live data takes over again.
-            StartCoroutine(DisableMockAfterFrame());
-        }
-    }
-
-    private IEnumerator DisableMockAfterFrame()
-    {
-        yield return null;
-        if (_monitor != null)
-        {
-            // Reflect the public field so the RefreshLoop goes back to live mode.
-            var field = typeof(TssVitalsOxygenMonitor)
-                .GetField("mockOxygenEnabled",
-                    System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance);
-            field?.SetValue(_monitor, false);
         }
     }
 
@@ -137,17 +139,14 @@ public class WarningCanvasUI : MonoBehaviour
 
         while (runTestCycle)
         {
-            // Good — panel should hide
             _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.Good, 85f);
             yield return new WaitForSeconds(wait);
             if (!runTestCycle) break;
 
-            // Yellow — RunningLow
             _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.RunningLow, 22f);
             yield return new WaitForSeconds(wait);
             if (!runTestCycle) break;
 
-            // Red — CriticallyLow
             _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.CriticallyLow, 8f);
             yield return new WaitForSeconds(wait);
         }
