@@ -1,4 +1,3 @@
-using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
@@ -9,12 +8,9 @@ using TMPro;
 /// (the visible banner) is toggled on/off.
 ///
 /// Listens to <see cref="TssVitalsOxygenMonitor.OxygenStateChanged"/> and shows
-/// yellow (RunningLow) or red (CriticallyLow) accordingly.
-///
-/// Mock / Test cycle
-/// -----------------
-/// Tick "Run Test Cycle" in the Inspector at runtime to walk through
-/// Good → Yellow → Red → Good. Lets you eyeball both colours without a live TSS.
+/// yellow (RunningLow) or red (CriticallyLow) accordingly. The banner stays
+/// hidden whenever oxygen is in the Good range, so warnings only appear when
+/// vitals actually drop below their thresholds.
 /// </summary>
 public class WarningCanvasUI : MonoBehaviour
 {
@@ -29,15 +25,6 @@ public class WarningCanvasUI : MonoBehaviour
     [Header("Colours")]
     [SerializeField] private Color runningLowColor    = new Color(0.89f, 0.55f, 0.1f,  0.92f);
     [SerializeField] private Color criticallyLowColor = new Color(0.85f, 0.12f, 0.12f, 0.92f);
-
-    [Header("Mock / Test Cycle")]
-    [Tooltip("Tick at runtime to auto-cycle Good → Yellow → Red for visual QA.")]
-    [SerializeField] private bool runTestCycle = false;
-    [Tooltip("Seconds to spend in each state during the test cycle.")]
-    [SerializeField] private float testCycleDurationSeconds = 4f;
-
-    private TssVitalsOxygenMonitor _monitor;
-    private Coroutine _testCoroutine;
 
     private void Reset()
     {
@@ -58,19 +45,6 @@ public class WarningCanvasUI : MonoBehaviour
     private void OnDisable()
     {
         TssVitalsOxygenMonitor.OxygenStateChanged -= HandleOxygenStateChanged;
-        StopTestCycle();
-    }
-
-    private void Update()
-    {
-        if (runTestCycle && _testCoroutine == null)
-        {
-            _testCoroutine = StartCoroutine(TestCycleRoutine());
-        }
-        else if (!runTestCycle && _testCoroutine != null)
-        {
-            StopTestCycle();
-        }
     }
 
     private void AutoWireReferences()
@@ -113,44 +87,5 @@ public class WarningCanvasUI : MonoBehaviour
     private void SetPanelVisible(bool visible)
     {
         if (warningPanel != null) warningPanel.SetActive(visible);
-    }
-
-    private void StopTestCycle()
-    {
-        if (_testCoroutine != null)
-        {
-            StopCoroutine(_testCoroutine);
-            _testCoroutine = null;
-        }
-    }
-
-    private IEnumerator TestCycleRoutine()
-    {
-        _monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
-        if (_monitor == null)
-        {
-            Debug.LogWarning("[WarningCanvasUI] TestCycle: no TssVitalsOxygenMonitor found in scene.");
-            _testCoroutine = null;
-            runTestCycle = false;
-            yield break;
-        }
-
-        float wait = Mathf.Max(1f, testCycleDurationSeconds);
-
-        while (runTestCycle)
-        {
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.Good, 85f);
-            yield return new WaitForSeconds(wait);
-            if (!runTestCycle) break;
-
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.RunningLow, 22f);
-            yield return new WaitForSeconds(wait);
-            if (!runTestCycle) break;
-
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.CriticallyLow, 8f);
-            yield return new WaitForSeconds(wait);
-        }
-
-        _testCoroutine = null;
     }
 }
