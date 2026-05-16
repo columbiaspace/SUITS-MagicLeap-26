@@ -3714,7 +3714,7 @@ MonoBehaviour:
     announcement: Starting egress.
   - sourceSceneName: Egress
     triggerPhrases:
-    - start mission
+    - end egress
     targetSceneName: Mission
     announcement: Starting mission.
   - sourceSceneName: Mission

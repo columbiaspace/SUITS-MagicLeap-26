@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TssApi;
 
@@ -14,6 +15,14 @@ public class IngressProcedureManager : MonoBehaviour
     [SerializeField] private Image               displayImage;
     [SerializeField] private Text                stepText;
     [SerializeField] private TssUnityApiService  tssApi;
+
+    [Header("Completion")]
+    [Tooltip("Optional speaker for spoken announcements. Auto-found in scene if left empty.")]
+    [SerializeField] private ProcedureStepSpeaker stepSpeaker;
+    [Tooltip("Scene to load once Ingress completes.")]
+    [SerializeField] private string completionScene = "Mission";
+    [Tooltip("Seconds to wait between announcement and scene transition.")]
+    [SerializeField] private float completionRedirectDelay = 4f;
 
     [Header("UIA Sprites")]
     [SerializeField] private Sprite uiaPanelSprite;
@@ -89,6 +98,9 @@ public class IngressProcedureManager : MonoBehaviour
     {
         if (tssApi == null)
             tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+
+        if (stepSpeaker == null)
+            stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
     }
 
     /// <summary>
@@ -173,7 +185,20 @@ public class IngressProcedureManager : MonoBehaviour
     private IEnumerator ShowCompleteAfterDelay(float secs)
     {
         yield return new WaitForSeconds(secs);
-        if (stepText != null) stepText.text = "Ingress procedure complete.";
+
+        const string completionMessage = "Ingress procedure complete.";
+        if (stepText != null) stepText.text = completionMessage;
+
+        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
+        if (stepSpeaker != null) stepSpeaker.Announce(completionMessage);
+
+        if (!string.IsNullOrEmpty(completionScene))
+        {
+            yield return new WaitForSeconds(Mathf.Max(0f, completionRedirectDelay));
+            try { SceneManager.LoadScene(completionScene); }
+            catch (Exception e) { Debug.LogWarning($"[Ingress] Failed to load '{completionScene}': {e.Message}"); }
+        }
+
         _timerCo = null;
     }
 

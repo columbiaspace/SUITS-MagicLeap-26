@@ -551,6 +551,11 @@ PrefabInstance:
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+--- !u!1 &467610814 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 8715221860109088846, guid: 36bc2e0e8ae724a91b07c8726c2888f8, type: 3}
+  m_PrefabInstance: {fileID: 467610813}
+  m_PrefabAsset: {fileID: 0}
 --- !u!1 &476612518
 GameObject:
   m_ObjectHideFlags: 0
@@ -1090,6 +1095,10 @@ PrefabInstance:
       propertyPath: m_Camera
       value: 
       objectReference: {fileID: 108399580}
+    - target: {fileID: 7699461129031171122, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: healthCanvas
+      value:
+      objectReference: {fileID: 467610814}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_Pivot.x
       value: 0.5
