@@ -239,6 +239,22 @@ public class EgressProcedureManager : MonoBehaviour
                 sprite = dcuCo2Sprite;
             }
 
+            // Force the correct BATT image based on the label. "BATT – UMB" / "BATT – LOCAL"
+            // must use `dcu-batt-local-umb.png`; "BATT – PRI" / "BATT – SEC" must use `dcu-batt-sec-pri.png`.
+            if (step.Label != null &&
+                step.Label.IndexOf("BATT", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                bool isLocalOrUmb =
+                    step.Label.IndexOf("UMB",   StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    step.Label.IndexOf("LOCAL", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isSecOrPri =
+                    step.Label.IndexOf("SEC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    step.Label.IndexOf("PRI", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (isLocalOrUmb && dcuBattLocalUmbSprite != null) sprite = dcuBattLocalUmbSprite;
+                else if (isSecOrPri && dcuBattSecPriSprite != null) sprite = dcuBattSecPriSprite;
+            }
+
             displayImage.sprite = sprite;
         }
 
