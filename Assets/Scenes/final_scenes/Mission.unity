@@ -175,8 +175,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   clockText: {fileID: 9100013}
   elapsedText: {fileID: 9100023}
-  useCentralTime: 1
   showZoneSuffix: 1
+  initialCdtTime: 12:30
 --- !u!1 &9100010
 GameObject:
   m_ObjectHideFlags: 0
@@ -3112,7 +3112,7 @@ Transform:
   m_LocalScale: {x: 1, y: 1, z: 1}
   m_ConstrainProportionsScale: 0
   m_Children: []
-  m_Father: {fileID: 0}
+  m_Father: {fileID: 1959078925}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
 --- !u!1 &1959078924
 GameObject:
@@ -3145,6 +3145,7 @@ RectTransform:
   m_Children:
   - {fileID: 1944448548}
   - {fileID: 1931033188}
+  - {fileID: 1857583987}
   m_Father: {fileID: 850000021}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0.5, y: 0.5}
@@ -4008,7 +4009,6 @@ SceneRoots:
   - {fileID: 1944448548}
   - {fileID: 7700000003}
   - {fileID: 8800000010}
-
   - {fileID: 5000010000}
   - {fileID: 5000020000}
   - {fileID: 5000030001}
