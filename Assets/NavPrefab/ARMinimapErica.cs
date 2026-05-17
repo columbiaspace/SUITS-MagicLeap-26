@@ -54,6 +54,13 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("TSS position used as the A* path goal (green waypoint).")]
     public Vector2 pathGoal  = new Vector2(-5635f, -9960f);
 
+    [Header("EVA → goal path (live)")]
+    [Tooltip("Every evaToLtvPathIntervalSeconds, recompute A* from current EVA position to pathGoal (green waypoint).")]
+    [SerializeField] private bool showEvaToLtvPath = true;
+    [SerializeField] private float evaToLtvPathIntervalSeconds = 2f;
+    public Color evaToLtvPathColor = Color.yellow;
+    [SerializeField] private float evaToLtvPathLineWidth = 3.5f;
+
     [Header("Waypoints")]
     [SerializeField] private bool showWaypoints = true;
 
@@ -81,6 +88,14 @@ public class ARMinimapErica : MonoBehaviour
     private readonly List<Vector2>    _pathPoints    = new List<Vector2>();
     private readonly List<GameObject> _pathSegments  = new List<GameObject>();
     private RectTransform _pathContainer;
+
+    // Live EVA → LTV A* path (refreshed on a timer)
+    private readonly List<Vector2>    _ltvPathPoints   = new List<Vector2>();
+    private readonly List<GameObject> _ltvPathSegments = new List<GameObject>();
+    private RectTransform _ltvPathContainer;
+    private float _evaToLtvPathTimer;
+    private bool _evaGoalPathHasDrawn;
+    private bool _evaGoalPathUsedTerrainAstar;
 
     private Vector2 _lastMinimapSize;
     private Vector2 _lastRecordedTssPos;
@@ -111,17 +126,14 @@ public class ARMinimapErica : MonoBehaviour
     {
         _trailContainer = CreateSegmentContainer("TrailContainer");
         _pathContainer  = CreateSegmentContainer("PathContainer");
+        _ltvPathContainer = CreateSegmentContainer("LtvPathContainer");
 
         if (showWaypoints) SpawnWaypoints();
 
-        // Render order (bottom → top): waypoints → trail → planned path → player icon
-        if (playerIcon != null)
-        {
-            _trailContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
-            _pathContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
-        }
-
         if (showPlannedPath) ComputeAndDrawAStarPath();
+        if (showEvaToLtvPath) UpdateEvaToLtvPath(force: true);
+
+        EnsureMinimapLayerOrder();
 
         _lastMinimapSize = minimapRect != null ? minimapRect.rect.size : Vector2.zero;
     }
@@ -133,11 +145,20 @@ public class ARMinimapErica : MonoBehaviour
         RecordTrail(imuEva);
         RefreshSegmentsIfResized();
         LogDebug(imuEva);
+        TickEvaToLtvPath(imuEva);
 
         // If terrain A* hasn't succeeded yet (TerrainAnalyzer may have been loading),
         // keep trying every frame until it does.
         if (showPlannedPath && !_terrainPathSucceeded)
             TryUpgradeToTerrainPath();
+
+        // Start() often runs before TSS or TerrainAnalyzer are ready — keep trying until
+        // the first yellow path is actually drawn, then refresh once terrain A* is available.
+        if (showEvaToLtvPath && !_evaGoalPathHasDrawn)
+            UpdateEvaToLtvPath(force: false, imuEva);
+        else if (showEvaToLtvPath && _evaGoalPathHasDrawn && !_evaGoalPathUsedTerrainAstar
+                 && TerrainAnalyzer.Instance != null && TerrainAnalyzer.Instance.IsReady)
+            UpdateEvaToLtvPath(force: false, imuEva);
     }
 
     // Called every frame until TerrainAnalyzer is ready and produces a valid path.
@@ -208,11 +229,7 @@ public class ARMinimapErica : MonoBehaviour
 
     private void RecordTrail(Dictionary<string, object> imuEva)
     {
-        Vector2 tssPos = imuEva != null
-            ? new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"))
-            : Vector2.zero;
-
-        if (tssPos == Vector2.zero) return;
+        if (!TryGetEvaTss(imuEva, out Vector2 tssPos)) return;
 
         if (!_trailInitialized)
         {
@@ -259,75 +276,140 @@ public class ARMinimapErica : MonoBehaviour
     {
         if (_pathContainer == null || minimapRect == null) return;
 
-        // Try terrain-aware A* first; fall back to a straight line if unavailable.
-        List<Vector2> normPoints = TryTerrainAStarPath();
-
+        List<Vector2> normPoints = ComputeNormPath(pathStart, pathGoal, "planned", logWeights: true,
+                                                   out List<Vector2Int> gridPath);
         if (normPoints == null)
         {
-            // Straight line is the optimal A* result with no obstacles — valid fallback.
             normPoints = new List<Vector2>
             {
                 TssCoordsToNormalized(pathStart.x, pathStart.y),
                 TssCoordsToNormalized(pathGoal.x,  pathGoal.y)
             };
-            Debug.Log("[ARMinimap] A* path: drawing straight-line fallback " +
-                      "(TerrainAnalyzer unavailable or found no path — " +
-                      "check Inspector calibration on TerrainAnalyzer).");
+            Debug.Log("[ARMinimap] Planned path: straight-line fallback " +
+                      "(TerrainAnalyzer unavailable or found no path).");
+        }
+        else
+        {
+            _terrainPathSucceeded = true;
+            if (showTerrainOverlay)
+                BuildWeightOverlay(gridPath, TerrainAnalyzer.Instance);
         }
 
-        for (int i = 0; i < normPoints.Count - 1; i++)
+        DrawNormPath(_pathContainer, normPoints, plannedPathColor, plannedPathLineWidth,
+                     _pathPoints, _pathSegments);
+    }
+
+    // -------------------------------------------------------------------------
+    // Live EVA → LTV path (refreshed every N seconds)
+    // -------------------------------------------------------------------------
+
+    private void TickEvaToLtvPath(Dictionary<string, object> imuEva)
+    {
+        if (!showEvaToLtvPath) return;
+
+        _evaToLtvPathTimer += Time.deltaTime;
+        if (_evaToLtvPathTimer < evaToLtvPathIntervalSeconds) return;
+
+        _evaToLtvPathTimer = 0f;
+        UpdateEvaToLtvPath(force: false, imuEva);
+    }
+
+    private void UpdateEvaToLtvPath(bool force, Dictionary<string, object> imuEva = null)
+    {
+        if (!showEvaToLtvPath || _ltvPathContainer == null || minimapRect == null) return;
+
+        if (!TryGetEvaTss(imuEva, out Vector2 evaTss))
         {
-            _pathPoints.Add(normPoints[i]);
-            _pathSegments.Add(CreateSegment(_pathContainer, normPoints[i], normPoints[i + 1],
-                                            plannedPathColor, plannedPathLineWidth));
+            if (force)
+                Debug.Log("[ARMinimap] EVA→goal path: waiting for TSS position inside map bounds.");
+            return;
         }
-        _pathPoints.Add(normPoints[normPoints.Count - 1]);
+
+        ClearLtvPath();
+
+        bool usedTerrain = true;
+        List<Vector2> normPoints = ComputeNormPath(evaTss, pathGoal, "EVA→goal", logWeights: false,
+                                                   out _);
+        if (normPoints == null)
+        {
+            usedTerrain = false;
+            normPoints = new List<Vector2>
+            {
+                TssCoordsToNormalized(evaTss.x, evaTss.y),
+                TssCoordsToNormalized(pathGoal.x, pathGoal.y)
+            };
+        }
+
+        DrawNormPath(_ltvPathContainer, normPoints, evaToLtvPathColor, evaToLtvPathLineWidth,
+                     _ltvPathPoints, _ltvPathSegments);
+        EnsureMinimapLayerOrder();
+
+        _evaGoalPathHasDrawn = true;
+        _evaGoalPathUsedTerrainAstar = usedTerrain;
+
+        Debug.Log($"[ARMinimap] EVA→goal path drawn ({normPoints.Count - 1} segments, " +
+                  $"{(usedTerrain ? "terrain A*" : "straight-line fallback")}): " +
+                  $"TSS ({evaTss.x:F1}, {evaTss.y:F1}) → green ({pathGoal.x:F1}, {pathGoal.y:F1}).");
+    }
+
+    // EVA→goal line renders above trail/planned path but below the player icon.
+    private void EnsureMinimapLayerOrder()
+    {
+        if (minimapRect == null) return;
+        if (_ltvPathContainer != null) _ltvPathContainer.SetAsLastSibling();
+        if (playerIcon != null) playerIcon.SetAsLastSibling();
+    }
+
+    // True when the IMU bucket has coordinates inside (or near) the configured map bounds.
+    private bool TryGetEvaTss(Dictionary<string, object> imuEva, out Vector2 tssPos)
+    {
+        if (imuEva != null)
+        {
+            tssPos = new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
+        }
+        else
+        {
+            tssPos = GetEvaTssPosition();
+        }
+
+        const float margin = 100f;
+        return tssPos.x >= mapMinX - margin && tssPos.x <= mapMaxX + margin
+            && tssPos.y >= mapMinY - margin && tssPos.y <= mapMaxY + margin;
+    }
+
+    public void ClearLtvPath()
+    {
+        foreach (GameObject seg in _ltvPathSegments) if (seg != null) Destroy(seg);
+        _ltvPathSegments.Clear();
+        _ltvPathPoints.Clear();
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.
-    // Each failure branch logs an actionable warning so the console explains what to fix.
-    private List<Vector2> TryTerrainAStarPath()
+    private List<Vector2> ComputeNormPath(Vector2 startTss, Vector2 goalTss, string label, bool logWeights,
+                                          out List<Vector2Int> gridCells)
     {
+        gridCells = null;
         TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
-        if (terrain == null)
-        {
-            Debug.LogWarning("[ARMinimap] TerrainAnalyzer.Instance is null. " +
-                             "Add a TerrainAnalyzer component to a GameObject in this scene.");
-            return null;
-        }
-        if (!terrain.IsReady)
-        {
-            // Logged at most once per cycle — silently skip until ready
-            return null;
-        }
+        if (terrain == null || !terrain.IsReady) return null;
 
         HashSet<Vector2Int> walkable = terrain.WalkableSet;
-        if (walkable.Count == 0)
-        {
-            Debug.LogWarning("[ARMinimap] TerrainAnalyzer.WalkableSet is empty — " +
-                             "the keepout image may not be assigned, or every cell contains red pixels. " +
-                             "Call TerrainAnalyzer.LogDiagnostics() for details.");
-            return null;
-        }
+        if (walkable.Count == 0) return null;
 
-        Vector2Int rawStart = terrain.PosToGrid(pathStart.x, pathStart.y);
-        Vector2Int rawGoal  = terrain.PosToGrid(pathGoal.x,  pathGoal.y);
+        Vector2Int rawStart = terrain.PosToGrid(startTss.x, startTss.y);
+        Vector2Int rawGoal  = terrain.PosToGrid(goalTss.x,  goalTss.y);
         Vector2Int startCell = NavGridUtilities.SnapToWalkable(rawStart, walkable);
         Vector2Int goalCell  = NavGridUtilities.SnapToWalkable(rawGoal,  walkable);
 
-        Debug.Log($"[ARMinimap] A* solving: TSS({pathStart}) → grid{rawStart} → snapped{startCell}" +
-                  $"  |  TSS({pathGoal}) → grid{rawGoal} → snapped{goalCell}" +
-                  $"  |  walkable cells: {walkable.Count}");
+        if (verboseDebug)
+        {
+            Debug.Log($"[ARMinimap] A* ({label}): TSS({startTss}) → snapped{startCell}  |  " +
+                      $"TSS({goalTss}) → snapped{goalCell}");
+        }
 
         List<Vector2Int> path = NavPathfinder.FindPath(walkable, terrain, startCell, goalCell);
+        if (path == null || path.Count < 2) return null;
 
-        if (path == null || path.Count < 2)
-        {
-            Debug.LogWarning($"[ARMinimap] A* returned no path from {startCell} to {goalCell}. " +
-                             "Possible causes: start and goal snapped to the same cell, or the walkable " +
-                             "region is disconnected. Check the keepout image and map bounds.");
-            return null;
-        }
+        gridCells = path;
 
         var normPoints = new List<Vector2>(path.Count);
         foreach (Vector2Int cell in path)
@@ -336,12 +418,24 @@ public class ARMinimapErica : MonoBehaviour
             normPoints.Add(TssCoordsToNormalized(tss.x, tss.y));
         }
 
-        Debug.Log($"[ARMinimap] A* path (terrain): {path.Count} waypoints, {path.Count - 1} segments drawn.");
-        if (verboseDebug) LogPathWeights(path, terrain);
-        if (showTerrainOverlay) BuildWeightOverlay(path, terrain);
+        if (verboseDebug)
+            Debug.Log($"[ARMinimap] A* ({label}): {path.Count} cells, {path.Count - 1} segments.");
+        if (logWeights) LogPathWeights(path, terrain);
 
-        _terrainPathSucceeded = true;
         return normPoints;
+    }
+
+    private void DrawNormPath(RectTransform container, List<Vector2> normPoints, Color color,
+                                     float lineWidth, List<Vector2> pointStore, List<GameObject> segStore)
+    {
+        if (container == null || normPoints == null || normPoints.Count < 2) return;
+
+        for (int i = 0; i < normPoints.Count - 1; i++)
+        {
+            pointStore.Add(normPoints[i]);
+            segStore.Add(CreateSegment(container, normPoints[i], normPoints[i + 1], color, lineWidth));
+        }
+        pointStore.Add(normPoints[normPoints.Count - 1]);
     }
 
     // Logs each path cell's terrain weight and highlights the heaviest detour points.
@@ -527,8 +621,9 @@ public class ARMinimapErica : MonoBehaviour
         Vector2 curSize = minimapRect.rect.size;
         if (Vector2.Distance(curSize, _lastMinimapSize) <= 0.5f) return;
 
-        RefreshSegmentList(_trailContainer,  _trailLines,    _trailPoints,  trailLineWidth);
-        RefreshSegmentList(_pathContainer,   _pathSegments,  _pathPoints,   plannedPathLineWidth);
+        RefreshSegmentList(_trailContainer,   _trailLines,      _trailPoints,    trailLineWidth);
+        RefreshSegmentList(_pathContainer,    _pathSegments,    _pathPoints,     plannedPathLineWidth);
+        RefreshSegmentList(_ltvPathContainer, _ltvPathSegments, _ltvPathPoints,  evaToLtvPathLineWidth);
         _lastMinimapSize = curSize;
     }
 
@@ -626,7 +721,7 @@ public class ARMinimapErica : MonoBehaviour
             $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
             $"  TSS ({x:F1}, {y:F1})  heading {heading:F1}°\n" +
             $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
-            $"  trail pts:{_trailPoints.Count}  path segs:{_pathSegments.Count}"
+            $"  trail pts:{_trailPoints.Count}  path segs:{_pathSegments.Count}  ltv segs:{_ltvPathSegments.Count}"
         );
     }
 
