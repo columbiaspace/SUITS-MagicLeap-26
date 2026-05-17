@@ -96,8 +96,14 @@ public class IngressProcedureManager : MonoBehaviour
 
     private void Resolve()
     {
-        if (tssApi == null)
-            tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+        // Always prefer the persistent singleton over an Inspector-wired reference,
+        // because scene-embedded TssUnityApiService components destroy themselves
+        // when a singleton from an earlier scene already exists, leaving any
+        // pre-assigned tssApi pointing at a destroyed component (no EVA updates).
+        if (TssUnityApiService.Instance != null)
+            tssApi = TssUnityApiService.Instance;
+        else if (tssApi == null)
+            tssApi = FindObjectOfType<TssUnityApiService>();
 
         if (stepSpeaker == null)
             stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();

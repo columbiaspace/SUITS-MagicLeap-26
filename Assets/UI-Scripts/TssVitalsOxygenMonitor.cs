@@ -215,12 +215,16 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
 
     private void TryResolveApiService()
     {
-        if (tssApi != null)
+        // Always prefer the persistent singleton over an Inspector-wired reference,
+        // because scene-embedded TssUnityApiService components destroy themselves
+        // when a singleton from an earlier scene already exists, leaving any
+        // pre-assigned tssApi pointing at a destroyed component (no EVA updates).
+        if (TssUnityApiService.Instance != null)
         {
+            tssApi = TssUnityApiService.Instance;
             return;
         }
 
-        tssApi = TssUnityApiService.Instance;
         if (tssApi == null)
         {
             tssApi = FindObjectOfType<TssUnityApiService>();
