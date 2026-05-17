@@ -3,38 +3,52 @@ using UnityEngine;
 using TMPro;
 
 /// <summary>
-/// Displays the current wall-clock time (Central Time / CDT) and mission elapsed time.
-/// Attach to the TimeDisplay object above the CompassHud.
-/// Wire clockText and elapsedText in the Inspector.
+/// Displays the current wall-clock time (CDT) and mission elapsed time.
+///
+/// Offline-safe: uses a hardcoded CDT offset (UTC-5) instead of relying on
+/// the IANA/Windows timezone database, which is absent on Magic Leap 2.
+///
+/// When <see cref="initialCdtTime"/> is set (e.g. "12:30"), the clock starts
+/// from that value and advances in real-time — useful when the headset's
+/// system UTC clock is not NTP-synced.
 /// </summary>
 public class MissionTimeHUD : MonoBehaviour
 {
     [SerializeField] private TextMeshProUGUI clockText;
     [SerializeField] private TextMeshProUGUI elapsedText;
 
-    [Tooltip("Show the current time in Central Time (auto handles CDT/CST). When off, uses the device local time.")]
-    [SerializeField] private bool useCentralTime = true;
-
-    [Tooltip("Append the zone label (CDT / CST) to the clock readout.")]
+    [Tooltip("Append ' CDT' to the clock readout.")]
     [SerializeField] private bool showZoneSuffix = true;
 
-    private float _startTime;
-    private TimeZoneInfo _centralZone;
+    [Tooltip("Optional CDT start time (HH:mm or HH:mm:ss). " +
+             "When non-empty, the displayed clock starts from this value and " +
+             "advances with the real passage of time rather than reading " +
+             "DateTime.UtcNow. Set this to the current CDT time when the " +
+             "headset is offline and its system clock may be wrong.")]
+    [SerializeField] private string initialCdtTime = "12:30";
+
+    // CDT = UTC − 5 hours (May–Nov in US; hardcoded to avoid IANA dependency).
+    private const double CdtOffsetHours = -5.0;
+
+    private float _enabledAtRealtime;
+    private TimeSpan _manualBaseTime;
+    private bool _useManualBase;
 
     private void OnEnable()
     {
-        _startTime = Time.realtimeSinceStartup;
-        _centralZone = ResolveCentralZone();
+        _enabledAtRealtime = Time.realtimeSinceStartup;
+        _useManualBase = TryParseHhMm(initialCdtTime, out _manualBaseTime);
     }
 
     private void Update()
     {
+        float elapsed = Time.realtimeSinceStartup - _enabledAtRealtime;
+
         if (clockText != null)
-            clockText.text = BuildClockText();
+            clockText.text = BuildClockText(elapsed);
 
         if (elapsedText != null)
         {
-            float elapsed = Time.realtimeSinceStartup - _startTime;
             int h = (int)(elapsed / 3600);
             int m = (int)((elapsed % 3600) / 60);
             int s = (int)(elapsed % 60);
@@ -42,35 +56,44 @@ public class MissionTimeHUD : MonoBehaviour
         }
     }
 
-    private string BuildClockText()
+    private string BuildClockText(float elapsedSeconds)
     {
-        DateTime now;
-        string suffix = string.Empty;
+        DateTime display;
 
-        if (useCentralTime && _centralZone != null)
+        if (_useManualBase)
         {
-            now = TimeZoneInfo.ConvertTime(DateTime.UtcNow, _centralZone);
-            if (showZoneSuffix)
-                suffix = " " + (_centralZone.IsDaylightSavingTime(now) ? "CDT" : "CST");
+            // Advance the manually set start time at 1:1 real-time rate.
+            TimeSpan current = _manualBaseTime + TimeSpan.FromSeconds(elapsedSeconds);
+            // Wrap at midnight so hours stay 0–23.
+            current = TimeSpan.FromSeconds(current.TotalSeconds % 86400);
+            display = DateTime.Today + current;
         }
         else
         {
-            now = DateTime.Now;
+            // Fall back to live UTC with CDT offset.
+            display = DateTime.UtcNow.AddHours(CdtOffsetHours);
         }
 
-        return now.ToString("HH:mm:ss") + suffix;
+        string suffix = showZoneSuffix ? " CDT" : string.Empty;
+        return display.ToString("HH:mm:ss") + suffix;
     }
 
-    private static TimeZoneInfo ResolveCentralZone()
+    /// <summary>Parses "HH:mm" or "HH:mm:ss" into a TimeSpan.</summary>
+    private static bool TryParseHhMm(string s, out TimeSpan result)
     {
-        // Try IANA name first (macOS / Linux / Android), then Windows-style.
-        string[] candidates = { "America/Chicago", "Central Standard Time" };
-        foreach (string id in candidates)
-        {
-            try { return TimeZoneInfo.FindSystemTimeZoneById(id); }
-            catch { /* try next */ }
-        }
-        Debug.LogWarning("[MissionTimeHUD] Could not resolve Central Time zone — falling back to system local time.");
-        return null;
+        result = default;
+        if (string.IsNullOrWhiteSpace(s)) return false;
+
+        string[] parts = s.Trim().Split(':');
+        if (parts.Length < 2) return false;
+        if (!int.TryParse(parts[0], out int h) ||
+            !int.TryParse(parts[1], out int m)) return false;
+
+        int sec = 0;
+        if (parts.Length >= 3) int.TryParse(parts[2], out sec);
+
+        if (h < 0 || h > 23 || m < 0 || m > 59 || sec < 0 || sec > 59) return false;
+        result = new TimeSpan(h, m, sec);
+        return true;
     }
 }
