@@ -4,7 +4,7 @@ using UnityEngine;
 
 /// <summary>
 /// World-space floor compass: a red arrow near the user's feet that points toward the LTV
-/// (last known position from TSS) relative to EVA body heading.
+/// Task Board (rock yard coordinates) relative to EVA body heading.
 /// </summary>
 public class LtvGroundArrow : MonoBehaviour
 {
@@ -12,6 +12,12 @@ public class LtvGroundArrow : MonoBehaviour
     [SerializeField] private TssUnityApiService tssApi;
     [Tooltip("Key inside the imu bucket — must match what TSS sends (e.g. eva1)")]
     [SerializeField] private string evaId = "eva1";
+
+    [Header("LTV target (TSS metres)")]
+    [Tooltip("Default: LTV Task Board Alpha per NASA SUITS rock-yard coordinates.")]
+    [SerializeField] private Vector2 ltvTaskBoardTss = new Vector2(-5635f, -9960f);
+    [Tooltip("If enabled, use TSS GetLtvLocation (last_known_x/y) instead of the fixed task board.")]
+    [SerializeField] private bool useTssLastKnownLocation;
 
     [Header("Placement")]
     [Tooltip("Camera / headset transform. Defaults to Camera.main when unset.")]
@@ -34,8 +40,8 @@ public class LtvGroundArrow : MonoBehaviour
     [SerializeField] private float debugEvaX;
     [SerializeField] private float debugEvaY;
     [SerializeField] private float debugHeading;
-    [SerializeField] private float debugLtvX = -5839.3f;
-    [SerializeField] private float debugLtvY = -10460.6f;
+    [SerializeField] private float debugLtvX = -5635f;
+    [SerializeField] private float debugLtvY = -9960f;
     [Tooltip("How often (seconds) to log bearing info. 0 = off.")]
     [SerializeField] private float logIntervalSeconds = 1f;
 
@@ -116,7 +122,7 @@ public class LtvGroundArrow : MonoBehaviour
             float dist = Mathf.Sqrt((ltvX - evaX) * (ltvX - evaX) + (ltvY - evaY) * (ltvY - evaY));
             Debug.Log(
                 $"[LtvGroundArrow] eva=({evaX:F1},{evaY:F1}) heading={heading:F1}°  " +
-                $"ltv=({ltvX:F1},{ltvY:F1})  bearing={bearing:F1}°  rel={relative:F1}°  dist={dist:F1}m",
+                $"ltv=({ltvX:F1},{ltvY:F1}) [{LtvTargetLabel()}]  bearing={bearing:F1}°  rel={relative:F1}°  dist={dist:F1}m",
                 this);
         }
     }
@@ -125,13 +131,14 @@ public class LtvGroundArrow : MonoBehaviour
     {
         evaX = evaY = heading = ltvX = ltvY = 0f;
 
+        if (!TryReadLtvCoords(out ltvX, out ltvY))
+            return false;
+
         if (!useTssData)
         {
             evaX = debugEvaX;
             evaY = debugEvaY;
             heading = debugHeading;
-            ltvX = debugLtvX;
-            ltvY = debugLtvY;
             return true;
         }
 
@@ -143,10 +150,6 @@ public class LtvGroundArrow : MonoBehaviour
         evaX = (float)ToDouble(imuEva, "posx");
         evaY = (float)ToDouble(imuEva, "posy");
         heading = (float)ToDouble(imuEva, "heading");
-
-        if (!TryReadLtvCoords(out ltvX, out ltvY))
-            return false;
-
         return true;
     }
 
@@ -165,7 +168,20 @@ public class LtvGroundArrow : MonoBehaviour
 
     private bool TryReadLtvCoords(out float x, out float y)
     {
+        if (!useTssLastKnownLocation)
+        {
+            x = ltvTaskBoardTss.x;
+            y = ltvTaskBoardTss.y;
+            return true;
+        }
+
         x = y = 0f;
+        if (tssApi == null)
+        {
+            Debug.LogWarning("[LtvGroundArrow] useTssLastKnownLocation requires TssUnityApiService.", this);
+            return false;
+        }
+
         Dictionary<string, object> location = tssApi.GetLtvLocation();
         if (location == null || location.Count == 0)
         {
@@ -182,6 +198,11 @@ public class LtvGroundArrow : MonoBehaviour
             $"[LtvGroundArrow] No known LTV coordinate keys in location. Keys: {Keys(location)}",
             this);
         return false;
+    }
+
+    private string LtvTargetLabel()
+    {
+        return useTssLastKnownLocation ? "TSS last known" : "Task Board Alpha";
     }
 
     private static bool TryGetCoord(Dictionary<string, object> dict, string keyX, string keyY, out float x, out float y)

@@ -98,6 +98,8 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tssApi: {fileID: 0}
   evaId: eva1
+  ltvTaskBoardTss: {x: -5635, y: -9960}
+  useTssLastKnownLocation: 0
   followTransform: {fileID: 0}
   forwardDistance: 0.75
   heightBelowFollow: 1.1
@@ -107,6 +109,6 @@ MonoBehaviour:
   debugEvaX: 0
   debugEvaY: 0
   debugHeading: 0
-  debugLtvX: -5839.3
-  debugLtvY: -10460.6
+  debugLtvX: -5635
+  debugLtvY: -9960
   logIntervalSeconds: 1
