@@ -2,6 +2,7 @@ using System;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TssApi;
 
@@ -16,6 +17,14 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private Image               displayImage;
     [SerializeField] private Text                stepText;
     [SerializeField] private TssUnityApiService  tssApi;
+
+    [Header("Completion")]
+    [Tooltip("Optional speaker for spoken announcements. Auto-found in scene if left empty.")]
+    [SerializeField] private ProcedureStepSpeaker stepSpeaker;
+    [Tooltip("Scene to load once Egress completes.")]
+    [SerializeField] private string completionScene = "Mission";
+    [Tooltip("Seconds to wait between announcement and scene transition.")]
+    [SerializeField] private float completionRedirectDelay = 4f;
 
     // ── Sprites ────────────────────────────────────────────────────────
     [Header("UIA Sprites")]
@@ -93,8 +102,17 @@ public class EgressProcedureManager : MonoBehaviour
 
     private void Resolve()
     {
-        if (tssApi == null)
-            tssApi = TssUnityApiService.Instance ?? FindObjectOfType<TssUnityApiService>();
+        // Always prefer the persistent singleton over an Inspector-wired reference,
+        // because scene-embedded TssUnityApiService components destroy themselves
+        // when a singleton from an earlier scene already exists, leaving any
+        // pre-assigned tssApi pointing at a destroyed component (no EVA updates).
+        if (TssUnityApiService.Instance != null)
+            tssApi = TssUnityApiService.Instance;
+        else if (tssApi == null)
+            tssApi = FindObjectOfType<TssUnityApiService>();
+
+        if (stepSpeaker == null)
+            stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
     }
 
     /// <summary>
@@ -201,7 +219,7 @@ public class EgressProcedureManager : MonoBehaviour
 
         if (index >= _steps.Count)
         {
-            if (stepText != null) stepText.text = "Egress procedure complete.";
+            _timerCo = StartCoroutine(AnnounceAndRedirect());
             return;
         }
 
@@ -221,8 +239,26 @@ public class EgressProcedureManager : MonoBehaviour
                 sprite = dcuCo2Sprite;
             }
 
+            // Force the correct BATT image based on the label. "BATT – UMB" / "BATT – LOCAL"
+            // must use `dcu-batt-local-umb.png`; "BATT – PRI" / "BATT – SEC" must use `dcu-batt-sec-pri.png`.
+            if (step.Label != null &&
+                step.Label.IndexOf("BATT", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                bool isLocalOrUmb =
+                    step.Label.IndexOf("UMB",   StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    step.Label.IndexOf("LOCAL", StringComparison.OrdinalIgnoreCase) >= 0;
+                bool isSecOrPri =
+                    step.Label.IndexOf("SEC", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    step.Label.IndexOf("PRI", StringComparison.OrdinalIgnoreCase) >= 0;
+
+                if (isLocalOrUmb && dcuBattLocalUmbSprite != null) sprite = dcuBattLocalUmbSprite;
+                else if (isSecOrPri && dcuBattSecPriSprite != null) sprite = dcuBattSecPriSprite;
+            }
+
             displayImage.sprite = sprite;
         }
+
+        AnnounceStep(index, step);
 
         if (step.Cond == CondType.Timed)
             _timerCo = StartCoroutine(TimedAdvance(step.Secs));
@@ -230,10 +266,36 @@ public class EgressProcedureManager : MonoBehaviour
             TryAdvance();   // condition might already be satisfied from last packet
     }
 
+    private void AnnounceStep(int index, Step step)
+    {
+        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
+        if (stepSpeaker == null || step == null || string.IsNullOrWhiteSpace(step.Label)) return;
+
+        stepSpeaker.Announce($"Step {index + 1} of {_steps.Count}. {step.Label}");
+    }
+
     private IEnumerator TimedAdvance(float secs)
     {
         yield return new WaitForSeconds(secs);
         Advance();
+    }
+
+    private IEnumerator AnnounceAndRedirect()
+    {
+        const string completionMessage = "Egress procedure complete.";
+        if (stepText != null) stepText.text = completionMessage;
+
+        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
+        if (stepSpeaker != null) stepSpeaker.Announce(completionMessage);
+
+        if (!string.IsNullOrEmpty(completionScene))
+        {
+            yield return new WaitForSeconds(Mathf.Max(0f, completionRedirectDelay));
+            try { SceneManager.LoadScene(completionScene); }
+            catch (Exception e) { Debug.LogWarning($"[Egress] Failed to load '{completionScene}': {e.Message}"); }
+        }
+
+        _timerCo = null;
     }
 
     private void Advance()

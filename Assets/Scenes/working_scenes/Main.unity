@@ -970,8 +970,8 @@ MonoBehaviour:
   VoiceIntentsConfiguration: {fileID: 11400000, guid: bc0d55f56ba294532829093db7f9abb8, type: 2}
   targetObject: {fileID: 0}
   rotationSpeed: 50
-  sendVoicePromptToAi: 1
-  aiGenerateUrl: http://10.206.9.135:13853/chat
+  sendVoicePromptToAi: 0
+  aiGenerateUrl: http://192.168.1.210:13853/chat
   aiModel: gemma4:26b
   logAiResponse: 1
   speakAiResponse: 1
@@ -1211,7 +1211,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tssHost: 192.168.1.210
   tssPort: 14141
-  pollIntervalSeconds: 0.25
+  pollIntervalSeconds: 1
   udpTimeoutMs: 500
   udpRetries: 2
   ltvProceduresJson: {fileID: 0}

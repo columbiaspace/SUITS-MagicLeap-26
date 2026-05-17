@@ -65,7 +65,8 @@ public class ImageCarouselUI : MonoBehaviour
 
     private void Awake()
     {
-        if (tssApi == null)
+        // Always prefer the persistent singleton — see ARMinimapErica.Awake comment.
+        if (TssUnityApiService.Instance != null)
         {
             tssApi = TssUnityApiService.Instance;
         }
