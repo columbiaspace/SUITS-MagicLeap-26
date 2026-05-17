@@ -21,6 +21,10 @@ public class VoiceIntents : MonoBehaviour
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint SceneTransitionEventIdMin = 109;
     private const uint SceneTransitionEventIdMax = 113;
+    // MLVoice intent IDs for minimap navigation (NavVoiceCoordinator).
+    // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
+    private const uint NavVoiceEventIdMin = 114;
+    private const uint NavVoiceEventIdMax = 116;
     // Bumped from 30s: gemma4:26b on Apple Silicon regularly takes 60-90s for first-token
     // latency on a cold model load (and 30-60s per generation while warm), so 30s caused
     // every Luna call to fail with "Luna request failed" before the orchestrator finished.
@@ -60,6 +64,9 @@ public class VoiceIntents : MonoBehaviour
              "Handles all voice transitions other than the Mission→LTV entry, which stays " +
              "on LtvVoiceCoordinator so LtvSceneBootstrapper still sees PendingVoiceTrigger.")]
     [SerializeField] private SceneVoiceCoordinator sceneVoiceCoordinator;
+
+    [Tooltip("Optional Mission minimap nav voice coordinator (go to LTV / return / clear path).")]
+    [SerializeField] private NavVoiceCoordinator navVoiceCoordinator;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -359,6 +366,17 @@ public class VoiceIntents : MonoBehaviour
                         Debug.LogWarning($"[Luna] Scene-transition MLVoice intent '{voiceEvent.EventName}' did not match any configured transition in the current scene.");
                     }
                 }
+                else if (voiceEvent.EventID >= NavVoiceEventIdMin && voiceEvent.EventID <= NavVoiceEventIdMax)
+                {
+                    Debug.Log($"[Luna] Nav MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
+                    string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
+                        ? string.Empty
+                        : voiceEvent.EventName;
+                    if (!TryRouteNavVoiceCommand(spokenPhrase))
+                    {
+                        Debug.LogWarning($"[Luna] Nav MLVoice intent '{voiceEvent.EventName}' did not match any configured nav command.");
+                    }
+                }
                 else
                 {
                     Debug.Log($"Unhandled voice intent event id: {voiceEvent.EventID}");
@@ -423,23 +441,18 @@ public class VoiceIntents : MonoBehaviour
     }
 
     /// <summary>
-    /// Public so AIAVoskInputController can fire scene-transition routing on partial
-    /// Vosk transcripts (without waiting for the recording to stop and a final result
-    /// to emit). Tries the generic <see cref="SceneVoiceCoordinator"/> first (any
-    /// scene-to-scene transition), then falls back to <see cref="LtvVoiceCoordinator"/>
-    /// (kept for the Mission→LTV entry because LtvSceneBootstrapper consumes its
-    /// PendingVoiceTrigger flag). Returns true when a transition fired.
+    /// Public so AIAVoskInputController can fire voice routing on partial Vosk transcripts.
+    /// Order: scene transitions → minimap nav → LTV repair entry.
+    /// Returns true when a coordinator consumed the prompt.
     /// </summary>
     public bool TryRouteSceneVoiceCommand(string trimmedPrompt)
     {
-        if (sceneVoiceCoordinator == null)
+        if (TryRouteSceneTransitionVoiceCommand(trimmedPrompt))
         {
-            sceneVoiceCoordinator = SceneVoiceCoordinator.Instance != null
-                ? SceneVoiceCoordinator.Instance
-                : FindObjectOfType<SceneVoiceCoordinator>();
+            return true;
         }
 
-        if (sceneVoiceCoordinator != null && sceneVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt))
+        if (TryRouteNavVoiceCommand(trimmedPrompt))
         {
             return true;
         }
@@ -450,6 +463,31 @@ public class VoiceIntents : MonoBehaviour
         }
 
         return ltvVoiceCoordinator != null && ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+    }
+
+    private bool TryRouteSceneTransitionVoiceCommand(string trimmedPrompt)
+    {
+        if (sceneVoiceCoordinator == null)
+        {
+            sceneVoiceCoordinator = SceneVoiceCoordinator.Instance != null
+                ? SceneVoiceCoordinator.Instance
+                : FindObjectOfType<SceneVoiceCoordinator>();
+        }
+
+        return sceneVoiceCoordinator != null && sceneVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+    }
+
+    /// <summary>
+    /// Routes minimap navigation voice commands via <see cref="NavVoiceCoordinator"/>.
+    /// </summary>
+    public bool TryRouteNavVoiceCommand(string trimmedPrompt)
+    {
+        if (navVoiceCoordinator == null)
+        {
+            navVoiceCoordinator = FindObjectOfType<NavVoiceCoordinator>();
+        }
+
+        return navVoiceCoordinator != null && navVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
     }
 
     private void UpdateResponseTextBox(string text)

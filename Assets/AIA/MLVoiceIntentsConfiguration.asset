@@ -40,6 +40,12 @@ MonoBehaviour:
     Value: end ingress
   - Id: 113
     Value: end ltv repair
+  - Id: 114
+    Value: go to ltv
+  - Id: 115
+    Value: return to base
+  - Id: 116
+    Value: clear path
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []

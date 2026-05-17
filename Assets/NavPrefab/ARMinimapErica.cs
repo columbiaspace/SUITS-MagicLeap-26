@@ -54,12 +54,10 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("TSS position used as the A* path goal (green waypoint).")]
     public Vector2 pathGoal  = new Vector2(-5635f, -9960f);
 
-    [Header("EVA → goal path (live)")]
-    [Tooltip("Every evaToLtvPathIntervalSeconds, recompute A* from current EVA position to pathGoal (green waypoint).")]
-    [SerializeField] private bool showEvaToLtvPath = true;
-    [SerializeField] private float evaToLtvPathIntervalSeconds = 2f;
-    public Color evaToLtvPathColor = Color.yellow;
-    [SerializeField] private float evaToLtvPathLineWidth = 3.5f;
+    [Header("EVA voice nav path (yellow)")]
+    [Tooltip("Yellow path from current EVA position; drawn by NavVoiceCoordinator voice commands.")]
+    public Color voiceNavPathColor = Color.yellow;
+    [SerializeField] private float voiceNavPathLineWidth = 3.5f;
 
     [Header("Waypoints")]
     [SerializeField] private bool showWaypoints = true;
@@ -89,13 +87,15 @@ public class ARMinimapErica : MonoBehaviour
     private readonly List<GameObject> _pathSegments  = new List<GameObject>();
     private RectTransform _pathContainer;
 
-    // Live EVA → LTV A* path (refreshed on a timer)
-    private readonly List<Vector2>    _ltvPathPoints   = new List<Vector2>();
-    private readonly List<GameObject> _ltvPathSegments = new List<GameObject>();
-    private RectTransform _ltvPathContainer;
-    private float _evaToLtvPathTimer;
-    private bool _evaGoalPathHasDrawn;
-    private bool _evaGoalPathUsedTerrainAstar;
+    // Voice-triggered EVA path (yellow)
+    private readonly List<Vector2>    _voiceNavPoints   = new List<Vector2>();
+    private readonly List<GameObject> _voiceNavSegments = new List<GameObject>();
+    private RectTransform _voiceNavContainer;
+    private bool _voiceNavPathActive;
+    private VoiceNavGoal _voiceNavGoal = VoiceNavGoal.None;
+    private bool _voiceNavUsedTerrainAstar;
+
+    private enum VoiceNavGoal { None, Green, Blue }
 
     private Vector2 _lastMinimapSize;
     private Vector2 _lastRecordedTssPos;
@@ -126,12 +126,11 @@ public class ARMinimapErica : MonoBehaviour
     {
         _trailContainer = CreateSegmentContainer("TrailContainer");
         _pathContainer  = CreateSegmentContainer("PathContainer");
-        _ltvPathContainer = CreateSegmentContainer("LtvPathContainer");
+        _voiceNavContainer = CreateSegmentContainer("VoiceNavPathContainer");
 
         if (showWaypoints) SpawnWaypoints();
 
         if (showPlannedPath) ComputeAndDrawAStarPath();
-        if (showEvaToLtvPath) UpdateEvaToLtvPath(force: true);
 
         EnsureMinimapLayerOrder();
 
@@ -145,20 +144,21 @@ public class ARMinimapErica : MonoBehaviour
         RecordTrail(imuEva);
         RefreshSegmentsIfResized();
         LogDebug(imuEva);
-        TickEvaToLtvPath(imuEva);
 
         // If terrain A* hasn't succeeded yet (TerrainAnalyzer may have been loading),
         // keep trying every frame until it does.
         if (showPlannedPath && !_terrainPathSucceeded)
             TryUpgradeToTerrainPath();
 
-        // Start() often runs before TSS or TerrainAnalyzer are ready — keep trying until
-        // the first yellow path is actually drawn, then refresh once terrain A* is available.
-        if (showEvaToLtvPath && !_evaGoalPathHasDrawn)
-            UpdateEvaToLtvPath(force: false, imuEva);
-        else if (showEvaToLtvPath && _evaGoalPathHasDrawn && !_evaGoalPathUsedTerrainAstar
-                 && TerrainAnalyzer.Instance != null && TerrainAnalyzer.Instance.IsReady)
-            UpdateEvaToLtvPath(force: false, imuEva);
+        // Voice path may have been drawn with a straight-line fallback before TerrainAnalyzer was ready.
+        if (_voiceNavPathActive && !_voiceNavUsedTerrainAstar
+            && TerrainAnalyzer.Instance != null && TerrainAnalyzer.Instance.IsReady)
+        {
+            if (_voiceNavGoal == VoiceNavGoal.Green)
+                DrawVoiceNavPath(pathGoal, retryOnly: true, imuEva, "EVA→green");
+            else if (_voiceNavGoal == VoiceNavGoal.Blue)
+                DrawVoiceNavPath(pathStart, retryOnly: true, imuEva, "EVA→blue");
+        }
     }
 
     // Called every frame until TerrainAnalyzer is ready and produces a valid path.
@@ -300,63 +300,88 @@ public class ARMinimapErica : MonoBehaviour
     }
 
     // -------------------------------------------------------------------------
-    // Live EVA → LTV path (refreshed every N seconds)
+    // Voice-triggered EVA path (yellow)
     // -------------------------------------------------------------------------
 
-    private void TickEvaToLtvPath(Dictionary<string, object> imuEva)
+    /// <summary>Yellow A* path from current EVA position to the green waypoint (pathGoal).</summary>
+    public bool VoiceGoToLtv()
     {
-        if (!showEvaToLtvPath) return;
-
-        _evaToLtvPathTimer += Time.deltaTime;
-        if (_evaToLtvPathTimer < evaToLtvPathIntervalSeconds) return;
-
-        _evaToLtvPathTimer = 0f;
-        UpdateEvaToLtvPath(force: false, imuEva);
+        if (!DrawVoiceNavPath(pathGoal, retryOnly: false, imuEva: null, label: "EVA→green"))
+            return false;
+        _voiceNavGoal = VoiceNavGoal.Green;
+        return true;
     }
 
-    private void UpdateEvaToLtvPath(bool force, Dictionary<string, object> imuEva = null)
+    /// <summary>Yellow A* path from current EVA position to the blue waypoint (pathStart).</summary>
+    public bool VoiceReturn()
     {
-        if (!showEvaToLtvPath || _ltvPathContainer == null || minimapRect == null) return;
+        if (!DrawVoiceNavPath(pathStart, retryOnly: false, imuEva: null, label: "EVA→blue"))
+            return false;
+        _voiceNavGoal = VoiceNavGoal.Blue;
+        return true;
+    }
+
+    /// <summary>Removes the yellow voice navigation path.</summary>
+    public void ClearVoiceNavPath()
+    {
+        ClearVoiceNavSegments();
+        _voiceNavPathActive = false;
+        _voiceNavGoal = VoiceNavGoal.None;
+        _voiceNavUsedTerrainAstar = false;
+        Debug.Log("[ARMinimap] Voice nav path cleared.");
+    }
+
+    private bool DrawVoiceNavPath(Vector2 goalTss, bool retryOnly, Dictionary<string, object> imuEva, string label)
+    {
+        if (_voiceNavContainer == null || minimapRect == null)
+        {
+            Debug.LogWarning("[ARMinimap] Voice nav path container not ready.");
+            return false;
+        }
 
         if (!TryGetEvaTss(imuEva, out Vector2 evaTss))
         {
-            if (force)
-                Debug.Log("[ARMinimap] EVA→goal path: waiting for TSS position inside map bounds.");
-            return;
+            if (!retryOnly)
+            {
+                Debug.Log("[ARMinimap] Voice nav path: waiting for TSS position inside map bounds.");
+            }
+
+            return false;
         }
 
-        ClearLtvPath();
+        ClearVoiceNavSegments();
 
         bool usedTerrain = true;
-        List<Vector2> normPoints = ComputeNormPath(evaTss, pathGoal, "EVA→goal", logWeights: false,
-                                                   out _);
+        List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, logWeights: false, out _);
         if (normPoints == null)
         {
             usedTerrain = false;
             normPoints = new List<Vector2>
             {
                 TssCoordsToNormalized(evaTss.x, evaTss.y),
-                TssCoordsToNormalized(pathGoal.x, pathGoal.y)
+                TssCoordsToNormalized(goalTss.x, goalTss.y)
             };
         }
 
-        DrawNormPath(_ltvPathContainer, normPoints, evaToLtvPathColor, evaToLtvPathLineWidth,
-                     _ltvPathPoints, _ltvPathSegments);
+        DrawNormPath(_voiceNavContainer, normPoints, voiceNavPathColor, voiceNavPathLineWidth,
+                     _voiceNavPoints, _voiceNavSegments);
         EnsureMinimapLayerOrder();
 
-        _evaGoalPathHasDrawn = true;
-        _evaGoalPathUsedTerrainAstar = usedTerrain;
+        _voiceNavPathActive = true;
+        _voiceNavUsedTerrainAstar = usedTerrain;
 
-        Debug.Log($"[ARMinimap] EVA→goal path drawn ({normPoints.Count - 1} segments, " +
+        string waypointName = goalTss == pathGoal ? "green" : "blue";
+        Debug.Log($"[ARMinimap] Voice nav path drawn ({normPoints.Count - 1} segments, " +
                   $"{(usedTerrain ? "terrain A*" : "straight-line fallback")}): " +
-                  $"TSS ({evaTss.x:F1}, {evaTss.y:F1}) → green ({pathGoal.x:F1}, {pathGoal.y:F1}).");
+                  $"TSS ({evaTss.x:F1}, {evaTss.y:F1}) → {waypointName} ({goalTss.x:F1}, {goalTss.y:F1}).");
+        return true;
     }
 
-    // EVA→goal line renders above trail/planned path but below the player icon.
+    // Yellow path renders above trail/planned path but below the player icon.
     private void EnsureMinimapLayerOrder()
     {
         if (minimapRect == null) return;
-        if (_ltvPathContainer != null) _ltvPathContainer.SetAsLastSibling();
+        if (_voiceNavContainer != null) _voiceNavContainer.SetAsLastSibling();
         if (playerIcon != null) playerIcon.SetAsLastSibling();
     }
 
@@ -377,11 +402,11 @@ public class ARMinimapErica : MonoBehaviour
             && tssPos.y >= mapMinY - margin && tssPos.y <= mapMaxY + margin;
     }
 
-    public void ClearLtvPath()
+    private void ClearVoiceNavSegments()
     {
-        foreach (GameObject seg in _ltvPathSegments) if (seg != null) Destroy(seg);
-        _ltvPathSegments.Clear();
-        _ltvPathPoints.Clear();
+        foreach (GameObject seg in _voiceNavSegments) if (seg != null) Destroy(seg);
+        _voiceNavSegments.Clear();
+        _voiceNavPoints.Clear();
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.
@@ -623,7 +648,7 @@ public class ARMinimapErica : MonoBehaviour
 
         RefreshSegmentList(_trailContainer,   _trailLines,      _trailPoints,    trailLineWidth);
         RefreshSegmentList(_pathContainer,    _pathSegments,    _pathPoints,     plannedPathLineWidth);
-        RefreshSegmentList(_ltvPathContainer, _ltvPathSegments, _ltvPathPoints,  evaToLtvPathLineWidth);
+        RefreshSegmentList(_voiceNavContainer, _voiceNavSegments, _voiceNavPoints, voiceNavPathLineWidth);
         _lastMinimapSize = curSize;
     }
 
@@ -721,7 +746,7 @@ public class ARMinimapErica : MonoBehaviour
             $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
             $"  TSS ({x:F1}, {y:F1})  heading {heading:F1}°\n" +
             $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
-            $"  trail pts:{_trailPoints.Count}  path segs:{_pathSegments.Count}  ltv segs:{_ltvPathSegments.Count}"
+            $"  trail pts:{_trailPoints.Count}  path segs:{_pathSegments.Count}  voice nav segs:{_voiceNavSegments.Count}"
         );
     }
 
