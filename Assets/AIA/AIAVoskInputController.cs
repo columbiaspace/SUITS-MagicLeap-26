@@ -158,7 +158,24 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
     [SerializeField] private float silenceStopSeconds = 2f;
+    [SerializeField, Range(0f, 1f), Tooltip(
+        "Volume threshold (0–1) above which a sample is treated as speech. " +
+        "The Magic Leap 2 headset mic typically peaks around 0.02–0.04 for normal " +
+        "indoor speech; the original Picovoice default of 0.05 was too high and " +
+        "caused Vosk to receive zero audio frames.")]
+    private float voiceDetectionThreshold = 0.01f;
+    [SerializeField, Tooltip(
+        "Hard cap on recording length (seconds). If the user starts a recording and " +
+        "the VAD never trips (e.g. mic is muted), recording is force-stopped after this many seconds " +
+        "so the user sees a real error instead of a hanging UI.")]
+    private float maxRecordingSeconds = 15f;
     [SerializeField] private bool logTranscripts = true;
+    [SerializeField, Tooltip("Log [Vosk] audio-level samples while recording. Useful for diagnosing mic-gain issues.")]
+    private bool logAudioLevels = true;
+
+    private Coroutine maxRecordingTimeoutCoroutine;
+    private Coroutine audioLevelMonitorCoroutine;
+    private float peakAmplitudeThisSession;
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     private bool hasRecordPermission;
@@ -166,9 +183,9 @@ public class AIAVoskInputController : MonoBehaviour
     private bool isVoskInitializing;
     private bool isVoskInitialized;
     private bool isRecording;
-    // Set true once a partial transcript routes the LTV-repair command this session,
+    // Set true once a partial transcript routes a scene-transition command this session,
     // so subsequent partials don't double-trigger before recording stops.
-    private bool _routedLtvRepairThisSession;
+    private bool _routedSceneVoiceThisSession;
     private Coroutine initializationTimeoutCoroutine;
 
     private void Awake()
@@ -276,10 +293,17 @@ public class AIAVoskInputController : MonoBehaviour
     {
         if (voiceIntents == null)
         {
-            GameObject voiceIntentObject = GameObject.Find("VoiceIntent");
-            if (voiceIntentObject != null)
+            // Prefer the persistent singleton: a freshly-loaded scene's local VoiceIntent
+            // briefly coexists with the persistent one during the same frame, and
+            // GameObject.Find can return the doomed duplicate before its Destroy resolves.
+            voiceIntents = VoiceIntents.Instance;
+            if (voiceIntents == null)
             {
-                voiceIntents = voiceIntentObject.GetComponent<VoiceIntents>();
+                GameObject voiceIntentObject = GameObject.Find("VoiceIntent");
+                if (voiceIntentObject != null)
+                {
+                    voiceIntents = voiceIntentObject.GetComponent<VoiceIntents>();
+                }
             }
         }
 
@@ -340,6 +364,11 @@ public class AIAVoskInputController : MonoBehaviour
         voskSpeechToText.AutoStopRecordingOnSilence = true;
         voskSpeechToText.SilenceTimeoutSeconds = silenceStopSeconds;
         voskSpeechToText.VoiceProcessor = voiceProcessor;
+
+        if (voiceProcessor != null)
+        {
+            voiceProcessor.MinimumSpeakingSampleValue = voiceDetectionThreshold;
+        }
         voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
         voskSpeechToText.OnPartialTranscriptionResult -= HandlePartialTranscriptionResult;
@@ -442,7 +471,8 @@ public class AIAVoskInputController : MonoBehaviour
 
         try
         {
-            _routedLtvRepairThisSession = false;
+            _routedSceneVoiceThisSession = false;
+            peakAmplitudeThisSession = 0f;
 
             if (voiceIntents != null)
             {
@@ -455,6 +485,7 @@ public class AIAVoskInputController : MonoBehaviour
 
             voskSpeechToText.ToggleRecording();
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
+            BeginRecordingTimeouts();
             RefreshButtonVisuals();
         }
         catch (Exception exception)
@@ -471,6 +502,7 @@ public class AIAVoskInputController : MonoBehaviour
         if (voskSpeechToText == null || voiceProcessor == null || !voiceProcessor.IsRecording)
         {
             isRecording = false;
+            CancelRecordingTimeouts();
             RefreshButtonVisuals();
             return;
         }
@@ -478,7 +510,67 @@ public class AIAVoskInputController : MonoBehaviour
         voiceIntents?.ShowRecordingProcessing();
         voskSpeechToText.ToggleRecording();
         isRecording = false;
+        CancelRecordingTimeouts();
         RefreshButtonVisuals();
+    }
+
+    private void BeginRecordingTimeouts()
+    {
+        CancelRecordingTimeouts();
+        if (maxRecordingSeconds > 0f)
+        {
+            maxRecordingTimeoutCoroutine = StartCoroutine(MaxRecordingWatchdog(maxRecordingSeconds));
+        }
+        if (logAudioLevels)
+        {
+            audioLevelMonitorCoroutine = StartCoroutine(MonitorAudioLevels());
+        }
+    }
+
+    private void CancelRecordingTimeouts()
+    {
+        if (maxRecordingTimeoutCoroutine != null)
+        {
+            StopCoroutine(maxRecordingTimeoutCoroutine);
+            maxRecordingTimeoutCoroutine = null;
+        }
+        if (audioLevelMonitorCoroutine != null)
+        {
+            StopCoroutine(audioLevelMonitorCoroutine);
+            audioLevelMonitorCoroutine = null;
+        }
+    }
+
+    private IEnumerator MaxRecordingWatchdog(float seconds)
+    {
+        yield return new WaitForSeconds(seconds);
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            Debug.LogWarning($"[Vosk] Max-recording watchdog fired after {seconds:F1}s — force-stopping. " +
+                             $"Peak mic amplitude this session: {peakAmplitudeThisSession:F4} (threshold {voiceDetectionThreshold:F4}).");
+            StopRecording();
+        }
+    }
+
+    private IEnumerator MonitorAudioLevels()
+    {
+        // ~4 Hz sample. Helps confirm whether the mic is hearing anything at all.
+        WaitForSeconds wait = new WaitForSeconds(0.25f);
+        float lastLogTime = 0f;
+        while (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            float level = voiceProcessor.LastFrameMaxAmplitude;
+            if (level > peakAmplitudeThisSession) peakAmplitudeThisSession = level;
+
+            if (Time.unscaledTime - lastLogTime >= 1f)
+            {
+                Debug.Log($"[Vosk] mic level (peak this frame) = {level:F4}, " +
+                          $"session peak = {peakAmplitudeThisSession:F4}, threshold = {voiceDetectionThreshold:F4}.");
+                lastLogTime = Time.unscaledTime;
+            }
+            yield return wait;
+        }
+        audioLevelMonitorCoroutine = null;
     }
 
     private void HandleVoskStatusUpdated(string status)
@@ -512,6 +604,7 @@ public class AIAVoskInputController : MonoBehaviour
     private void HandleVoiceRecordingStop()
     {
         isRecording = false;
+        CancelRecordingTimeouts();
         RefreshButtonVisuals();
     }
 
@@ -528,14 +621,27 @@ public class AIAVoskInputController : MonoBehaviour
             string transcript = result.Phrases[0]?.Text?.Trim();
             if (string.IsNullOrWhiteSpace(transcript))
             {
-                Debug.LogWarning($"[Vosk] Empty transcription result: {rawJson}");
+                bool micWasHeard = peakAmplitudeThisSession >= voiceDetectionThreshold;
+                Debug.LogWarning(
+                    $"[Vosk] Empty transcription result: {rawJson}. " +
+                    $"Peak mic amplitude this session = {peakAmplitudeThisSession:F4} " +
+                    $"(threshold {voiceDetectionThreshold:F4}). " +
+                    (micWasHeard
+                        ? "Mic was audible but Vosk did not recognize any words — try speaking closer to the headset or check the model is loaded."
+                        : "Mic NEVER crossed the VAD threshold — check that the headset microphone is enabled, unmuted, and that no other process (e.g. MLVoice/Luna) is holding it. " +
+                          "If peak stays near 0.0000, the mic is not capturing at all."));
+
+                string userMessage = micWasHeard
+                    ? "Vosk did not recognize that audio. Try speaking a bit closer or louder."
+                    : "Vosk did not hear any audio from the mic. Check that the headset mic is enabled and not muted.";
+
                 if (voiceIntents != null)
                 {
-                    voiceIntents.FailActiveRecording("Vosk could not transcribe that recording.");
+                    voiceIntents.FailActiveRecording(userMessage);
                 }
                 else
                 {
-                    UpdateStatus("Vosk could not transcribe that recording.");
+                    UpdateStatus(userMessage);
                 }
                 return;
             }
@@ -591,14 +697,14 @@ public class AIAVoskInputController : MonoBehaviour
                 voiceIntents.UpdateRecordingTranscript(partialTranscript);
 
                 // VoiceProcessor's silence detection on ML2 doesn't reliably fire, so the
-                // recording stays open and the final transcript never emits. Route LTV-repair
-                // off the live partial stream instead — fires the moment Vosk has heard
-                // enough audio to recognize the command.
-                if (!_routedLtvRepairThisSession &&
-                    voiceIntents.TryRouteLtvRepairCommand(partialTranscript))
+                // recording stays open and the final transcript never emits. Route scene
+                // transitions off the live partial stream instead — fires the moment Vosk
+                // has heard enough audio to recognize a configured command.
+                if (!_routedSceneVoiceThisSession &&
+                    voiceIntents.TryRouteSceneVoiceCommand(partialTranscript))
                 {
-                    _routedLtvRepairThisSession = true;
-                    Debug.Log($"[Vosk] LTV-repair routed from partial transcript: '{partialTranscript}'. Stopping recording.");
+                    _routedSceneVoiceThisSession = true;
+                    Debug.Log($"[Vosk] Scene-voice command routed from partial transcript: '{partialTranscript}'. Stopping recording.");
                     StopRecording();
                 }
             }

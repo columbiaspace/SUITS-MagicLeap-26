@@ -724,7 +724,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   tssHost: 192.168.1.210
   tssPort: 14141
-  pollIntervalSeconds: 0.25
+  pollIntervalSeconds: 1
   udpTimeoutMs: 500
   udpRetries: 2
   ltvProceduresJson: {fileID: 0}

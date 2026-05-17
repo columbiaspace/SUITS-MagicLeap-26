@@ -10,13 +10,26 @@ using UnityEngine.XR.MagicLeap;
 
 public class VoiceIntents : MonoBehaviour
 {
+    public static VoiceIntents Instance { get; private set; }
+
     private const uint AskLunaEventId = 105;
     // MLVoice intent IDs that route directly to LTV-repair (bypasses Vosk).
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint LtvRepairEventIdMin = 106;
     private const uint LtvRepairEventIdMax = 108;
-    private const int AiRequestTimeoutSeconds = 30;
+    // MLVoice intent IDs that route to generic scene transitions via SceneVoiceCoordinator.
+    // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
+    private const uint SceneTransitionEventIdMin = 109;
+    private const uint SceneTransitionEventIdMax = 113;
+    // Bumped from 30s: gemma4:26b on Apple Silicon regularly takes 60-90s for first-token
+    // latency on a cold model load (and 30-60s per generation while warm), so 30s caused
+    // every Luna call to fail with "Luna request failed" before the orchestrator finished.
+    // If the orchestrator is reachable but slow, the user now waits up to this many seconds.
+    private const int AiRequestTimeoutSeconds = 180;
     private const string OllamaIpEnvironmentVariable = "LUNA_OLLAMA_IP";
+    // Optional full-URL override. Takes precedence over LUNA_OLLAMA_IP and lets the
+    // orchestrator live on a non-default port / path (e.g. behind a reverse proxy).
+    private const string OllamaUrlEnvironmentVariable = "LUNA_OLLAMA_URL";
     private const int MaxVisibleConversationTurns = 3;
     private const string DefaultResponsePlaceholder = "Luna response will appear here.";
     private const string RecordingPlaceholder = "Recording your question...";
@@ -30,7 +43,7 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://10.206.9.135:13853/chat";
+    [SerializeField] private string aiGenerateUrl = "http://192.168.1.210:13853/chat";
     [SerializeField] private string aiModel = "gemma4:26b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
@@ -42,6 +55,11 @@ public class VoiceIntents : MonoBehaviour
     [Tooltip("Optional LTV-repair voice coordinator. If present and the transcript matches its " +
              "trigger phrases, the prompt is consumed locally instead of being forwarded to Gemma.")]
     [SerializeField] private LtvVoiceCoordinator ltvVoiceCoordinator;
+
+    [Tooltip("Optional generic scene-transition voice coordinator (persistent singleton). " +
+             "Handles all voice transitions other than the Mission→LTV entry, which stays " +
+             "on LtvVoiceCoordinator so LtvSceneBootstrapper still sees PendingVoiceTrigger.")]
+    [SerializeField] private SceneVoiceCoordinator sceneVoiceCoordinator;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -124,13 +142,34 @@ public class VoiceIntents : MonoBehaviour
 
     private void ApplyOllamaIpOverrideFromEnvironment()
     {
-        string ollamaIp = Environment.GetEnvironmentVariable(OllamaIpEnvironmentVariable);
-        if (string.IsNullOrWhiteSpace(ollamaIp))
+        // LUNA_OLLAMA_URL wins outright — lets the user point at any host:port/path
+        // (e.g. behind a reverse proxy). LUNA_OLLAMA_IP is the simpler legacy override:
+        // it only swaps the host portion of the existing URL, preserving port and path.
+        string urlOverride = Environment.GetEnvironmentVariable(OllamaUrlEnvironmentVariable);
+        if (!string.IsNullOrWhiteSpace(urlOverride))
         {
-            return;
+            string trimmed = urlOverride.Trim();
+            if (!string.Equals(trimmed, aiGenerateUrl, StringComparison.Ordinal))
+            {
+                Debug.Log($"[Luna] URL override from {OllamaUrlEnvironmentVariable}: '{aiGenerateUrl}' -> '{trimmed}'.");
+                aiGenerateUrl = trimmed;
+            }
+        }
+        else
+        {
+            string ollamaIp = Environment.GetEnvironmentVariable(OllamaIpEnvironmentVariable);
+            if (!string.IsNullOrWhiteSpace(ollamaIp))
+            {
+                string newUrl = $"http://{ollamaIp.Trim()}:13853/chat";
+                if (!string.Equals(newUrl, aiGenerateUrl, StringComparison.Ordinal))
+                {
+                    Debug.Log($"[Luna] IP override from {OllamaIpEnvironmentVariable}: '{aiGenerateUrl}' -> '{newUrl}'.");
+                    aiGenerateUrl = newUrl;
+                }
+            }
         }
 
-        aiGenerateUrl = $"http://{ollamaIp.Trim()}:13853/chat";
+        Debug.Log($"[Luna] AI endpoint = {aiGenerateUrl} (timeout {AiRequestTimeoutSeconds}s, model '{aiModel}').");
     }
 
     void Update()
@@ -143,6 +182,15 @@ public class VoiceIntents : MonoBehaviour
 
     private void Awake()
     {
+        if (Instance != null && Instance != this)
+        {
+            Destroy(gameObject);
+            return;
+        }
+
+        Instance = this;
+        DontDestroyOnLoad(gameObject);
+
         permissionCallbacks.OnPermissionGranted += OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied += OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain += OnPermissionDenied;
@@ -150,6 +198,11 @@ public class VoiceIntents : MonoBehaviour
 
     private void OnDestroy()
     {
+        if (Instance == this)
+        {
+            Instance = null;
+        }
+
         permissionCallbacks.OnPermissionGranted -= OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnPermissionDenied;
@@ -290,9 +343,20 @@ public class VoiceIntents : MonoBehaviour
                     string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
                         ? "ltv repair"
                         : voiceEvent.EventName;
-                    if (!TryRouteLtvRepairCommand(spokenPhrase))
+                    if (!TryRouteSceneVoiceCommand(spokenPhrase))
                     {
                         Debug.LogWarning("[Luna] LTV-repair MLVoice intent matched but coordinator did not accept it.");
+                    }
+                }
+                else if (voiceEvent.EventID >= SceneTransitionEventIdMin && voiceEvent.EventID <= SceneTransitionEventIdMax)
+                {
+                    Debug.Log($"[Luna] Scene-transition MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
+                    string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
+                        ? string.Empty
+                        : voiceEvent.EventName;
+                    if (!TryRouteSceneVoiceCommand(spokenPhrase))
+                    {
+                        Debug.LogWarning($"[Luna] Scene-transition MLVoice intent '{voiceEvent.EventName}' did not match any configured transition in the current scene.");
                     }
                 }
                 else
@@ -359,23 +423,33 @@ public class VoiceIntents : MonoBehaviour
     }
 
     /// <summary>
-    /// Public so AIAVoskInputController can fire LTV-repair routing on partial Vosk
-    /// transcripts (without waiting for the recording to stop and a final result to
-    /// emit). Returns true when the transcript matched and the LTV scene was loaded.
+    /// Public so AIAVoskInputController can fire scene-transition routing on partial
+    /// Vosk transcripts (without waiting for the recording to stop and a final result
+    /// to emit). Tries the generic <see cref="SceneVoiceCoordinator"/> first (any
+    /// scene-to-scene transition), then falls back to <see cref="LtvVoiceCoordinator"/>
+    /// (kept for the Mission→LTV entry because LtvSceneBootstrapper consumes its
+    /// PendingVoiceTrigger flag). Returns true when a transition fired.
     /// </summary>
-    public bool TryRouteLtvRepairCommand(string trimmedPrompt)
+    public bool TryRouteSceneVoiceCommand(string trimmedPrompt)
     {
+        if (sceneVoiceCoordinator == null)
+        {
+            sceneVoiceCoordinator = SceneVoiceCoordinator.Instance != null
+                ? SceneVoiceCoordinator.Instance
+                : FindObjectOfType<SceneVoiceCoordinator>();
+        }
+
+        if (sceneVoiceCoordinator != null && sceneVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt))
+        {
+            return true;
+        }
+
         if (ltvVoiceCoordinator == null)
         {
             ltvVoiceCoordinator = FindObjectOfType<LtvVoiceCoordinator>();
         }
 
-        if (ltvVoiceCoordinator == null)
-        {
-            return false;
-        }
-
-        return ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+        return ltvVoiceCoordinator != null && ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
     }
 
     private void UpdateResponseTextBox(string text)
@@ -468,11 +542,11 @@ public class VoiceIntents : MonoBehaviour
             return;
         }
 
-        if (TryRouteLtvRepairCommand(trimmedPrompt))
+        if (TryRouteSceneVoiceCommand(trimmedPrompt))
         {
-            // The coordinator will load the LTV scene and run the repair flow.
+            // A scene-transition coordinator consumed the prompt and queued a LoadScene.
             // We intentionally do NOT forward this transcript to Gemma.
-            CompleteActiveConversation("Loading LTV repair console.");
+            CompleteActiveConversation("Loading next scene.");
             return;
         }
 
@@ -557,10 +631,28 @@ public class VoiceIntents : MonoBehaviour
 
             if (request.result != UnityWebRequest.Result.Success)
             {
+                bool wasTimeout = request.result == UnityWebRequest.Result.ConnectionError
+                                  && (string.IsNullOrEmpty(request.error)
+                                      || request.error.IndexOf("timeout", StringComparison.OrdinalIgnoreCase) >= 0
+                                      || request.error.IndexOf("aborted", StringComparison.OrdinalIgnoreCase) >= 0);
                 Debug.LogError(
-                    $"[Gemma] Request failed (HTTP {request.responseCode}): {request.error}. " +
-                    $"Body: {request.downloadHandler?.text}");
-                CompleteActiveConversation("Luna request failed.");
+                    $"[Gemma] Request failed (HTTP {request.responseCode}, result={request.result}): {request.error}. " +
+                    $"URL: {aiGenerateUrl}. Body: {request.downloadHandler?.text}");
+
+                string userMessage;
+                if (wasTimeout)
+                {
+                    userMessage = $"Luna timed out after {AiRequestTimeoutSeconds}s. The model is slow or unreachable at {aiGenerateUrl}.";
+                }
+                else if (request.responseCode == 0)
+                {
+                    userMessage = $"Luna unreachable at {aiGenerateUrl} — check the orchestrator is running and on the same network.";
+                }
+                else
+                {
+                    userMessage = $"Luna request failed (HTTP {request.responseCode}).";
+                }
+                CompleteActiveConversation(userMessage);
             }
             else
             {

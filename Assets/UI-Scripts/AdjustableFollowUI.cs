@@ -1,23 +1,38 @@
 using UnityEngine;
 using UnityEngine.XR.Interaction.Toolkit;
 
+/// <summary>
+/// Companion script for grabbable world-space UI panels.
+/// While the user is holding the panel (XRGrabInteractable selected) the
+/// XR Interaction Toolkit moves the transform with the hand. After release,
+/// the panel stays exactly where it was placed in world space.
+///
+/// Optionally, you can opt back into the legacy "always follow camera"
+/// behaviour by ticking <see cref="continuouslyFollowCamera"/>.
+/// </summary>
 public class AdjustableFollowUI : MonoBehaviour
 {
-    [Header("Tracking Setup")]
+    [Header("Tracking Setup (legacy)")]
+    [Tooltip("Optional camera reference; only used when 'continuouslyFollowCamera' is enabled.")]
     public Transform cameraTransform;
+    [Tooltip("Smoothing factor when camera-following is enabled.")]
     public float smoothTime = 0.15f;
-    
+
+    [Header("Behaviour")]
+    [Tooltip("When ON, the panel keeps a fixed offset from the camera at all times (old behaviour). " +
+             "When OFF (default), grabbing follows the hand and releasing leaves the panel where it was placed.")]
+    [SerializeField] private bool continuouslyFollowCamera = false;
+
     private XRGrabInteractable grabInteractable;
     private bool isGrabbed = false;
     private Vector3 targetOffset;
     private Vector3 velocity = Vector3.zero;
 
-    void Start()
+    private void Start()
     {
-        // Find the main camera if one isn't assigned
-        if (cameraTransform == null) cameraTransform = Camera.main.transform;
-        
-        // Hook into the XR Grab events
+        if (cameraTransform == null && Camera.main != null)
+            cameraTransform = Camera.main.transform;
+
         grabInteractable = GetComponent<XRGrabInteractable>();
         if (grabInteractable != null)
         {
@@ -25,52 +40,45 @@ public class AdjustableFollowUI : MonoBehaviour
             grabInteractable.selectExited.AddListener(OnRelease);
         }
 
-        // Calculate the initial offset so the menu starts right where you placed it in the scene
-        UpdateOffset();
+        if (continuouslyFollowCamera)
+            UpdateOffset();
     }
 
-    void Update()
+    private void Update()
     {
-        // If the user is holding the menu, let XRI handle the movement. Do nothing here.
-        if (isGrabbed) return; 
+        if (!continuouslyFollowCamera) return;
+        if (isGrabbed) return;
+        if (cameraTransform == null) return;
 
-        // 1. Calculate the user's "Yaw" (side-to-side turning)
-        // We ignore X and Z rotation so the menu doesn't tilt weirdly if the user looks up or down.
         Vector3 cameraEuler = cameraTransform.eulerAngles;
-        Quaternion yawRotation = Quaternion.Euler(0, cameraEuler.y, 0);
-        
-        // 2. Calculate where the menu SHOULD be based on the saved offset
+        Quaternion yawRotation = Quaternion.Euler(0f, cameraEuler.y, 0f);
+
         Vector3 targetPosition = cameraTransform.position + (yawRotation * targetOffset);
-        
-        // 3. Smoothly glide to that position
         transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref velocity, smoothTime);
 
-        // 4. Smoothly rotate to always face the user (Billboarding)
         Vector3 lookAtPos = cameraTransform.position;
-        lookAtPos.y = transform.position.y; // Keep the UI perfectly vertical
-        transform.LookAt(2 * transform.position - lookAtPos); // Reverse look-at so the text isn't backwards
+        lookAtPos.y = transform.position.y;
+        transform.LookAt(2f * transform.position - lookAtPos);
     }
 
-    // Triggered the moment the user pinches/grabs the menu
     private void OnGrab(SelectEnterEventArgs args)
     {
         isGrabbed = true;
     }
 
-    // Triggered the moment the user lets go of the menu
     private void OnRelease(SelectExitEventArgs args)
     {
         isGrabbed = false;
-        UpdateOffset(); // Save the new position the user dropped it at!
+        if (continuouslyFollowCamera)
+            UpdateOffset();
     }
 
-    // Calculates where the menu is currently sitting relative to the user's head
     private void UpdateOffset()
     {
+        if (cameraTransform == null) return;
+
         Vector3 cameraEuler = cameraTransform.eulerAngles;
-        Quaternion inverseYaw = Quaternion.Inverse(Quaternion.Euler(0, cameraEuler.y, 0));
-        
-        // Save this distance and height as the new target
+        Quaternion inverseYaw = Quaternion.Inverse(Quaternion.Euler(0f, cameraEuler.y, 0f));
         targetOffset = inverseYaw * (transform.position - cameraTransform.position);
     }
 }
