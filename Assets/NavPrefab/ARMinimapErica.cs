@@ -96,7 +96,12 @@ public class ARMinimapErica : MonoBehaviour
 
     private void Awake()
     {
-        if (tssApi == null) tssApi = TssUnityApiService.Instance;
+        // Always prefer the persistent singleton. Scene-embedded TssUnityApiService
+        // GameObjects auto-destroy their script when a singleton from an earlier scene
+        // (e.g. Starter) already exists, which leaves any Inspector-wired tssApi
+        // references pointing at a destroyed component that never receives updates,
+        // so the player icon and trail stop moving.
+        if (TssUnityApiService.Instance != null) tssApi = TssUnityApiService.Instance;
         if (tssApi == null) tssApi = FindObjectOfType<TssUnityApiService>();
         if (tssApi == null)
             Debug.LogError("[ARMinimap] No TssUnityApiService found — assign it in the Inspector.");

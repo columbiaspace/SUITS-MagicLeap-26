@@ -24,7 +24,8 @@ public class TestTSS : MonoBehaviour
 
     private void Awake()
     {
-        if (tssApi == null) tssApi = TssUnityApiService.Instance;
+        // Always prefer the persistent singleton — see ARMinimapErica.Awake comment.
+        if (TssUnityApiService.Instance != null) tssApi = TssUnityApiService.Instance;
         if (tssApi == null) tssApi = FindObjectOfType<TssUnityApiService>();
 
         if (tssApi == null)

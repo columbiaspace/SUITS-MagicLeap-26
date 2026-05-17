@@ -446,7 +446,7 @@ public class AIAVoskInputController : MonoBehaviour
             StartInitializationTimeout();
 
             voskSpeechToText.StartVoskStt(
-                keyPhrases: new List<string>(NasaMissionKeyPhrases),
+                keyPhrases: new List<string>(),
                 modelPath: safeModelPath,
                 startMicrophone: startRecordingWhenReady,
                 maxAlternatives: maxAlternatives);

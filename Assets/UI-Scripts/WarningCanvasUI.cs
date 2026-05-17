@@ -3,14 +3,14 @@ using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Drives a warning banner. The root GameObject of this canvas should stay
+/// Drives the warning banner. The root GameObject of this canvas should stay
 /// active at all times so the script keeps running; only the child <c>warningPanel</c>
 /// (the visible banner) is toggled on/off.
 ///
-/// Listens to <see cref="TssVitalsOxygenMonitor.OxygenStateChanged"/> and shows
-/// yellow (RunningLow) or red (CriticallyLow) accordingly. The banner stays
-/// hidden whenever oxygen is in the Good range, so warnings only appear when
-/// vitals actually drop below their thresholds.
+/// Listens to <see cref="TssVitalsOxygenMonitor.VitalsAlertChanged"/> so it surfaces
+/// the worst-case vital across oxygen, battery, suit pressure CO2, heart rate,
+/// temperature, coolant, etc.  Yellow for warning, red for critical. No mock /
+/// test path — alerts only ever fire from real TSS telemetry.
 /// </summary>
 public class WarningCanvasUI : MonoBehaviour
 {
@@ -38,13 +38,14 @@ public class WarningCanvasUI : MonoBehaviour
 
     private void OnEnable()
     {
-        TssVitalsOxygenMonitor.OxygenStateChanged += HandleOxygenStateChanged;
+        TssVitalsOxygenMonitor.VitalsAlertChanged += HandleVitalsAlert;
         SetPanelVisible(false);
+        SyncWithCurrentState();
     }
 
     private void OnDisable()
     {
-        TssVitalsOxygenMonitor.OxygenStateChanged -= HandleOxygenStateChanged;
+        TssVitalsOxygenMonitor.VitalsAlertChanged -= HandleVitalsAlert;
     }
 
     private void AutoWireReferences()
@@ -59,16 +60,23 @@ public class WarningCanvasUI : MonoBehaviour
             warningText = warningPanel.GetComponentInChildren<TextMeshProUGUI>(true);
     }
 
-    private void HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState state, float percent)
+    private void SyncWithCurrentState()
     {
-        switch (state)
+        TssVitalsOxygenMonitor monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
+        if (monitor == null) return;
+        HandleVitalsAlert(monitor.CurrentAlert);
+    }
+
+    private void HandleVitalsAlert(TssVitalsOxygenMonitor.VitalsAlert alert)
+    {
+        switch (alert.State)
         {
             case TssVitalsOxygenMonitor.OxygenState.CriticallyLow:
-                ShowWarning(criticallyLowColor, $"CRITICAL O2: {percent:F1}% — RETURN IMMEDIATELY");
+                ShowWarning(criticallyLowColor, alert.Headline);
                 break;
 
             case TssVitalsOxygenMonitor.OxygenState.RunningLow:
-                ShowWarning(runningLowColor, $"O2 LOW: {percent:F1}%");
+                ShowWarning(runningLowColor, alert.Headline);
                 break;
 
             default:
@@ -81,7 +89,8 @@ public class WarningCanvasUI : MonoBehaviour
     {
         SetPanelVisible(true);
         if (warningPanelImage != null) warningPanelImage.color = color;
-        if (warningText != null)       warningText.text         = message;
+        if (warningText != null && !string.IsNullOrEmpty(message))
+            warningText.text = message;
     }
 
     private void SetPanelVisible(bool visible)
