@@ -34,6 +34,17 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("Top TSS Y coordinate shown on the map image")]
     public float mapMaxY = -9940f;
 
+    [Header("World ↔ TSS (pin placement)")]
+    [Tooltip("Headset / EVA world origin for pinch mapping. Defaults to Camera.main when unset.")]
+    [SerializeField] private Transform evaWorldOrigin;
+    [Tooltip("Unity world units → TSS metres (1 = 1:1 with rock yard).")]
+    [SerializeField] private float metersPerUnityUnit = 1f;
+    [SerializeField] private float groundRaycastHeight = 3f;
+    [SerializeField] private float groundRaycastMaxDistance = 12f;
+    [SerializeField] private LayerMask groundLayers = ~0;
+    [Tooltip("Metres below the EVA origin when no ground collider is hit.")]
+    [SerializeField] private float fallbackHeightBelowEva = 1.1f;
+
     [Header("Trail (traveled path)")]
     [Tooltip("Color of the line drawn as the EVA moves.")]
     public Color trailColor = new Color(1f, 0.55f, 0f, 1f);
@@ -599,6 +610,85 @@ public class ARMinimapErica : MonoBehaviour
             (float)ToDouble(imuEva, "posx"),
             (float)ToDouble(imuEva, "posy")
         );
+    }
+
+    /// <summary>TSS heading in degrees (0 = north, 90 = east), or 0 if unavailable.</summary>
+    public float GetEvaHeading()
+    {
+        Dictionary<string, object> imuEva = GetImuBucket();
+        return (float)ToDouble(imuEva, "heading");
+    }
+
+    /// <summary>
+    /// Projects a world point onto the ground (raycast down, else EVA floor height).
+    /// </summary>
+    public Vector3 SnapToGround(Vector3 worldPosition)
+    {
+        Vector3 origin = worldPosition + Vector3.up * groundRaycastHeight;
+        if (Physics.Raycast(origin, Vector3.down, out RaycastHit hit,
+                groundRaycastMaxDistance, groundLayers, QueryTriggerInteraction.Ignore))
+            return hit.point;
+
+        worldPosition.y = GetEvaGroundY();
+        return worldPosition;
+    }
+
+    /// <summary>
+    /// Converts a world-space point (e.g. hand pinch) into TSS coordinates using the
+    /// wearer's EVA position and heading. The wearer is treated as the EVA.
+    /// </summary>
+    public bool TryWorldPositionToTss(Vector3 worldPosition, out Vector2 tssPosition)
+    {
+        tssPosition = Vector2.zero;
+        Dictionary<string, object> imuEva = GetImuBucket();
+        if (imuEva == null) return false;
+
+        Vector3 groundPoint = SnapToGround(worldPosition);
+        Vector2 evaTss = new Vector2(
+            (float)ToDouble(imuEva, "posx"),
+            (float)ToDouble(imuEva, "posy"));
+        float heading = (float)ToDouble(imuEva, "heading");
+
+        Vector3 evaWorld = GetEvaWorldPosition();
+        Vector3 delta = groundPoint - evaWorld;
+        delta.y = 0f;
+
+        // TSS: +X east, +Y north. Heading 0° = north (+Z in Unity when aligned).
+        Vector3 north = Quaternion.Euler(0f, heading, 0f) * Vector3.forward;
+        Vector3 east  = Quaternion.Euler(0f, heading, 0f) * Vector3.right;
+
+        float eastMetres  = Vector3.Dot(delta, east)  * metersPerUnityUnit;
+        float northMetres = Vector3.Dot(delta, north) * metersPerUnityUnit;
+
+        tssPosition = new Vector2(evaTss.x + eastMetres, evaTss.y + northMetres);
+        return true;
+    }
+
+    private Vector3 GetEvaWorldPosition()
+    {
+        Transform origin = evaWorldOrigin;
+        if (origin == null && Camera.main != null)
+            origin = Camera.main.transform;
+        if (origin == null) return Vector3.zero;
+
+        Vector3 p = origin.position;
+        p.y = GetEvaGroundY();
+        return p;
+    }
+
+    private float GetEvaGroundY()
+    {
+        Transform origin = evaWorldOrigin;
+        if (origin == null && Camera.main != null)
+            origin = Camera.main.transform;
+        if (origin == null) return 0f;
+
+        Vector3 rayOrigin = origin.position + Vector3.up * groundRaycastHeight;
+        if (Physics.Raycast(rayOrigin, Vector3.down, out RaycastHit hit,
+                groundRaycastMaxDistance, groundLayers, QueryTriggerInteraction.Ignore))
+            return hit.point.y;
+
+        return origin.position.y - fallbackHeightBelowEva;
     }
 
     // -------------------------------------------------------------------------

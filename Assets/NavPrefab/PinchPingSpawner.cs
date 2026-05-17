@@ -18,26 +18,18 @@ public class PinchPingSpawner : MonoBehaviour
     [Tooltip("Size of the pink dot on the minimap (pixels).")]
     [SerializeField] private float pinDotSize = 10f;
 
-    // Pink colour used for all ping dots on the map.
     private static readonly Color PingColor = new Color(1f, 0.4f, 0.7f, 1f);
-
-    // -------------------------------------------------------------------------
-    // Ping record — tracks every ping that has been fired.
-    // -------------------------------------------------------------------------
 
     private struct PingRecord
     {
         public int        Index;
         public float      TssX, TssY;
         public float      TimeStamp;
+        public GameObject ArPing;
         public GameObject MapDot;
     }
 
     private readonly List<PingRecord> _pings = new List<PingRecord>();
-
-    // -------------------------------------------------------------------------
-    // Input actions
-    // -------------------------------------------------------------------------
 
     private InputAction _pinchPositionAction;
     private InputAction _pinchValueAction;
@@ -81,10 +73,6 @@ public class PinchPingSpawner : MonoBehaviour
         _pinchValueAction.Dispose();
     }
 
-    // -------------------------------------------------------------------------
-    // Update
-    // -------------------------------------------------------------------------
-
     private void Update()
     {
         float   pinchValue    = _pinchValueAction.ReadValue<float>();
@@ -101,77 +89,80 @@ public class PinchPingSpawner : MonoBehaviour
         _wasPinching = isPinching;
     }
 
-    // -------------------------------------------------------------------------
-    // Ping spawning
-    // -------------------------------------------------------------------------
-
-    private void SpawnPing(Vector3 worldPosition)
+    private void SpawnPing(Vector3 pinchWorldPosition)
     {
-        // Spawn the 3D ping prefab at the hand position.
+        Vector3 groundPosition = minimap != null
+            ? minimap.SnapToGround(pinchWorldPosition)
+            : pinchWorldPosition;
+
+        Vector2 tssPos = Vector2.zero;
+        bool haveTss = minimap != null && minimap.TryWorldPositionToTss(pinchWorldPosition, out tssPos);
+        if (!haveTss && minimap != null)
+        {
+            Debug.LogWarning("[PinchPing] Could not map pinch to TSS — is EVA IMU data available?", this);
+            tssPos = minimap.GetEvaTssPosition();
+        }
+
+        GameObject arPing = null;
         if (pingPrefab != null)
-            Instantiate(pingPrefab, worldPosition, Quaternion.identity);
+            arPing = Instantiate(pingPrefab, groundPosition, Quaternion.identity);
 
-        // Read the current EVA1 TSS position from the minimap service.
-        Vector2 tssPos = minimap != null ? minimap.GetEvaTssPosition() : Vector2.zero;
-
-        // Add a pink dot on the 2D minimap.
         GameObject mapDot = null;
         if (minimap != null)
             mapDot = minimap.AddMapPin(tssPos.x, tssPos.y, PingColor, pinDotSize,
                                        $"Ping_{_pings.Count + 1}");
 
-        // Record this ping.
         _pings.Add(new PingRecord
         {
             Index     = _pings.Count + 1,
             TssX      = tssPos.x,
             TssY      = tssPos.y,
             TimeStamp = Time.time,
+            ArPing    = arPing,
             MapDot    = mapDot,
         });
 
-        LogPings();
+        LogPings(groundPosition, haveTss);
     }
 
-    // -------------------------------------------------------------------------
-    // Logging
-    // -------------------------------------------------------------------------
-
-    private void LogPings()
+    private void LogPings(Vector3 groundPosition, bool mappedFromPinch)
     {
         PingRecord latest = _pings[_pings.Count - 1];
+        Vector2 evaTss = minimap != null ? minimap.GetEvaTssPosition() : Vector2.zero;
+        float dist = Vector2.Distance(new Vector2(latest.TssX, latest.TssY), evaTss);
+
         var sb = new System.Text.StringBuilder(
-            $"[PinchPing] Ping #{latest.Index} at TSS ({latest.TssX:F1}, {latest.TssY:F1})\n" +
+            $"[PinchPing] Ping #{latest.Index}  ground {groundPosition}  " +
+            $"TSS ({latest.TssX:F1}, {latest.TssY:F1})  " +
+            $"{(mappedFromPinch ? $"~{dist:F1}m from EVA" : "EVA fallback")}\n" +
             $"[PinchPing] All pings ({_pings.Count}):\n");
 
         foreach (PingRecord p in _pings)
             sb.Append($"  #{p.Index}  TSS ({p.TssX:F1}, {p.TssY:F1})  @ {p.TimeStamp:F1} s\n");
 
-        Debug.Log(sb.ToString());
+        Debug.Log(sb.ToString(), this);
     }
 
-    // -------------------------------------------------------------------------
-    // Public helpers
-    // -------------------------------------------------------------------------
-
-    /// <summary>Removes the most recent ping from the map and the log.</summary>
     public void UndoLastPing()
     {
         if (_pings.Count == 0) return;
 
         PingRecord last = _pings[_pings.Count - 1];
+        if (last.ArPing != null) Destroy(last.ArPing);
         if (last.MapDot != null) Destroy(last.MapDot);
         _pings.RemoveAt(_pings.Count - 1);
 
-        Debug.Log($"[PinchPing] Removed ping #{last.Index}. Remaining: {_pings.Count}");
+        Debug.Log($"[PinchPing] Removed ping #{last.Index}. Remaining: {_pings.Count}", this);
     }
 
-    /// <summary>Removes all pings from the map and clears the log.</summary>
     public void ClearAllPings()
     {
         foreach (PingRecord p in _pings)
+        {
+            if (p.ArPing != null) Destroy(p.ArPing);
             if (p.MapDot != null) Destroy(p.MapDot);
+        }
         _pings.Clear();
-        Debug.Log("[PinchPing] All pings cleared.");
+        Debug.Log("[PinchPing] All pings cleared.", this);
     }
 }
