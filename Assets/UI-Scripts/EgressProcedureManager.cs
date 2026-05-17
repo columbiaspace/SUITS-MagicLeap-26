@@ -236,10 +236,20 @@ public class EgressProcedureManager : MonoBehaviour
             displayImage.sprite = sprite;
         }
 
+        AnnounceStep(index, step);
+
         if (step.Cond == CondType.Timed)
             _timerCo = StartCoroutine(TimedAdvance(step.Secs));
         else if (_latestData != null)
             TryAdvance();   // condition might already be satisfied from last packet
+    }
+
+    private void AnnounceStep(int index, Step step)
+    {
+        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
+        if (stepSpeaker == null || step == null || string.IsNullOrWhiteSpace(step.Label)) return;
+
+        stepSpeaker.Announce($"Step {index + 1} of {_steps.Count}. {step.Label}");
     }
 
     private IEnumerator TimedAdvance(float secs)

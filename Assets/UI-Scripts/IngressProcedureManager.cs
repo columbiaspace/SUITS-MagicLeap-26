@@ -176,10 +176,20 @@ public class IngressProcedureManager : MonoBehaviour
         if (displayImage != null)
             displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
 
+        AnnounceStep(index, step);
+
         if (step.Cond == CondType.Timed)
             _timerCo = StartCoroutine(TimedAdvance(step.Secs));
         else if (_latestData != null)
             TryAdvance();
+    }
+
+    private void AnnounceStep(int index, Step step)
+    {
+        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
+        if (stepSpeaker == null || step == null || string.IsNullOrWhiteSpace(step.Label)) return;
+
+        stepSpeaker.Announce($"Step {index + 1} of {_steps.Count}. {step.Label}");
     }
 
     private IEnumerator ShowCompleteAfterDelay(float secs)

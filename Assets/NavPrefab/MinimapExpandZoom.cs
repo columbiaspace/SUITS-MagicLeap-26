@@ -2,20 +2,14 @@ using UnityEngine;
 
 public class MinimapExpandZoom : MonoBehaviour
 {
-    [Header("Main Panel")]
-    public RectTransform minimapBackground;
-
-    [Header("Things that should NOT grow")]
-    public RectTransform playerIcon;
-    public RectTransform pathContainer;
-    public RectTransform button;
+    public RectTransform minimapCanvas;
 
     [Header("Collapsed")]
-    public Vector2 collapsedSize = new Vector2(300f, 190f);
+    public Vector2 collapsedSize = new Vector2(200f, 200f);
     public Vector3 collapsedLocalPosition = new Vector3(-250f, 150f, 0f);
 
     [Header("Expanded")]
-    public Vector2 expandedSize = new Vector2(600f, 380f);
+    public Vector2 expandedSize = new Vector2(600f, 600f);
     public Vector3 expandedLocalPosition = Vector3.zero;
 
     [Header("Animation")]
@@ -33,21 +27,19 @@ public class MinimapExpandZoom : MonoBehaviour
 
     void Update()
     {
-        if (minimapBackground == null) return;
+        if (minimapCanvas == null) return;
 
-        minimapBackground.sizeDelta = Vector2.Lerp(
-            minimapBackground.sizeDelta,
+        minimapCanvas.sizeDelta = Vector2.Lerp(
+            minimapCanvas.sizeDelta,
             targetSize,
             Time.deltaTime * animationSpeed
         );
 
-        minimapBackground.localPosition = Vector3.Lerp(
-            minimapBackground.localPosition,
+        minimapCanvas.localPosition = Vector3.Lerp(
+            minimapCanvas.localPosition,
             targetPosition,
             Time.deltaTime * animationSpeed
         );
-
-        KeepChildSizesConstant();
     }
 
     public void ToggleExpand()
@@ -64,26 +56,5 @@ public class MinimapExpandZoom : MonoBehaviour
             targetSize = collapsedSize;
             targetPosition = collapsedLocalPosition;
         }
-    }
-
-    private void KeepChildSizesConstant()
-    {
-        float scaleX = minimapBackground.sizeDelta.x / collapsedSize.x;
-        float scaleY = minimapBackground.sizeDelta.y / collapsedSize.y;
-
-        Vector3 inverseScale = new Vector3(
-            1f / scaleX,
-            1f / scaleY,
-            1f
-        );
-
-        if (playerIcon != null)
-            playerIcon.localScale = inverseScale;
-
-        if (pathContainer != null)
-            pathContainer.localScale = inverseScale;
-
-        if (button != null)
-            button.localScale = inverseScale;
     }
 }

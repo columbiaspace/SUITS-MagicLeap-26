@@ -1,20 +1,16 @@
-using System.Collections;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Drives a warning banner. The root GameObject of this canvas should stay
+/// Drives the warning banner. The root GameObject of this canvas should stay
 /// active at all times so the script keeps running; only the child <c>warningPanel</c>
 /// (the visible banner) is toggled on/off.
 ///
-/// Listens to <see cref="TssVitalsOxygenMonitor.OxygenStateChanged"/> and shows
-/// yellow (RunningLow) or red (CriticallyLow) accordingly.
-///
-/// Mock / Test cycle
-/// -----------------
-/// Tick "Run Test Cycle" in the Inspector at runtime to walk through
-/// Good → Yellow → Red → Good. Lets you eyeball both colours without a live TSS.
+/// Listens to <see cref="TssVitalsOxygenMonitor.VitalsAlertChanged"/> so it surfaces
+/// the worst-case vital across oxygen, battery, suit pressure CO2, heart rate,
+/// temperature, coolant, etc.  Yellow for warning, red for critical. No mock /
+/// test path — alerts only ever fire from real TSS telemetry.
 /// </summary>
 public class WarningCanvasUI : MonoBehaviour
 {
@@ -30,15 +26,6 @@ public class WarningCanvasUI : MonoBehaviour
     [SerializeField] private Color runningLowColor    = new Color(0.89f, 0.55f, 0.1f,  0.92f);
     [SerializeField] private Color criticallyLowColor = new Color(0.85f, 0.12f, 0.12f, 0.92f);
 
-    [Header("Mock / Test Cycle")]
-    [Tooltip("Tick at runtime to auto-cycle Good → Yellow → Red for visual QA.")]
-    [SerializeField] private bool runTestCycle = false;
-    [Tooltip("Seconds to spend in each state during the test cycle.")]
-    [SerializeField] private float testCycleDurationSeconds = 4f;
-
-    private TssVitalsOxygenMonitor _monitor;
-    private Coroutine _testCoroutine;
-
     private void Reset()
     {
         AutoWireReferences();
@@ -51,26 +38,14 @@ public class WarningCanvasUI : MonoBehaviour
 
     private void OnEnable()
     {
-        TssVitalsOxygenMonitor.OxygenStateChanged += HandleOxygenStateChanged;
+        TssVitalsOxygenMonitor.VitalsAlertChanged += HandleVitalsAlert;
         SetPanelVisible(false);
+        SyncWithCurrentState();
     }
 
     private void OnDisable()
     {
-        TssVitalsOxygenMonitor.OxygenStateChanged -= HandleOxygenStateChanged;
-        StopTestCycle();
-    }
-
-    private void Update()
-    {
-        if (runTestCycle && _testCoroutine == null)
-        {
-            _testCoroutine = StartCoroutine(TestCycleRoutine());
-        }
-        else if (!runTestCycle && _testCoroutine != null)
-        {
-            StopTestCycle();
-        }
+        TssVitalsOxygenMonitor.VitalsAlertChanged -= HandleVitalsAlert;
     }
 
     private void AutoWireReferences()
@@ -85,16 +60,23 @@ public class WarningCanvasUI : MonoBehaviour
             warningText = warningPanel.GetComponentInChildren<TextMeshProUGUI>(true);
     }
 
-    private void HandleOxygenStateChanged(TssVitalsOxygenMonitor.OxygenState state, float percent)
+    private void SyncWithCurrentState()
     {
-        switch (state)
+        TssVitalsOxygenMonitor monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
+        if (monitor == null) return;
+        HandleVitalsAlert(monitor.CurrentAlert);
+    }
+
+    private void HandleVitalsAlert(TssVitalsOxygenMonitor.VitalsAlert alert)
+    {
+        switch (alert.State)
         {
             case TssVitalsOxygenMonitor.OxygenState.CriticallyLow:
-                ShowWarning(criticallyLowColor, $"CRITICAL O2: {percent:F1}% — RETURN IMMEDIATELY");
+                ShowWarning(criticallyLowColor, alert.Headline);
                 break;
 
             case TssVitalsOxygenMonitor.OxygenState.RunningLow:
-                ShowWarning(runningLowColor, $"O2 LOW: {percent:F1}%");
+                ShowWarning(runningLowColor, alert.Headline);
                 break;
 
             default:
@@ -107,50 +89,12 @@ public class WarningCanvasUI : MonoBehaviour
     {
         SetPanelVisible(true);
         if (warningPanelImage != null) warningPanelImage.color = color;
-        if (warningText != null)       warningText.text         = message;
+        if (warningText != null && !string.IsNullOrEmpty(message))
+            warningText.text = message;
     }
 
     private void SetPanelVisible(bool visible)
     {
         if (warningPanel != null) warningPanel.SetActive(visible);
-    }
-
-    private void StopTestCycle()
-    {
-        if (_testCoroutine != null)
-        {
-            StopCoroutine(_testCoroutine);
-            _testCoroutine = null;
-        }
-    }
-
-    private IEnumerator TestCycleRoutine()
-    {
-        _monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
-        if (_monitor == null)
-        {
-            Debug.LogWarning("[WarningCanvasUI] TestCycle: no TssVitalsOxygenMonitor found in scene.");
-            _testCoroutine = null;
-            runTestCycle = false;
-            yield break;
-        }
-
-        float wait = Mathf.Max(1f, testCycleDurationSeconds);
-
-        while (runTestCycle)
-        {
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.Good, 85f);
-            yield return new WaitForSeconds(wait);
-            if (!runTestCycle) break;
-
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.RunningLow, 22f);
-            yield return new WaitForSeconds(wait);
-            if (!runTestCycle) break;
-
-            _monitor.SimulateMockState(TssVitalsOxygenMonitor.OxygenState.CriticallyLow, 8f);
-            yield return new WaitForSeconds(wait);
-        }
-
-        _testCoroutine = null;
     }
 }
