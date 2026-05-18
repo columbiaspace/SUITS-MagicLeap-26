@@ -1004,6 +1004,14 @@ MonoBehaviour:
   mapMaxX: -5545
   mapMinY: -10075
   mapMaxY: -9940
+  evaWorldOrigin: {fileID: 0}
+  metersPerUnityUnit: 1
+  groundRaycastHeight: 3
+  groundRaycastMaxDistance: 12
+  groundLayers:
+    serializedVersion: 2
+    m_Bits: 4294967295
+  fallbackHeightBelowEva: 1.1
   trailColor: {r: 1, g: 0.55, b: 0, a: 1}
   trailLineWidth: 2.5
   recordDistance: 0.25
@@ -2422,7 +2430,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 192.168.1.210
+  tssHost: 192.168.50.110
   tssPort: 14141
   pollIntervalSeconds: 1
   udpTimeoutMs: 500

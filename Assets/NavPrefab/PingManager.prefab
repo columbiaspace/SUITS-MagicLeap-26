@@ -44,7 +44,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 3b9ba288ab7ae394f8c5fc17bf5ac856, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  pingPrefab: {fileID: 2898015928401358699, guid: 47185ef76c719694698812cbbf3d369c, type: 3}
+  pingPrefab: {fileID: 2898015928401358699, guid: 31de21ae014df8b479a5df3ba34e995d, type: 3}
   pinchThreshold: 0.8
   pingCooldown: 0.3
   useRightHand: 1

@@ -612,6 +612,14 @@ public class ARMinimapErica : MonoBehaviour
         );
     }
 
+    /// <summary>True when TSS IMU has posx/posy for the configured EVA.</summary>
+    public bool HasEvaTssPosition()
+    {
+        Dictionary<string, object> imuEva = GetImuBucket();
+        if (imuEva == null) return false;
+        return imuEva.ContainsKey("posx") && imuEva.ContainsKey("posy");
+    }
+
     /// <summary>TSS heading in degrees (0 = north, 90 = east), or 0 if unavailable.</summary>
     public float GetEvaHeading()
     {
