@@ -329,6 +329,8 @@ MonoBehaviour:
   voskModelPath: vosk-model-en-us-0.22-lgraph.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
+  preloadVoskOnStart: 1
+  wakePhraseHandoffDelaySeconds: 0.35
   silenceStopSeconds: 1.8
   voiceDetectionThreshold: 0.01
   voiceDetectionRmsThreshold: 0.002
