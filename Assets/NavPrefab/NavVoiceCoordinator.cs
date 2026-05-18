@@ -20,6 +20,13 @@ public class NavVoiceCoordinator : MonoBehaviour
     [SerializeField] private string[] returnPhrases =
     {
         "return to base",
+        "return to home",
+        "return home",
+        "return to the base",
+        "go to base",
+        "go to start",
+        "back to base",
+        "rth",
     };
 
     [SerializeField] private string[] clearPathPhrases =
@@ -30,6 +37,30 @@ public class NavVoiceCoordinator : MonoBehaviour
 
     [Tooltip("Log every transcript we evaluate, even non-matching ones.")]
     public bool enableDebugLogs = true;
+
+    /// <summary>
+    /// Handles a Magic Leap nav intent by ID first (reliable even when EventName is empty),
+    /// then falls back to phrase matching on <paramref name="eventName"/> or transcript text.
+    /// </summary>
+    public bool TryHandleNavVoiceEvent(uint eventId, string eventName)
+    {
+        switch (eventId)
+        {
+            case 114:
+                return ExecuteGoToLtv($"MLVoice id={eventId}");
+            case 115:
+                return ExecuteReturn($"MLVoice id={eventId}");
+            case 116:
+                return ExecuteClearPath($"MLVoice id={eventId}");
+        }
+
+        if (!string.IsNullOrWhiteSpace(eventName))
+        {
+            return TryHandleVoiceCommand(eventName);
+        }
+
+        return false;
+    }
 
     /// <summary>
     /// Returns true when the transcript matched a nav command and the minimap was updated.
@@ -47,66 +78,18 @@ public class NavVoiceCoordinator : MonoBehaviour
         // Most specific phrases first (e.g. "clear path" before "go to ltv").
         if (MatchesAny(normalized, clearPathPhrases))
         {
-            ARMinimapErica map = ResolveMinimap();
-            if (map == null)
-            {
-                LogFailure("clear path", "ARMinimapErica not found in scene.");
-                return false;
-            }
+            return ExecuteClearPath(transcript);
+        }
 
-            map.ClearVoiceNavPath();
-            if (enableDebugLogs)
-            {
-                Debug.Log($"[NavVoice] Cleared yellow path (transcript='{transcript}').", this);
-            }
-
-            return true;
+        // Check return before go-to-LTV so partial phrases like "return" are not skipped.
+        if (MatchesAny(normalized, returnPhrases) || MatchesReturnIntent(normalized))
+        {
+            return ExecuteReturn(transcript);
         }
 
         if (MatchesAny(normalized, goToLtvPhrases))
         {
-            ARMinimapErica map = ResolveMinimap();
-            if (map == null)
-            {
-                LogFailure("go to LTV", "ARMinimapErica not found in scene.");
-                return false;
-            }
-
-            if (!map.VoiceGoToLtv())
-            {
-                LogFailure("go to LTV", "EVA position not available yet — wait for TSS fix.");
-                return false;
-            }
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"[NavVoice] Yellow path → green waypoint (transcript='{transcript}').", this);
-            }
-
-            return true;
-        }
-
-        if (MatchesAny(normalized, returnPhrases))
-        {
-            ARMinimapErica map = ResolveMinimap();
-            if (map == null)
-            {
-                LogFailure("return to base", "ARMinimapErica not found in scene.");
-                return false;
-            }
-
-            if (!map.VoiceReturn())
-            {
-                LogFailure("return to base", "EVA position not available yet — wait for TSS fix.");
-                return false;
-            }
-
-            if (enableDebugLogs)
-            {
-                Debug.Log($"[NavVoice] Yellow path → blue waypoint (transcript='{transcript}').", this);
-            }
-
-            return true;
+            return ExecuteGoToLtv(transcript);
         }
 
         if (enableDebugLogs)
@@ -115,6 +98,90 @@ public class NavVoiceCoordinator : MonoBehaviour
         }
 
         return false;
+    }
+
+    private bool ExecuteGoToLtv(string transcript)
+    {
+        ARMinimapErica map = ResolveMinimap();
+        if (map == null)
+        {
+            LogFailure("go to LTV", "ARMinimapErica not found in scene.");
+            return false;
+        }
+
+        if (!map.VoiceGoToLtv())
+        {
+            LogFailure("go to LTV", "EVA position not available yet — wait for TSS fix.");
+            return false;
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[NavVoice] Yellow path → green waypoint (transcript='{transcript}').", this);
+        }
+
+        return true;
+    }
+
+    private bool ExecuteReturn(string transcript)
+    {
+        ARMinimapErica map = ResolveMinimap();
+        if (map == null)
+        {
+            LogFailure("return to base", "ARMinimapErica not found in scene.");
+            return false;
+        }
+
+        if (!map.VoiceReturn())
+        {
+            LogFailure("return to base", "EVA position not available yet — wait for TSS fix.");
+            return false;
+        }
+
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[NavVoice] Yellow path → blue waypoint (transcript='{transcript}').", this);
+        }
+
+        return true;
+    }
+
+    private bool ExecuteClearPath(string transcript)
+    {
+        ARMinimapErica map = ResolveMinimap();
+        if (map == null)
+        {
+            LogFailure("clear path", "ARMinimapErica not found in scene.");
+            return false;
+        }
+
+        map.ClearVoiceNavPath();
+        if (enableDebugLogs)
+        {
+            Debug.Log($"[NavVoice] Cleared yellow path (transcript='{transcript}').", this);
+        }
+
+        return true;
+    }
+
+    // Catches "return … home/base" variants Vosk often produces instead of the exact ML phrase.
+    private static bool MatchesReturnIntent(string normalizedTranscript)
+    {
+        if (string.IsNullOrEmpty(normalizedTranscript))
+        {
+            return false;
+        }
+
+        bool mentionsReturn = normalizedTranscript.IndexOf("return", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || normalizedTranscript.IndexOf("rth", System.StringComparison.OrdinalIgnoreCase) >= 0;
+        if (!mentionsReturn)
+        {
+            return false;
+        }
+
+        return normalizedTranscript.IndexOf("base", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || normalizedTranscript.IndexOf("home", System.StringComparison.OrdinalIgnoreCase) >= 0
+            || normalizedTranscript.IndexOf("start", System.StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private ARMinimapErica ResolveMinimap()

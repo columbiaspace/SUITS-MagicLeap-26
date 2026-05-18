@@ -369,12 +369,9 @@ public class VoiceIntents : MonoBehaviour
                 else if (voiceEvent.EventID >= NavVoiceEventIdMin && voiceEvent.EventID <= NavVoiceEventIdMax)
                 {
                     Debug.Log($"[Luna] Nav MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
-                    string spokenPhrase = string.IsNullOrWhiteSpace(voiceEvent.EventName)
-                        ? string.Empty
-                        : voiceEvent.EventName;
-                    if (!TryRouteNavVoiceCommand(spokenPhrase))
+                    if (!TryRouteNavVoiceCommand(voiceEvent.EventName, voiceEvent.EventID))
                     {
-                        Debug.LogWarning($"[Luna] Nav MLVoice intent '{voiceEvent.EventName}' did not match any configured nav command.");
+                        Debug.LogWarning($"[Luna] Nav MLVoice intent '{voiceEvent.EventName}' (id={voiceEvent.EventID}) did not match any configured nav command.");
                     }
                 }
                 else
@@ -480,14 +477,26 @@ public class VoiceIntents : MonoBehaviour
     /// <summary>
     /// Routes minimap navigation voice commands via <see cref="NavVoiceCoordinator"/>.
     /// </summary>
-    public bool TryRouteNavVoiceCommand(string trimmedPrompt)
+    public bool TryRouteNavVoiceCommand(string trimmedPrompt, uint mlVoiceEventId = 0)
     {
         if (navVoiceCoordinator == null)
         {
             navVoiceCoordinator = FindObjectOfType<NavVoiceCoordinator>();
         }
 
-        return navVoiceCoordinator != null && navVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+        if (navVoiceCoordinator == null)
+        {
+            return false;
+        }
+
+        if (mlVoiceEventId >= NavVoiceEventIdMin && mlVoiceEventId <= NavVoiceEventIdMax
+            && navVoiceCoordinator.TryHandleNavVoiceEvent(mlVoiceEventId, trimmedPrompt))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(trimmedPrompt)
+            && navVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
     }
 
     private void UpdateResponseTextBox(string text)

@@ -351,6 +351,16 @@ public class ARMinimapErica : MonoBehaviour
 
         ClearVoiceNavSegments();
 
+        float tssDistance = Vector2.Distance(evaTss, goalTss);
+        if (tssDistance < 2f)
+        {
+            Debug.Log($"[ARMinimap] Voice nav ({label}): EVA already at destination (TSS distance {tssDistance:F1}m).");
+            _voiceNavPathActive = false;
+            _voiceNavGoal = VoiceNavGoal.None;
+            _voiceNavUsedTerrainAstar = false;
+            return true;
+        }
+
         bool usedTerrain = true;
         List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, logWeights: false, out _);
         if (normPoints == null)
