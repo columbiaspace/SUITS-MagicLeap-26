@@ -157,7 +157,7 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
-    [SerializeField] private float silenceStopSeconds = 2f;
+    [SerializeField] private float silenceStopSeconds = 1.5f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
         "The Magic Leap 2 headset mic typically peaks around 0.02–0.04 for normal " +
@@ -231,33 +231,16 @@ public class AIAVoskInputController : MonoBehaviour
         }
     }
 
+    /// <summary>
+    /// Starts a new Vosk recording session. If a session is already active it is
+    /// stopped first so the wake phrase always produces a fresh session.
+    /// The Stop Recording button has been removed from the AIA panel; the only
+    /// ways a recording ends are: (a) VAD silence timeout, (b) max-recording watchdog,
+    /// or (c) this method being called again (new "hey luna").
+    /// </summary>
     public void ToggleRecording()
     {
-        if (!EnsureMicrophonePermission())
-        {
-            return;
-        }
-
-        if (isVoskInitializing)
-        {
-            UpdateStatus("Vosk is still initializing...");
-            return;
-        }
-
-        if (!isVoskInitialized)
-        {
-            InitializeVosk(startRecordingWhenReady: true);
-            return;
-        }
-
-        if (voiceProcessor != null && voiceProcessor.IsRecording)
-        {
-            StopRecording();
-        }
-        else
-        {
-            StartRecording();
-        }
+        StartRecordingFromVoiceIntent();
     }
 
     public void StartRecordingFromVoiceIntent()
@@ -273,10 +256,12 @@ public class AIAVoskInputController : MonoBehaviour
             return;
         }
 
+        // If a session is already active, stop it and restart after one frame so
+        // the VoiceProcessor/Vosk coroutine chain fully unwinds before reinit.
         if (voiceProcessor != null && voiceProcessor.IsRecording)
         {
-            UpdateStatus("Already recording your question. Tap Stop Recording when finished.");
-            RefreshButtonVisuals();
+            StopRecording();
+            StartCoroutine(RestartRecordingNextFrame());
             return;
         }
 
@@ -287,6 +272,17 @@ public class AIAVoskInputController : MonoBehaviour
         }
 
         StartRecording();
+    }
+
+    private IEnumerator RestartRecordingNextFrame()
+    {
+        // Wait one frame for StopRecording's Microphone.End / OnRecordingStop
+        // callbacks to complete before reinitializing the recognizer.
+        yield return null;
+        if (isVoskInitialized)
+        {
+            StartRecording();
+        }
     }
 
     private void TryResolveReferences()
