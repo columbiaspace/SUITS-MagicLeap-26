@@ -166,13 +166,15 @@ public class AIAVoskInputController : MonoBehaviour
         "indoor speech; RMS/noise-floor gates also apply so brief spikes are ignored.")]
     private float voiceDetectionThreshold = 0.01f;
     [SerializeField, Range(0f, 1f), Tooltip("Minimum RMS frame volume required before Vosk treats a frame as speech.")]
-    private float voiceDetectionRmsThreshold = 0.002f;
+    private float voiceDetectionRmsThreshold = 0.0015f;
     [SerializeField, Range(1f, 10f), Tooltip("Speech must be this many times louder than the learned room-noise RMS floor.")]
     private float voiceDetectionNoiseMultiplier = 2.0f;
     [SerializeField, Range(0f, 0.5f), Tooltip("Speech-like audio must persist this long before recording opens.")]
-    private float speechStartDebounceSeconds = 0.1f;
+    private float speechStartDebounceSeconds = 0.06f;
     [SerializeField, Range(0f, 0.5f), Tooltip("Quiet audio must persist this long before the silence timer can close the recording.")]
     private float speechEndDebounceSeconds = 0.12f;
+    [SerializeField, Tooltip("Send the full recording to Vosk while still using VAD to reject background noise and decide when to stop.")]
+    private bool sendAllFramesToRecognizer = true;
     [SerializeField, Tooltip(
         "Hard cap on recording length (seconds). If the user starts a recording and " +
         "the VAD never trips (e.g. mic is muted), recording is force-stopped after this many seconds " +
@@ -433,6 +435,7 @@ public class AIAVoskInputController : MonoBehaviour
             voiceProcessor.NoiseFloorMultiplier = voiceDetectionNoiseMultiplier;
             voiceProcessor.SpeechStartDebounceSeconds = speechStartDebounceSeconds;
             voiceProcessor.SpeechEndDebounceSeconds = speechEndDebounceSeconds;
+            voiceProcessor.SendAllFramesToRecognizerWhileAutoDetecting = sendAllFramesToRecognizer;
         }
         voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
@@ -504,7 +507,8 @@ public class AIAVoskInputController : MonoBehaviour
 
     private void TryPreloadVosk()
     {
-        if (!preloadVoskOnStart || isVoskInitialized || isVoskInitializing || voskSpeechToText == null)
+        if (!preloadVoskOnStart || !CanUseVoskNativeRuntime(showWarning: false) ||
+            isVoskInitialized || isVoskInitializing || voskSpeechToText == null)
         {
             return;
         }
@@ -514,6 +518,19 @@ public class AIAVoskInputController : MonoBehaviour
 
     private void InitializeVosk(bool startRecordingWhenReady, bool showStatus = true)
     {
+        if (!CanUseVoskNativeRuntime(showWarning: true))
+        {
+            isVoskInitializing = false;
+            suppressVoskStatusUpdates = false;
+            StopInitializationTimeout();
+            if (showStatus)
+            {
+                UpdateStatus("Vosk recording is only available in the Android build.");
+            }
+            RefreshButtonVisuals();
+            return;
+        }
+
         if (voskSpeechToText == null)
         {
             if (showStatus)
@@ -833,6 +850,11 @@ public class AIAVoskInputController : MonoBehaviour
                 return;
             }
 
+            if (!voiceProcessor.HasDetectedSpeech)
+            {
+                return;
+            }
+
             partialTranscript = NormalizeDomainTranscript(partialTranscript);
             if (!string.Equals(partialTranscript, lastPartialTranscriptText, StringComparison.Ordinal))
             {
@@ -955,6 +977,19 @@ public class AIAVoskInputController : MonoBehaviour
         return status.IndexOf("failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
                status.IndexOf("could not", StringComparison.OrdinalIgnoreCase) >= 0 ||
                status.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0;
+    }
+
+    private static bool CanUseVoskNativeRuntime(bool showWarning)
+    {
+#if UNITY_ANDROID && !UNITY_EDITOR
+        return true;
+#else
+        if (showWarning)
+        {
+            Debug.LogWarning("[Vosk] Native libvosk is only imported for Android in this project; skipping Vosk initialization in this runtime.");
+        }
+        return false;
+#endif
     }
 
     private string GetSafeVoskModelPath()
