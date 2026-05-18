@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028356, g: 0.2257137, b: 0.3069222, a: 1}
+  m_IndirectSpecularColor: {r: 0.18018535, g: 0.22559482, b: 0.30677685, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -700,11 +700,14 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: d907362cd482b4e9a8940e93c0abb1f9, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  warningPanel: {fileID: 9200010}
-  warningPanelImage: {fileID: 9200013}
-  warningText: {fileID: 9200023}
-  runningLowColor: {r: 0.89, g: 0.55, b: 0.1, a: 0.92}
-  criticallyLowColor: {r: 0.85, g: 0.12, b: 0.12, a: 0.92}
+  warningContainer: {fileID: 0}
+  entryHeight: 90
+  entrySpacing: 4
+  entryPaddingX: 12
+  entryPaddingY: 6
+  fontSize: 20
+  runningLowColor: {r: 0.89, g: 0.55, b: 0.1, a: 0.5882353}
+  criticallyLowColor: {r: 0.85, g: 0.12, b: 0.12, a: 0.5882353}
 --- !u!1 &9200010
 GameObject:
   m_ObjectHideFlags: 0
@@ -738,11 +741,11 @@ RectTransform:
   - {fileID: 9200021}
   m_Father: {fileID: 9200001}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
   m_AnchorMax: {x: 1, y: 1}
   m_AnchoredPosition: {x: 0, y: 0}
   m_SizeDelta: {x: 0, y: 0}
-  m_Pivot: {x: 0.5, y: 0.5}
+  m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &9200012
 CanvasRenderer:
   m_ObjectHideFlags: 0
