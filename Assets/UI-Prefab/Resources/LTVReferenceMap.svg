@@ -1,0 +1,306 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 900" font-family="Calibri, Carlito, Arial, sans-serif">
+  <title>LTV Task Board — labeled bird's-eye map</title>
+  <desc>Bird's-eye labeled map of the NASA SUITS LTV task board, matching the physical layout shown in reference photographs.</desc>
+
+  <rect x="10" y="10" width="1180" height="880" rx="28" fill="none" stroke="#7ec8e3" stroke-width="6"/>
+  <rect x="20" y="20" width="1160" height="860" rx="24" fill="#1a1a1a" stroke="#000" stroke-width="2"/>
+  <rect x="40" y="40" width="1120" height="820" rx="16" fill="#2a2a2a" stroke="#000" stroke-width="1"/>
+  <text x="600" y="34" text-anchor="middle" fill="#ccc" font-size="18" font-weight="600">LTV Task Board — bird's-eye reference map</text>
+
+  <!-- ACM top-left -->
+  <text x="70" y="60" font-size="13" fill="#bbb">Communications · subsys 4</text>
+  <g id="ACM">
+    <rect x="70" y="70" width="160" height="180" rx="6" fill="#d4d4d4" stroke="#333" stroke-width="1.5"/>
+    <text x="150" y="240" text-anchor="middle" font-size="13" font-weight="600" fill="#222">ACM44000171</text>
+    <rect x="85" y="85" width="110" height="16" rx="3" fill="#1a1a1a" stroke="#444"/>
+    <circle cx="93" cy="93" r="3" fill="#c93838"/>
+    <circle cx="103" cy="93" r="3" fill="#d49a2f"/>
+    <circle cx="113" cy="93" r="3" fill="#3576b8"/>
+    <circle cx="123" cy="93" r="3" fill="#3576b8"/>
+    <circle cx="133" cy="93" r="3" fill="#3576b8"/>
+    <circle cx="143" cy="93" r="3" fill="#3576b8"/>
+    <circle cx="160" cy="93" r="4" fill="#3a9d4a"/>
+    <g id="PHS">
+      <circle cx="150" cy="130" r="14" fill="#f0f0f0" stroke="#666" stroke-width="1"/>
+      <line x1="150" y1="130" x2="158" y2="122" stroke="#333" stroke-width="2"/>
+      <text x="185" y="134" font-size="13" fill="#fff">PHS</text>
+    </g>
+    <g id="MOD">
+      <circle cx="150" cy="170" r="14" fill="#f0f0f0" stroke="#666" stroke-width="1"/>
+      <line x1="150" y1="170" x2="158" y2="162" stroke="#333" stroke-width="2"/>
+      <text x="185" y="174" font-size="13" fill="#fff">MOD</text>
+    </g>
+    <g id="AMP">
+      <circle cx="150" cy="210" r="14" fill="#f0f0f0" stroke="#666" stroke-width="1"/>
+      <line x1="150" y1="210" x2="158" y2="202" stroke="#333" stroke-width="2"/>
+      <text x="185" y="214" font-size="13" fill="#fff">AMP</text>
+    </g>
+  </g>
+
+  <!-- POPS panel mid-left -->
+  <g id="POPS">
+    <rect x="70" y="280" width="160" height="320" rx="6" fill="#e8e8e8" stroke="#333" stroke-width="1.5"/>
+    <text x="150" y="300" text-anchor="middle" font-size="13" font-weight="600" fill="#222">POPS</text>
+    <g id="MPS">
+      <rect x="90" y="315" width="44" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="100" y="320" width="24" height="14" rx="2" fill="#c93838"/>
+      <text x="155" y="340" font-size="13" font-weight="600" fill="#222">MPS</text>
+    </g>
+    <g id="GNC">
+      <rect x="90" y="380" width="44" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="100" y="385" width="24" height="14" rx="2" fill="#c93838"/>
+      <text x="155" y="405" font-size="13" font-weight="600" fill="#222">GNC</text>
+    </g>
+    <g id="VSI">
+      <rect x="90" y="445" width="44" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="100" y="450" width="24" height="14" rx="2" fill="#c93838"/>
+      <text x="155" y="470" font-size="13" font-weight="600" fill="#222">VSI</text>
+    </g>
+    <g id="CDH">
+      <rect x="90" y="510" width="44" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="100" y="515" width="24" height="14" rx="2" fill="#c93838"/>
+      <text x="155" y="535" font-size="13" font-weight="600" fill="#222">CDH</text>
+    </g>
+  </g>
+
+  <!-- PDD bottom-left -->
+  <text x="70" y="605" font-size="13" fill="#bbb">Power distribution &amp; diagnostic · subsys 9</text>
+  <g id="PDD">
+    <rect x="70" y="610" width="440" height="220" rx="6" fill="#e8e8e8" stroke="#333" stroke-width="1.5"/>
+    <text x="290" y="820" text-anchor="middle" font-size="16" font-weight="600" fill="#222">PDD99005831</text>
+    <g id="RECO">
+      <rect x="90" y="625" width="60" height="70" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="98" y="618" width="44" height="12" rx="2" fill="#bbb" stroke="#666" stroke-dasharray="3 2"/>
+      <rect x="108" y="640" width="24" height="14" rx="2" fill="#aaa"/>
+      <text x="120" y="710" text-anchor="middle" font-size="13" fill="#222">RECO</text>
+    </g>
+    <g id="EBD">
+      <rect x="160" y="625" width="60" height="70" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="168" y="618" width="44" height="12" rx="2" fill="#bbb" stroke="#666" stroke-dasharray="3 2"/>
+      <rect x="178" y="640" width="24" height="14" rx="2" fill="#aaa"/>
+      <text x="190" y="710" text-anchor="middle" font-size="13" fill="#222">EBD</text>
+    </g>
+    <g id="error-display">
+      <rect x="240" y="625" width="160" height="50" rx="3" fill="#1a0000" stroke="#444"/>
+      <text x="320" y="660" text-anchor="middle" font-size="28" font-family="monospace" fill="#ff3030" font-weight="bold">8.8.8.8.</text>
+    </g>
+    <g id="POM">
+      <circle cx="108" cy="735" r="8" fill="#3a9d4a"/>
+      <rect x="90" y="755" width="36" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="98" y="760" width="20" height="12" rx="2" fill="#c93838"/>
+      <text x="108" y="730" text-anchor="middle" font-size="13" fill="#222">POM</text>
+    </g>
+    <g id="LOG">
+      <circle cx="173" cy="735" r="8" fill="#3a9d4a"/>
+      <rect x="155" y="755" width="36" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="163" y="760" width="20" height="12" rx="2" fill="#c93838"/>
+      <text x="173" y="730" text-anchor="middle" font-size="13" fill="#222">LOG</text>
+    </g>
+    <g id="SFA">
+      <circle cx="260" cy="770" r="22" fill="#1a1a1a" stroke="#666" stroke-width="1.5"/>
+      <text x="260" y="745" text-anchor="middle" font-size="13" fill="#222">SFA</text>
+    </g>
+    <g id="CSR">
+      <circle cx="340" cy="770" r="22" fill="#c93838" stroke="#666" stroke-width="1.5"/>
+      <text x="340" y="745" text-anchor="middle" font-size="13" fill="#222">CSR</text>
+    </g>
+  </g>
+
+  <!-- BFH center -->
+  <g id="BFH">
+    <rect x="450" y="100" width="240" height="480" rx="6" fill="#888" stroke="#333" stroke-width="1.5"/>
+    <rect x="555" y="110" width="30" height="10" rx="2" fill="#aaa" stroke="#555"/>
+    <rect x="555" y="560" width="30" height="10" rx="2" fill="#aaa" stroke="#555"/>
+    <text x="570" y="340" text-anchor="middle" font-size="18" font-weight="600" fill="#fff">BFH99001391</text>
+    <text x="570" y="362" text-anchor="middle" font-size="14" fill="#eee">Backup fuse housing</text>
+    <text x="570" y="384" text-anchor="middle" font-size="12" fill="#ccc">subsystem 9 · (lid closed)</text>
+  </g>
+
+  <!-- NAV top-right -->
+  <text x="730" y="90" font-size="13" fill="#bbb">Navigation · subsys 5</text>
+  <g id="NAV">
+    <rect x="730" y="100" width="380" height="320" rx="6" fill="#e8e8e8" stroke="#333" stroke-width="1.5"/>
+    <text x="920" y="410" text-anchor="middle" font-size="16" font-weight="600" fill="#222">NAV55005401</text>
+    <circle cx="780" cy="125" r="10" fill="#3576b8"/>
+    <circle cx="860" cy="125" r="8" fill="#666"/>
+    <circle cx="940" cy="125" r="8" fill="#666"/>
+    <circle cx="1080" cy="125" r="10" fill="#3a9d4a"/>
+    <g id="primary">
+      <text x="763" y="160" font-size="11" fill="#222">HAND</text>
+      <text x="797" y="160" font-size="11" fill="#222">AUTO</text>
+      <rect x="765" y="165" width="40" height="30" rx="3" fill="#fff" stroke="#666"/>
+      <rect x="780" y="170" width="10" height="20" rx="2" fill="#333"/>
+      <text x="780" y="210" text-anchor="middle" font-size="11" fill="#222">OFF</text>
+      <text x="785" y="230" text-anchor="middle" font-size="13" font-weight="600" fill="#222">Primary</text>
+    </g>
+    <g id="NAV-RESET">
+      <circle cx="860" cy="175" r="18" fill="#bbb" stroke="#666" stroke-width="1.5"/>
+      <text x="860" y="153" text-anchor="middle" font-size="11" fill="#222">NAV</text>
+      <text x="860" y="163" text-anchor="middle" font-size="13" fill="#222">RESET</text>
+    </g>
+    <g id="LIDAR-RESET">
+      <circle cx="940" cy="175" r="18" fill="#bbb" stroke="#666" stroke-width="1.5"/>
+      <text x="940" y="153" text-anchor="middle" font-size="11" fill="#222">LIDAR</text>
+      <text x="940" y="163" text-anchor="middle" font-size="13" fill="#222">RESET</text>
+    </g>
+    <g id="COMM">
+      <text x="1063" y="160" font-size="11" fill="#222">PRI</text>
+      <text x="1093" y="160" font-size="11" fill="#222">SEC</text>
+      <rect x="1060" y="165" width="40" height="30" rx="3" fill="#fff" stroke="#666"/>
+      <rect x="1075" y="170" width="10" height="20" rx="2" fill="#333"/>
+      <text x="1080" y="230" text-anchor="middle" font-size="13" font-weight="600" fill="#222">COMM</text>
+    </g>
+    <g id="ASITS">
+      <text x="770" y="265" text-anchor="middle" font-size="11" fill="#222">ON</text>
+      <rect x="755" y="270" width="32" height="44" rx="3" fill="#fff" stroke="#666"/>
+      <rect x="763" y="285" width="16" height="14" rx="2" fill="#333"/>
+      <text x="770" y="330" text-anchor="middle" font-size="11" fill="#222">OFF</text>
+      <circle cx="770" cy="365" r="7" fill="#d49a2f"/>
+      <text x="770" y="385" text-anchor="middle" font-size="13" font-weight="600" fill="#222">ASITS</text>
+    </g>
+    <g id="ANAV-BLOCK">
+      <text x="855" y="265" text-anchor="middle" font-size="11" fill="#222">ON</text>
+      <rect x="840" y="270" width="32" height="44" rx="3" fill="#fff" stroke="#666"/>
+      <rect x="848" y="285" width="16" height="14" rx="2" fill="#333"/>
+      <text x="855" y="330" text-anchor="middle" font-size="11" fill="#222">OFF</text>
+      <circle cx="855" cy="365" r="7" fill="#3a9d4a"/>
+      <text x="855" y="382" text-anchor="middle" font-size="11" font-weight="600" fill="#222">ANAV</text>
+      <text x="855" y="394" text-anchor="middle" font-size="11" font-weight="600" fill="#222">BLOCK</text>
+    </g>
+    <g id="ANAV-RTH">
+      <text x="935" y="265" text-anchor="middle" font-size="11" fill="#222">ON</text>
+      <rect x="920" y="270" width="32" height="44" rx="3" fill="#fff" stroke="#666"/>
+      <rect x="928" y="285" width="16" height="14" rx="2" fill="#333"/>
+      <text x="935" y="330" text-anchor="middle" font-size="11" fill="#222">OFF</text>
+      <circle cx="935" cy="365" r="7" fill="#3a9d4a"/>
+      <text x="935" y="382" text-anchor="middle" font-size="11" font-weight="600" fill="#222">ANAV</text>
+      <text x="935" y="394" text-anchor="middle" font-size="11" font-weight="600" fill="#222">RTH</text>
+    </g>
+    <g id="ACA">
+      <circle cx="1010" cy="290" r="12" fill="#1a1a1a" stroke="#666" stroke-width="1.5"/>
+      <line x1="1010" y1="290" x2="1018" y2="282" stroke="#888" stroke-width="2"/>
+      <text x="1010" y="320" text-anchor="middle" font-size="13" font-weight="600" fill="#222">ACA</text>
+      <circle cx="1010" cy="365" r="7" fill="#3a9d4a"/>
+    </g>
+  </g>
+
+  <!-- Speaker center-right -->
+  <g id="speaker">
+    <circle cx="760" cy="535" r="20" fill="#ddd" stroke="#666" stroke-width="1"/>
+    <circle cx="760" cy="535" r="15" fill="none" stroke="#999" stroke-width="0.5"/>
+    <circle cx="760" cy="535" r="10" fill="none" stroke="#999" stroke-width="0.5"/>
+    <circle cx="760" cy="535" r="5" fill="none" stroke="#999" stroke-width="0.5"/>
+    <text x="760" y="575" text-anchor="middle" font-size="11" fill="#ccc">speaker (not in PDF)</text>
+  </g>
+
+  <!-- SMC bottom-center -->
+  <text x="570" y="605" font-size="13" fill="#bbb">Software mgmt &amp; control · subsys 1</text>
+  <g id="SMC">
+    <rect x="570" y="610" width="280" height="220" rx="6" fill="#e8e8e8" stroke="#333" stroke-width="1.5"/>
+    <text x="710" y="820" text-anchor="middle" font-size="16" font-weight="600" fill="#222">SMC11002631</text>
+    <g id="CTRL">
+      <rect x="635" y="635" width="50" height="60" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="641" y="622" width="38" height="14" rx="2" fill="#bbb" stroke="#666" stroke-dasharray="3 2"/>
+      <rect x="650" y="645" width="20" height="14" rx="2" fill="#c93838"/>
+      <text x="660" y="710" text-anchor="middle" font-size="13" fill="#222">CTRL</text>
+    </g>
+    <g id="ALT">
+      <circle cx="645" cy="755" r="20" fill="#1a1a1a" stroke="#666" stroke-width="1.5"/>
+      <text x="645" y="790" text-anchor="middle" font-size="13" fill="#222">ALT</text>
+    </g>
+    <g id="RESET">
+      <circle cx="715" cy="755" r="20" fill="#c93838" stroke="#666" stroke-width="1.5"/>
+      <text x="715" y="790" text-anchor="middle" font-size="13" fill="#222">RESET</text>
+    </g>
+    <g id="TEST">
+      <rect x="595" y="635" width="36" height="44" rx="4" fill="#fff" stroke="#666"/>
+      <rect x="605" y="650" width="16" height="14" rx="2" fill="#333"/>
+      <text x="613" y="695" text-anchor="middle" font-size="13" fill="#222">TEST</text>
+    </g>
+    <g id="STATUS">
+      <circle cx="810" cy="640" r="10" fill="#c93838"/>
+      <text x="810" y="665" text-anchor="middle" font-size="13" font-weight="600" fill="#222">STATUS</text>
+    </g>
+    <g id="POWER">
+      <circle cx="810" cy="755" r="10" fill="#3a9d4a"/>
+      <text x="810" y="780" text-anchor="middle" font-size="13" font-weight="600" fill="#222">POWER</text>
+    </g>
+  </g>
+
+  <!-- Dust sensor -->
+  <g id="dust-sensor">
+    <ellipse cx="870" cy="500" rx="18" ry="5" fill="#ddd" stroke="#666" stroke-width="1"/>
+    <rect x="852" y="500" width="36" height="30" fill="#ddd" stroke="#666" stroke-width="1"/>
+    <ellipse cx="870" cy="530" rx="18" ry="5" fill="#999" stroke="#666" stroke-width="1"/>
+    <rect x="820" y="545" width="100" height="38" rx="3" fill="#e8e8e8" stroke="#666" stroke-width="0.5"/>
+    <text x="870" y="561" text-anchor="middle" font-size="12" font-weight="600" fill="#222">Dust sensor</text>
+    <text x="870" y="577" text-anchor="middle" font-size="10" fill="#444">(no label · subsys 2)</text>
+  </g>
+
+  <!-- SPR right -->
+  
+  <g id="SPR">
+    <rect x="990" y="480" width="160" height="160" rx="4" fill="#1a1a1a" stroke="#444" stroke-width="1.5"/>
+    <text x="1070" y="465" text-anchor="middle" font-size="14" font-weight="600" fill="#fff">SPR22005431</text>
+    <rect x="1005" y="525" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1035" y="525" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1065" y="525" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1095" y="525" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1125" y="525" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1005" y="585" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1035" y="585" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1065" y="585" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1095" y="585" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <rect x="1125" y="585" width="20" height="30" rx="2" fill="#3576b8" stroke="#888"/>
+    <circle cx="1015" cy="570" r="2" fill="#c93838"/>
+    <circle cx="1045" cy="570" r="2" fill="#666"/>
+    <circle cx="1075" cy="570" r="2" fill="#c93838"/>
+    <circle cx="1105" cy="570" r="2" fill="#666"/>
+    <circle cx="1135" cy="570" r="2" fill="#c93838"/>
+  </g>
+
+  <!-- SMPD bottom-right -->
+  <g id="SMPD">
+    <rect x="990" y="675" width="160" height="120" rx="6" fill="#d4d4d4" stroke="#333" stroke-width="1.5"/>
+    <text x="1070" y="693" text-anchor="middle" font-size="10" fill="#555">Sci. mgmt &amp; power · subsys 2</text>
+    <text x="1070" y="810" text-anchor="middle" font-size="15" font-weight="600" fill="#222">SMPD22006091</text>
+    <text x="1070" y="708" text-anchor="middle" font-size="9" fill="#666">TISTBASN#0521</text>
+    <circle cx="1070" cy="745" r="14" fill="#3a9d4a" stroke="#666" stroke-width="0.5"/>
+    <text x="1070" y="773" text-anchor="middle" font-size="11" fill="#222">power indicator</text>
+  </g>
+
+  
+  <!-- Center legend panel filling empty space -->
+  <g id="error-code-key">
+    <rect x="255" y="285" width="180" height="300" rx="8" fill="#1f1f1f" stroke="#555" stroke-width="1"/>
+    <text x="345" y="310" text-anchor="middle" font-size="14" font-weight="600" fill="#eee">Error code key</text>
+    <text x="345" y="328" text-anchor="middle" font-size="11" fill="#aaa">format: CSII</text>
+    <line x1="270" y1="338" x2="420" y2="338" stroke="#444" stroke-width="0.5"/>
+
+    <text x="270" y="358" font-size="11" font-weight="600" fill="#ddd">C — Criticality</text>
+    <text x="280" y="374" font-size="10" fill="#bbb">1 (low) → 4 (high)</text>
+
+    <text x="270" y="398" font-size="11" font-weight="600" fill="#ddd">S — Subsystem</text>
+    <text x="280" y="414" font-size="10" fill="#bbb">0  Pre-flight</text>
+    <text x="280" y="428" font-size="10" fill="#bbb">1  SMC (this map)</text>
+    <text x="280" y="442" font-size="10" fill="#bbb">2  Sci. instrumentation</text>
+    <text x="280" y="456" font-size="10" fill="#bbb">3  Lighting</text>
+    <text x="280" y="470" font-size="10" fill="#bbb">4  Communications</text>
+    <text x="280" y="484" font-size="10" fill="#bbb">5  Navigation</text>
+    <text x="280" y="498" font-size="10" fill="#bbb">6  Mobility</text>
+    <text x="280" y="512" font-size="10" fill="#bbb">7  Thermal</text>
+    <text x="280" y="526" font-size="10" fill="#bbb">8  Diagnostic</text>
+    <text x="280" y="540" font-size="10" fill="#bbb">9  Power</text>
+
+    <text x="270" y="562" font-size="11" font-weight="600" fill="#ddd">II — Identifier</text>
+    <text x="280" y="578" font-size="10" fill="#bbb">no priority meaning</text>
+  </g>
+
+  <!-- Legend -->
+  <g id="legend">
+    <rect x="70" y="850" width="1060" height="40" rx="6" fill="#1f1f1f" stroke="#444"/>
+    <text x="90" y="867" font-size="13" font-weight="600" fill="#eee">Quick reference</text>
+    <text x="90" y="884" font-size="12" fill="#ddd">0 Pre-flight · 1 SMC · 2 Sci · 3 Lighting · 4 Comms · 5 Nav · 6 Mobility · 7 Thermal · 8 Diag · 9 Power   |   Criticality (1st digit) 1=lowest, 4=highest</text>
+  </g>
+</svg>
