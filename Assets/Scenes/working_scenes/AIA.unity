@@ -333,10 +333,11 @@ MonoBehaviour:
   wakePhraseHandoffDelaySeconds: 0.35
   silenceStopSeconds: 1.8
   voiceDetectionThreshold: 0.01
-  voiceDetectionRmsThreshold: 0.002
+  voiceDetectionRmsThreshold: 0.0015
   voiceDetectionNoiseMultiplier: 2
-  speechStartDebounceSeconds: 0.1
+  speechStartDebounceSeconds: 0.06
   speechEndDebounceSeconds: 0.12
+  sendAllFramesToRecognizer: 1
   maxRecordingSeconds: 15
   logTranscripts: 1
   logAudioLevels: 1

@@ -93,6 +93,7 @@ public class VoskSpeechToText : MonoBehaviour
 	private readonly ConcurrentQueue<string> _threadedResultQueue = new ConcurrentQueue<string>();
 	private readonly ConcurrentQueue<string> _threadedPartialResultQueue = new ConcurrentQueue<string>();
 	private string _lastPartialResult = "";
+	private string _lastEndpointResult = "";
 
 
 
@@ -463,9 +464,13 @@ public class VoskSpeechToText : MonoBehaviour
 						}
 
 						hasResult = _recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
-						if (hasResult && !EmitResultsOnlyOnStop)
+						if (hasResult)
 						{
 							result = _recognizer.Result();
+							if (EmitResultsOnlyOnStop && HasRecognitionText(result))
+							{
+								_lastEndpointResult = result;
+							}
 						}
 						else if (!hasResult)
 						{
@@ -473,7 +478,7 @@ public class VoskSpeechToText : MonoBehaviour
 						}
 					}
 
-					if (hasResult && !string.IsNullOrWhiteSpace(result))
+					if (hasResult && !EmitResultsOnlyOnStop && !string.IsNullOrWhiteSpace(result))
 					{
 						_threadedResultQueue.Enqueue(result);
 					}
@@ -512,13 +517,22 @@ public class VoskSpeechToText : MonoBehaviour
 		{
 			DrainPendingAudio();
 			string finalResult;
+			string endpointResult;
 			lock (_recognizerLock)
 			{
 				finalResult = _recognizer.FinalResult();
+				endpointResult = _lastEndpointResult;
+				_lastEndpointResult = "";
 				_recognizer.Dispose();
 				_recognizer = null;
 				_recognizerReady = false;
 				_lastPartialResult = "";
+			}
+
+			if (!HasRecognitionText(finalResult) && HasRecognitionText(endpointResult))
+			{
+				Debug.Log($"[Vosk] Final result was empty; using last endpoint result: {endpointResult}");
+				finalResult = endpointResult;
 			}
 
 			Debug.Log($"[Vosk] Final result: {finalResult}");
@@ -542,7 +556,15 @@ public class VoskSpeechToText : MonoBehaviour
 					return;
 				}
 
-				_recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
+				bool hasResult = _recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
+				if (hasResult)
+				{
+					string endpointResult = _recognizer.Result();
+					if (HasRecognitionText(endpointResult))
+					{
+						_lastEndpointResult = endpointResult;
+					}
+				}
 			}
 		}
 	}
@@ -552,6 +574,38 @@ public class VoskSpeechToText : MonoBehaviour
 		while (_threadedBufferQueue.TryDequeue(out _)) { }
 		while (_threadedResultQueue.TryDequeue(out _)) { }
 		while (_threadedPartialResultQueue.TryDequeue(out _)) { }
+		_lastEndpointResult = "";
+	}
+
+	private static bool HasRecognitionText(string json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return false;
+		}
+
+		try
+		{
+			var result = new RecognitionResult(json);
+			if (result.Phrases == null)
+			{
+				return false;
+			}
+
+			for (int i = 0; i < result.Phrases.Length; i++)
+			{
+				if (!string.IsNullOrWhiteSpace(result.Phrases[i]?.Text))
+				{
+					return true;
+				}
+			}
+		}
+		catch (Exception)
+		{
+			return true;
+		}
+
+		return false;
 	}
 
 
