@@ -21,6 +21,26 @@ public class VoiceIntents : MonoBehaviour
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint SceneTransitionEventIdMin = 109;
     private const uint SceneTransitionEventIdMax = 113;
+    // MLVoice intent IDs for HUD visibility toggling. Fired as static events so
+    // per-scene HUDVisibilityController instances can subscribe without
+    // VoiceIntents needing a hard reference to them.
+    private const uint HudClearDisplayEventId = 114;
+    private const uint HudShowDisplayEventId = 115;
+    private const uint LtvNextStepEventId = 116;
+    // MLVoice intent IDs for the LTV reference map (LTV scene only).
+    private const uint LtvReferenceMapShowEventId = 117;
+    private const uint LtvReferenceMapHideEventId = 118;
+
+    /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
+    public static event Action HudClearDisplayRequested;
+    /// <summary>Fires when the MLVoice "show display" phrase is detected. Shows the HUD.</summary>
+    public static event Action HudShowDisplayRequested;
+    /// <summary>Fires when the MLVoice "next step" phrase is detected. Consumed by LTV scene only.</summary>
+    public static event Action LtvNextStepRequested;
+    /// <summary>Fires when the MLVoice "show reference map" phrase is detected. Consumed by LTV scene only.</summary>
+    public static event Action LtvReferenceMapShowRequested;
+    /// <summary>Fires when the MLVoice "hide reference map" phrase is detected. Consumed by LTV scene only.</summary>
+    public static event Action LtvReferenceMapHideRequested;
     // Bumped from 30s: gemma4:26b on Apple Silicon regularly takes 60-90s for first-token
     // latency on a cold model load (and 30-60s per generation while warm), so 30s caused
     // every Luna call to fail with "Luna request failed" before the orchestrator finished.
@@ -334,6 +354,31 @@ public class VoiceIntents : MonoBehaviour
             case AskLunaEventId:
                 Debug.Log("Hey Luna wake phrase detected");
                 StartAiaRecordingFromWakePhrase();
+                break;
+
+            case HudClearDisplayEventId:
+                Debug.Log("[HUD] 'clear display' phrase detected");
+                HudClearDisplayRequested?.Invoke();
+                break;
+
+            case HudShowDisplayEventId:
+                Debug.Log("[HUD] 'show display' phrase detected");
+                HudShowDisplayRequested?.Invoke();
+                break;
+
+            case LtvNextStepEventId:
+                Debug.Log("[LTV] 'next step' phrase detected");
+                LtvNextStepRequested?.Invoke();
+                break;
+
+            case LtvReferenceMapShowEventId:
+                Debug.Log("[LTVMap] 'show reference map' phrase detected");
+                LtvReferenceMapShowRequested?.Invoke();
+                break;
+
+            case LtvReferenceMapHideEventId:
+                Debug.Log("[LTVMap] 'hide reference map' phrase detected");
+                LtvReferenceMapHideRequested?.Invoke();
                 break;
 
             default:
