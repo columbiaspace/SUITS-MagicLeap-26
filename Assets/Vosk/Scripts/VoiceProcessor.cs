@@ -98,22 +98,22 @@ public class VoiceProcessor : MonoBehaviour
     // speech. This is only the peak gate; RMS and noise-floor gates below keep
     // single-sample spikes from resetting the silence timer.
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingSampleValue = 0.012f;
+    private float _minimumSpeakingSampleValue = 0.01f;
 
     [SerializeField, Tooltip("Minimum RMS frame volume required before audio is considered speech."), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingRmsValue = 0.0025f;
+    private float _minimumSpeakingRmsValue = 0.002f;
 
     [SerializeField, Tooltip("Speech must rise this many times above the learned room-noise RMS floor."), Range(1.0f, 10.0f)]
-    private float _noiseFloorMultiplier = 2.2f;
+    private float _noiseFloorMultiplier = 2.0f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;
 
     [SerializeField, Tooltip("How long speech-like audio must persist before recording opens."), Range(0.0f, 0.5f)]
-    private float _speechStartDebounceSeconds = 0.12f;
+    private float _speechStartDebounceSeconds = 0.1f;
 
     [SerializeField, Tooltip("How long quiet audio must persist before speech is considered paused."), Range(0.0f, 0.5f)]
-    private float _speechEndDebounceSeconds = 0.18f;
+    private float _speechEndDebounceSeconds = 0.12f;
 
     [SerializeField, Tooltip("Audio kept before the gate opens, so the first word is not clipped."), Range(0.0f, 0.5f)]
     private float _preSpeechBufferSeconds = 0.25f;
@@ -449,7 +449,7 @@ public class VoiceProcessor : MonoBehaviour
                     }
                 }
 
-                if (_audioDetected && OnFrameCaptured != null && _transmit)
+                if (_audioDetected && OnFrameCaptured != null)
                     OnFrameCaptured.Invoke(pcmBuffer);
             }
 
