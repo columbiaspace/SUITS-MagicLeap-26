@@ -1,100 +1,147 @@
+using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 
 /// <summary>
-/// Drives the warning banner. The root GameObject of this canvas should stay
-/// active at all times so the script keeps running; only the child <c>warningPanel</c>
-/// (the visible banner) is toggled on/off.
-///
-/// Listens to <see cref="TssVitalsOxygenMonitor.VitalsAlertChanged"/> so it surfaces
-/// the worst-case vital across oxygen, battery, suit pressure CO2, heart rate,
-/// temperature, coolant, etc.  Yellow for warning, red for critical. No mock /
-/// test path — alerts only ever fire from real TSS telemetry.
+/// Drives the warning display. Each active alert gets its own colored block
+/// (red = critical, yellow = warning), stacked vertically with manual positioning.
 /// </summary>
 public class WarningCanvasUI : MonoBehaviour
 {
-    [Header("Panel References")]
-    [Tooltip("The child GameObject that holds the visible banner. Toggled on/off based on state.")]
-    [SerializeField] private GameObject warningPanel;
-    [Tooltip("The Image whose colour reflects yellow vs red.")]
-    [SerializeField] private Image warningPanelImage;
-    [Tooltip("The TMP text element that displays the warning message.")]
-    [SerializeField] private TextMeshProUGUI warningText;
+    [Header("Container")]
+    [SerializeField] private GameObject warningContainer;
+
+    [Header("Entry Appearance")]
+    [SerializeField] private float entryHeight   = 50f;
+    [SerializeField] private float entrySpacing  = 4f;
+    [SerializeField] private float entryPaddingX = 12f;
+    [SerializeField] private float entryPaddingY = 6f;
+    [SerializeField] private int   fontSize      = 20;
 
     [Header("Colours")]
     [SerializeField] private Color runningLowColor    = new Color(0.89f, 0.55f, 0.1f,  0.92f);
     [SerializeField] private Color criticallyLowColor = new Color(0.85f, 0.12f, 0.12f, 0.92f);
 
-    private void Reset()
-    {
-        AutoWireReferences();
-    }
+    private readonly List<GameObject> _activeEntries = new List<GameObject>();
 
     private void Awake()
     {
-        AutoWireReferences();
+        if (warningContainer == null && transform.childCount > 0)
+            warningContainer = transform.GetChild(0).gameObject;
+
+        CleanupLegacyComponents();
     }
 
     private void OnEnable()
     {
-        TssVitalsOxygenMonitor.VitalsAlertChanged += HandleVitalsAlert;
-        SetPanelVisible(false);
+        TssVitalsOxygenMonitor.VitalsAlertChanged += HandleVitalsAlerts;
+        ClearEntries();
         SyncWithCurrentState();
     }
 
     private void OnDisable()
     {
-        TssVitalsOxygenMonitor.VitalsAlertChanged -= HandleVitalsAlert;
-    }
-
-    private void AutoWireReferences()
-    {
-        if (warningPanel == null && transform.childCount > 0)
-            warningPanel = transform.GetChild(0).gameObject;
-
-        if (warningPanelImage == null && warningPanel != null)
-            warningPanelImage = warningPanel.GetComponent<Image>();
-
-        if (warningText == null && warningPanel != null)
-            warningText = warningPanel.GetComponentInChildren<TextMeshProUGUI>(true);
+        TssVitalsOxygenMonitor.VitalsAlertChanged -= HandleVitalsAlerts;
+        ClearEntries();
     }
 
     private void SyncWithCurrentState()
     {
         TssVitalsOxygenMonitor monitor = FindObjectOfType<TssVitalsOxygenMonitor>();
         if (monitor == null) return;
-        HandleVitalsAlert(monitor.CurrentAlert);
+        HandleVitalsAlerts(monitor.CurrentAlerts);
     }
 
-    private void HandleVitalsAlert(TssVitalsOxygenMonitor.VitalsAlert alert)
+    private void HandleVitalsAlerts(IReadOnlyList<TssVitalsOxygenMonitor.VitalsAlert> alerts)
     {
-        switch (alert.State)
+        ClearEntries();
+
+        if (alerts == null || alerts.Count == 0)
         {
-            case TssVitalsOxygenMonitor.OxygenState.CriticallyLow:
-                ShowWarning(criticallyLowColor, alert.Headline);
-                break;
-
-            case TssVitalsOxygenMonitor.OxygenState.RunningLow:
-                ShowWarning(runningLowColor, alert.Headline);
-                break;
-
-            default:
-                SetPanelVisible(false);
-                break;
+            warningContainer.SetActive(false);
+            return;
         }
+
+        warningContainer.SetActive(true);
+
+        // Resize container to fit all entries
+        float totalHeight = alerts.Count * entryHeight + (alerts.Count - 1) * entrySpacing;
+        var containerRt = warningContainer.GetComponent<RectTransform>();
+        if (containerRt != null)
+            containerRt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, totalHeight);
+
+        for (int i = 0; i < alerts.Count; i++)
+            CreateEntry(alerts[i], i);
     }
 
-    private void ShowWarning(Color color, string message)
+    // -------------------------------------------------------------------------
+    // Entry creation
+    // -------------------------------------------------------------------------
+
+    private void CreateEntry(TssVitalsOxygenMonitor.VitalsAlert alert, int index)
     {
-        SetPanelVisible(true);
-        if (warningPanelImage != null) warningPanelImage.color = color;
-        if (warningText != null && !string.IsNullOrEmpty(message))
-            warningText.text = message;
+        var entry = new GameObject("AlertEntry");
+        entry.transform.SetParent(warningContainer.transform, false);
+        _activeEntries.Add(entry);
+
+        // Position: anchor to top-left, offset down by index
+        var rt = entry.AddComponent<RectTransform>();
+        rt.anchorMin = new Vector2(0f, 1f);
+        rt.anchorMax = new Vector2(1f, 1f);
+        rt.pivot     = new Vector2(0.5f, 1f);
+        rt.offsetMin = new Vector2(0f, 0f);
+        rt.offsetMax = new Vector2(0f, 0f);
+        rt.SetSizeWithCurrentAnchors(RectTransform.Axis.Vertical, entryHeight);
+        rt.anchoredPosition = new Vector2(0f, -(index * (entryHeight + entrySpacing)));
+
+        // Colored background
+        var image = entry.AddComponent<Image>();
+        image.color = alert.State == TssVitalsOxygenMonitor.OxygenState.CriticallyLow
+            ? criticallyLowColor
+            : runningLowColor;
+
+        // Text child
+        var textGO = new GameObject("Text");
+        textGO.transform.SetParent(entry.transform, false);
+
+        var textRt = textGO.AddComponent<RectTransform>();
+        textRt.anchorMin = Vector2.zero;
+        textRt.anchorMax = Vector2.one;
+        textRt.offsetMin = new Vector2( entryPaddingX,  entryPaddingY);
+        textRt.offsetMax = new Vector2(-entryPaddingX, -entryPaddingY);
+
+        var tmp = textGO.AddComponent<TextMeshProUGUI>();
+        tmp.text               = alert.Headline;
+        tmp.fontSize           = fontSize;
+        tmp.fontStyle          = FontStyles.Bold;
+        tmp.color              = Color.white;
+        tmp.enableWordWrapping = true;
+        tmp.alignment          = TextAlignmentOptions.Left;
     }
 
-    private void SetPanelVisible(bool visible)
+    // -------------------------------------------------------------------------
+    // Cleanup
+    // -------------------------------------------------------------------------
+
+    private void CleanupLegacyComponents()
     {
-        if (warningPanel != null) warningPanel.SetActive(visible);
+        if (warningContainer == null) return;
+
+        var oldImage = warningContainer.GetComponent<Image>();
+        if (oldImage != null) Destroy(oldImage);
+
+        var oldText = warningContainer.GetComponentInChildren<TextMeshProUGUI>();
+        if (oldText != null) Destroy(oldText.gameObject);
+    }
+
+    private void ClearEntries()
+    {
+        for (int i = 0; i < _activeEntries.Count; i++)
+        {
+            if (_activeEntries[i] != null)
+                Destroy(_activeEntries[i]);
+        }
+        _activeEntries.Clear();
     }
 }
