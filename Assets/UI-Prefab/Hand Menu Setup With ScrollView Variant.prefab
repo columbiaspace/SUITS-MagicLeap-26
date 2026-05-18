@@ -122,7 +122,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 6373698150599306150}
   toggleTransition: 1
   graphic: {fileID: 7042546726749078302}
-  m_Group: {fileID: 198894458026537209}
+  m_Group: {fileID: 0}
   onValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -214,6 +214,7 @@ GameObject:
   - component: {fileID: 8936447888570609087}
   - component: {fileID: 7105044667106719003}
   - component: {fileID: 5895349022113436835}
+  - component: {fileID: 3011445001122334457}
   m_Layer: 5
   m_Name: Item (2)
   m_TagString: Untagged
@@ -324,7 +325,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 7105044667106719003}
   toggleTransition: 1
   graphic: {fileID: 7835352638963707379}
-  m_Group: {fileID: 198894458026537209}
+  m_Group: {fileID: 0}
   onValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -437,6 +438,7 @@ GameObject:
   - component: {fileID: 4205817128357643095}
   - component: {fileID: 6894928674884894466}
   - component: {fileID: 1782528363033047073}
+  - component: {fileID: 3011445001122334456}
   m_Layer: 5
   m_Name: Item (1)
   m_TagString: Untagged
@@ -547,7 +549,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 6894928674884894466}
   toggleTransition: 1
   graphic: {fileID: 2990573439356401601}
-  m_Group: {fileID: 198894458026537209}
+  m_Group: {fileID: 0}
   onValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -706,7 +708,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Item
+  m_Text: Start ingress
 --- !u!1 &1548357770875258542
 GameObject:
   m_ObjectHideFlags: 0
@@ -1234,7 +1236,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Scrollview
+  m_Text: Hand Menu
 --- !u!1 &4215872076752957996
 GameObject:
   m_ObjectHideFlags: 0
@@ -1463,7 +1465,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Item
+  m_Text: Vitals
 --- !u!1 &4753949520023457371
 GameObject:
   m_ObjectHideFlags: 0
@@ -1716,7 +1718,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Item
+  m_Text: Start mission
 --- !u!1 &5388099233819452948
 GameObject:
   m_ObjectHideFlags: 0
@@ -1805,6 +1807,7 @@ GameObject:
   - component: {fileID: 74790193792310385}
   - component: {fileID: 1352086854311315634}
   - component: {fileID: 6691447557518023719}
+  - component: {fileID: 915432109876543210}
   m_Layer: 0
   m_Name: Hand Scroll View
   m_TagString: Untagged
@@ -1914,6 +1917,18 @@ MonoBehaviour:
     serializedVersion: 2
     m_Bits: 2147483647
   m_RaycastTriggerInteraction: 1
+--- !u!114 &915432109876543210
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5777647012280794441}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: e1b4a29f69f143c4aabf49b4f6712831, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
 --- !u!1 &5849728896677497699
 GameObject:
   m_ObjectHideFlags: 0
@@ -2269,7 +2284,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Item
+  m_Text: Return to base
 --- !u!1 &7208980269520018330
 GameObject:
   m_ObjectHideFlags: 0
@@ -2484,6 +2499,7 @@ GameObject:
   - component: {fileID: 3518585876328951086}
   - component: {fileID: 8347832585025543121}
   - component: {fileID: 8545894257086721068}
+  - component: {fileID: 3011445001122334458}
   m_Layer: 5
   m_Name: Item
   m_TagString: Untagged
@@ -2594,7 +2610,7 @@ MonoBehaviour:
   m_TargetGraphic: {fileID: 8347832585025543121}
   toggleTransition: 1
   graphic: {fileID: 3243901861322704685}
-  m_Group: {fileID: 198894458026537209}
+  m_Group: {fileID: 0}
   onValueChanged:
     m_PersistentCalls:
       m_Calls: []
@@ -2677,7 +2693,7 @@ MonoBehaviour:
     m_HorizontalOverflow: 0
     m_VerticalOverflow: 0
     m_LineSpacing: 1
-  m_Text: Item
+  m_Text: exit ltv
 --- !u!1 &8518272627135667654
 GameObject:
   m_ObjectHideFlags: 0
@@ -2828,6 +2844,54 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 4
+--- !u!114 &3011445001122334456
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1123975741060570189}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7af83839113f4e198d35bd4fbf95bbca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  actionType: 0
+  sceneNameOrPath: 
+  resetToggleAfterInvoke: 0
+  vitalsButton: {fileID: 0}
+--- !u!114 &3011445001122334457
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 367692320746050810}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7af83839113f4e198d35bd4fbf95bbca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  actionType: 2
+  sceneNameOrPath: Mission
+  resetToggleAfterInvoke: 1
+  vitalsButton: {fileID: 0}
+--- !u!114 &3011445001122334458
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 7959259777376447831}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 7af83839113f4e198d35bd4fbf95bbca, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  actionType: 1
+  sceneNameOrPath: 
+  resetToggleAfterInvoke: 0
+  vitalsButton: {fileID: 0}
 --- !u!1001 &6866732534849483843
 PrefabInstance:
   m_ObjectHideFlags: 0

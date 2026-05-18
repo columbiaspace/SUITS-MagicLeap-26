@@ -38,7 +38,6 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028356, g: 0.2257137, b: 0.3069222, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -2096,8 +2095,7 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     m_RemovedComponents: []
-    m_RemovedGameObjects:
-    - {fileID: 5777647012280794441, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
+    m_RemovedGameObjects: []
     m_AddedGameObjects: []
     m_AddedComponents: []
   m_SourcePrefab: {fileID: 100100000, guid: bd7cd5a4aebf8422ea169808fede90fd, type: 3}
@@ -2666,14 +2664,6 @@ PrefabInstance:
     serializedVersion: 3
     m_TransformParent: {fileID: 0}
     m_Modifications:
-    - target: {fileID: 5604462856267450383, guid: ce09d09d51cc549ef96d44a36953006b, type: 3}
-      propertyPath: m_LocalPosition.x
-      value: -0.48
-      objectReference: {fileID: 0}
-    - target: {fileID: 5604462856267450383, guid: ce09d09d51cc549ef96d44a36953006b, type: 3}
-      propertyPath: m_LocalPosition.y
-      value: 0.998
-      objectReference: {fileID: 0}
     - target: {fileID: 8358158060413148696, guid: ce09d09d51cc549ef96d44a36953006b, type: 3}
       propertyPath: m_LocalPosition.x
       value: 0
@@ -3792,8 +3782,8 @@ RectTransform:
   m_Children: []
   m_Father: {fileID: 5000030031}
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
-  m_AnchorMin: {x: 0, y: 0}
-  m_AnchorMax: {x: 0, y: 0}
+  m_AnchorMin: {x: 0, y: 1}
+  m_AnchorMax: {x: 0, y: 1}
   m_AnchoredPosition: {x: 168, y: 0}
   m_SizeDelta: {x: 336, y: 0}
   m_Pivot: {x: 0.5, y: 1}
@@ -4006,7 +3996,6 @@ SceneRoots:
   - {fileID: 654794652}
   - {fileID: 1538358369}
   - {fileID: 9100101}
-  - {fileID: 1944448548}
   - {fileID: 7700000003}
   - {fileID: 8800000010}
   - {fileID: 5000010000}
