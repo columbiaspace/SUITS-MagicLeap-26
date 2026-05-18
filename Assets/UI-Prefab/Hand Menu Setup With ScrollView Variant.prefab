@@ -1808,6 +1808,7 @@ GameObject:
   - component: {fileID: 1352086854311315634}
   - component: {fileID: 6691447557518023719}
   - component: {fileID: 915432109876543210}
+  - component: {fileID: 915432109876543211}
   m_Layer: 0
   m_Name: Hand Scroll View
   m_TagString: Untagged
@@ -1929,6 +1930,28 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e1b4a29f69f143c4aabf49b4f6712831, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &915432109876543211
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 5777647012280794441}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 54a956aa2e8f4bf49d508534cce1f397, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  cameraTransform: {fileID: 0}
+  distanceFromCamera: 0.75
+  verticalOffset: -0.12
+  horizontalOffset: 0
+  fixedWorldScale: {x: 0.0015, y: 0.0015, z: 0.0015}
+  followSmoothing: 18
+  requireOpenHand: 1
+  palmFacingCameraThreshold: 0.55
+  hideDelaySeconds: 0.2
+  disableLegacyPalmFollow: 1
 --- !u!1 &5849728896677497699
 GameObject:
   m_ObjectHideFlags: 0
