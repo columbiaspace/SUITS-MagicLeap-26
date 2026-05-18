@@ -63,6 +63,9 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         [Tooltip("Actionable procedure shown in the warning headline (e.g. 'Swap to secondary fan (DCU).').")]
         public string actionMessage;
 
+        [Tooltip("For Range direction: alternate action message shown when the low side triggers. Leave empty to use actionMessage for both sides.")]
+        public string actionMessageLow;
+
         [Tooltip("Format string for the value, e.g. F1 → '12.3'.")]
         public string valueFormat = "F1";
 
@@ -141,8 +144,9 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             label = "HEART RATE", path = "telemetry.eva1.heart_rate",
             unit = " bpm", direction = AlertDirection.Range,
             warningThreshold = 60f, criticalThreshold = 50f,
-            warningThresholdHigh = 150f, criticalThresholdHigh = 160f, valueFormat = "F0",
-            actionMessage = "Astronaut must slow down." },
+            warningThresholdHigh = 160f, criticalThresholdHigh = 160f, valueFormat = "F0",
+            actionMessage = "Heart rate too high. Astronaut must slow down.",
+            actionMessageLow = "Heart rate too low. Check astronaut condition." },
 
         // --- O2 Consumption (nominal 0.10, range 0.05–0.15 psi/min) ---
         new VitalRule {
@@ -186,7 +190,7 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             unit = " psi", direction = AlertDirection.Range,
             warningThreshold = 3.9f, criticalThreshold = 3.5f,
             warningThresholdHigh = 4.1f, criticalThresholdHigh = 4.5f, valueFormat = "F2",
-            actionMessage = "Review O2 pressure and scrubber values." },
+            actionMessage = "Check O2 tank pressure: if off nominal range, perform Off Nominal Suit O2 Pressure procedure. Check CO2 scrubber: if off nom. range, perform Off Nominal Suit CO2 Pressure procedure." },
 
         // --- Helmet CO2 (nominal 0.0, max 0.15 psi) ---
         new VitalRule {
@@ -200,7 +204,7 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             label = "PRIMARY FAN", path = "telemetry.eva1.fan_pri_rpm",
             unit = " rpm", direction = AlertDirection.Range,
             warningThreshold = 29999f, criticalThreshold = 20000f,
-            warningThresholdHigh = 30001f, criticalThresholdHigh = 40000f, valueFormat = "F0",
+            warningThresholdHigh = 30001f, criticalThresholdHigh = 30001f, valueFormat = "F0",
             actionMessage = "Set DCU FAN to SEC. Return to PR immediately." },
 
         // --- CO2 Scrubbers (max 60% — vent when approaching full) ---
@@ -618,7 +622,15 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
     {
         string formatted = value.ToString(rule.valueFormat);
         string label = string.IsNullOrEmpty(rule.label) ? rule.path : rule.label;
-        string action = string.IsNullOrEmpty(rule.actionMessage) ? "" : $" — {rule.actionMessage}";
+
+        string actionMsg = rule.actionMessage;
+        if (rule.direction == AlertDirection.Range && !string.IsNullOrEmpty(rule.actionMessageLow))
+        {
+            bool isLowSide = value <= rule.warningThreshold;
+            if (isLowSide) actionMsg = rule.actionMessageLow;
+        }
+
+        string action = string.IsNullOrEmpty(actionMsg) ? "" : $" — {actionMsg}";
         return state switch
         {
             OxygenState.CriticallyLow => $"CRITICAL {label}: {formatted}{rule.unit}{action}",
