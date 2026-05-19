@@ -950,7 +950,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3177212473821427495, guid: d4ffbdc4a993a44cda05f2eab6317851, type: 3}
       propertyPath: tssHost
-      value: 192.168.22.145
+      value: 172.20.10.6
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []
