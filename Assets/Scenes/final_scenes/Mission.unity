@@ -1258,12 +1258,8 @@ MonoBehaviour:
   voskModelPath: vosk-model-en-us-0.22-lgraph.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
-  silenceStopSeconds: 2
-  voiceDetectionThreshold: 0.012
-  voiceDetectionRmsThreshold: 0.0025
-  voiceDetectionNoiseMultiplier: 2.2
-  speechStartDebounceSeconds: 0.12
-  speechEndDebounceSeconds: 0.18
+  silenceStopSeconds: 5
+  voiceDetectionThreshold: 0.01
   maxRecordingSeconds: 15
   logTranscripts: 1
   logAudioLevels: 1

@@ -335,14 +335,7 @@ MonoBehaviour:
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
   silenceStopSeconds: 2
-  voiceDetectionThreshold: 0.012
-  voiceDetectionRmsThreshold: 0.0025
-  voiceDetectionNoiseMultiplier: 2.2
-  speechStartDebounceSeconds: 0.12
-  speechEndDebounceSeconds: 0.18
-  maxRecordingSeconds: 15
   logTranscripts: 1
-  logAudioLevels: 1
 --- !u!1 &260001000
 GameObject:
   m_ObjectHideFlags: 0

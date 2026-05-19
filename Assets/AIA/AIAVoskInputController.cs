@@ -157,20 +157,13 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
-    [SerializeField] private float silenceStopSeconds = 2f;
+    [SerializeField] private float silenceStopSeconds = 1.5f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
         "The Magic Leap 2 headset mic typically peaks around 0.02–0.04 for normal " +
-        "indoor speech; RMS/noise-floor gates also apply so brief spikes are ignored.")]
-    private float voiceDetectionThreshold = 0.012f;
-    [SerializeField, Range(0f, 1f), Tooltip("Minimum RMS frame volume required before Vosk treats a frame as speech.")]
-    private float voiceDetectionRmsThreshold = 0.0025f;
-    [SerializeField, Range(1f, 10f), Tooltip("Speech must be this many times louder than the learned room-noise RMS floor.")]
-    private float voiceDetectionNoiseMultiplier = 2.2f;
-    [SerializeField, Range(0f, 0.5f), Tooltip("Speech-like audio must persist this long before recording opens.")]
-    private float speechStartDebounceSeconds = 0.12f;
-    [SerializeField, Range(0f, 0.5f), Tooltip("Quiet audio must persist this long before the silence timer can close the recording.")]
-    private float speechEndDebounceSeconds = 0.18f;
+        "indoor speech; the original Picovoice default of 0.05 was too high and " +
+        "caused Vosk to receive zero audio frames.")]
+    private float voiceDetectionThreshold = 0.01f;
     [SerializeField, Tooltip(
         "Hard cap on recording length (seconds). If the user starts a recording and " +
         "the VAD never trips (e.g. mic is muted), recording is force-stopped after this many seconds " +
@@ -182,11 +175,7 @@ public class AIAVoskInputController : MonoBehaviour
 
     private Coroutine maxRecordingTimeoutCoroutine;
     private Coroutine audioLevelMonitorCoroutine;
-    private Coroutine partialTranscriptTimeoutCoroutine;
     private float peakAmplitudeThisSession;
-    private float rmsAmplitudeThisSession;
-    private float lastPartialTranscriptTime = -1f;
-    private string lastPartialTranscriptText = string.Empty;
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     private bool hasRecordPermission;
@@ -401,10 +390,6 @@ public class AIAVoskInputController : MonoBehaviour
         if (voiceProcessor != null)
         {
             voiceProcessor.MinimumSpeakingSampleValue = voiceDetectionThreshold;
-            voiceProcessor.MinimumSpeakingRmsValue = voiceDetectionRmsThreshold;
-            voiceProcessor.NoiseFloorMultiplier = voiceDetectionNoiseMultiplier;
-            voiceProcessor.SpeechStartDebounceSeconds = speechStartDebounceSeconds;
-            voiceProcessor.SpeechEndDebounceSeconds = speechEndDebounceSeconds;
         }
         voskSpeechToText.OnStatusUpdated -= HandleVoskStatusUpdated;
         voskSpeechToText.OnTranscriptionResult -= HandleTranscriptionResult;
@@ -508,7 +493,8 @@ public class AIAVoskInputController : MonoBehaviour
 
         try
         {
-            ResetRecordingSessionState();
+            _routedSceneVoiceThisSession = false;
+            peakAmplitudeThisSession = 0f;
 
             if (voiceIntents != null)
             {
@@ -561,10 +547,6 @@ public class AIAVoskInputController : MonoBehaviour
         {
             audioLevelMonitorCoroutine = StartCoroutine(MonitorAudioLevels());
         }
-        if (silenceStopSeconds > 0f)
-        {
-            partialTranscriptTimeoutCoroutine = StartCoroutine(PartialTranscriptWatchdog());
-        }
     }
 
     private void CancelRecordingTimeouts()
@@ -579,11 +561,6 @@ public class AIAVoskInputController : MonoBehaviour
             StopCoroutine(audioLevelMonitorCoroutine);
             audioLevelMonitorCoroutine = null;
         }
-        if (partialTranscriptTimeoutCoroutine != null)
-        {
-            StopCoroutine(partialTranscriptTimeoutCoroutine);
-            partialTranscriptTimeoutCoroutine = null;
-        }
     }
 
     private IEnumerator MaxRecordingWatchdog(float seconds)
@@ -592,8 +569,7 @@ public class AIAVoskInputController : MonoBehaviour
         if (voiceProcessor != null && voiceProcessor.IsRecording)
         {
             Debug.LogWarning($"[Vosk] Max-recording watchdog fired after {seconds:F1}s — force-stopping. " +
-                             $"Peak/RMS mic amplitude this session: {peakAmplitudeThisSession:F4}/{rmsAmplitudeThisSession:F4} " +
-                             $"(thresholds {voiceDetectionThreshold:F4}/{voiceDetectionRmsThreshold:F4}).");
+                             $"Peak mic amplitude this session: {peakAmplitudeThisSession:F4} (threshold {voiceDetectionThreshold:F4}).");
             StopRecording();
         }
     }
@@ -606,41 +582,17 @@ public class AIAVoskInputController : MonoBehaviour
         while (voiceProcessor != null && voiceProcessor.IsRecording)
         {
             float level = voiceProcessor.LastFrameMaxAmplitude;
-            float rms = voiceProcessor.LastFrameRmsAmplitude;
             if (level > peakAmplitudeThisSession) peakAmplitudeThisSession = level;
-            if (rms > rmsAmplitudeThisSession) rmsAmplitudeThisSession = rms;
 
             if (Time.unscaledTime - lastLogTime >= 1f)
             {
-                Debug.Log($"[Vosk] mic level peak/rms = {level:F4}/{rms:F4}, " +
-                          $"session peak/rms = {peakAmplitudeThisSession:F4}/{rmsAmplitudeThisSession:F4}, " +
-                          $"threshold peak/rms = {voiceDetectionThreshold:F4}/{voiceProcessor.CurrentRmsSpeechThreshold:F4}, " +
-                          $"noise floor rms = {voiceProcessor.EstimatedNoiseFloorRms:F4}.");
+                Debug.Log($"[Vosk] mic level (peak this frame) = {level:F4}, " +
+                          $"session peak = {peakAmplitudeThisSession:F4}, threshold = {voiceDetectionThreshold:F4}.");
                 lastLogTime = Time.unscaledTime;
             }
             yield return wait;
         }
         audioLevelMonitorCoroutine = null;
-    }
-
-    private IEnumerator PartialTranscriptWatchdog()
-    {
-        WaitForSeconds wait = new WaitForSeconds(0.1f);
-        while (voiceProcessor != null && voiceProcessor.IsRecording)
-        {
-            if (lastPartialTranscriptTime > 0f &&
-                Time.unscaledTime - lastPartialTranscriptTime >= silenceStopSeconds)
-            {
-                Debug.Log($"[Vosk] Partial transcript idle for {silenceStopSeconds:F1}s. Stopping recording.");
-                partialTranscriptTimeoutCoroutine = null;
-                StopRecording();
-                yield break;
-            }
-
-            yield return wait;
-        }
-
-        partialTranscriptTimeoutCoroutine = null;
     }
 
     private void HandleVoskStatusUpdated(string status)
@@ -652,8 +604,6 @@ public class AIAVoskInputController : MonoBehaviour
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             if (isRecording)
             {
-                ResetRecordingSessionState();
-                BeginRecordingTimeouts();
                 if (voiceIntents != null)
                 {
                     voiceIntents.BeginRecordingTranscript();
@@ -693,12 +643,11 @@ public class AIAVoskInputController : MonoBehaviour
             string transcript = result.Phrases[0]?.Text?.Trim();
             if (string.IsNullOrWhiteSpace(transcript))
             {
-                bool micWasHeard = peakAmplitudeThisSession >= voiceDetectionThreshold
-                                   || rmsAmplitudeThisSession >= voiceDetectionRmsThreshold;
+                bool micWasHeard = peakAmplitudeThisSession >= voiceDetectionThreshold;
                 Debug.LogWarning(
                     $"[Vosk] Empty transcription result: {rawJson}. " +
-                    $"Peak/RMS mic amplitude this session = {peakAmplitudeThisSession:F4}/{rmsAmplitudeThisSession:F4} " +
-                    $"(thresholds {voiceDetectionThreshold:F4}/{voiceDetectionRmsThreshold:F4}). " +
+                    $"Peak mic amplitude this session = {peakAmplitudeThisSession:F4} " +
+                    $"(threshold {voiceDetectionThreshold:F4}). " +
                     (micWasHeard
                         ? "Mic was audible but Vosk did not recognize any words — try speaking closer to the headset or check the model is loaded."
                         : "Mic NEVER crossed the VAD threshold — check that the headset microphone is enabled, unmuted, and that no other process (e.g. MLVoice/Luna) is holding it. " +
@@ -764,18 +713,15 @@ public class AIAVoskInputController : MonoBehaviour
             }
 
             partialTranscript = NormalizeDomainTranscript(partialTranscript);
-            if (!string.Equals(partialTranscript, lastPartialTranscriptText, StringComparison.Ordinal))
-            {
-                lastPartialTranscriptText = partialTranscript;
-                lastPartialTranscriptTime = Time.unscaledTime;
-            }
 
             if (voiceIntents != null)
             {
                 voiceIntents.UpdateRecordingTranscript(partialTranscript);
 
-                // Route scene transitions off the live partial stream so commands fire
-                // as soon as Vosk has enough audio, without waiting for finalization.
+                // VoiceProcessor's silence detection on ML2 doesn't reliably fire, so the
+                // recording stays open and the final transcript never emits. Route scene
+                // transitions off the live partial stream instead — fires the moment Vosk
+                // has heard enough audio to recognize a configured command.
                 if (!_routedSceneVoiceThisSession &&
                     voiceIntents.TryRouteSceneVoiceCommand(partialTranscript))
                 {
@@ -864,15 +810,6 @@ public class AIAVoskInputController : MonoBehaviour
         }
 
         Debug.LogWarning($"[Vosk] Could not display status because no AIA text box was found. Status: {text}");
-    }
-
-    private void ResetRecordingSessionState()
-    {
-        _routedSceneVoiceThisSession = false;
-        peakAmplitudeThisSession = 0f;
-        rmsAmplitudeThisSession = 0f;
-        lastPartialTranscriptTime = -1f;
-        lastPartialTranscriptText = string.Empty;
     }
 
     private string GetSafeVoskModelPath()

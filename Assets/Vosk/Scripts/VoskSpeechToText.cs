@@ -178,7 +178,6 @@ public class VoskSpeechToText : MonoBehaviour
 		if (startMicrophone)
 		{
 			_running = true;
-			ClearQueuedRecognitionData();
 			ConfigureVoiceProcessorSilenceDetection();
 			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
 			if (!VoiceProcessor.IsRecording)
@@ -394,7 +393,6 @@ public class VoskSpeechToText : MonoBehaviour
 
 			_running = true;
 			_lastPartialResult = "";
-			ClearQueuedRecognitionData();
 			ConfigureVoiceProcessorSilenceDetection();
 			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
 			Task.Run(ThreadedWork).ConfigureAwait(false);
@@ -438,7 +436,6 @@ public class VoskSpeechToText : MonoBehaviour
 	{
 		Debug.Log("Stopped");
 		_running = false;
-		DrainPendingAudio();
 		EmitFinalResult();
 	}
 
@@ -457,11 +454,6 @@ public class VoskSpeechToText : MonoBehaviour
 					string result = null;
 					lock (_recognizerLock)
 					{
-						if (!_recognizerReady || _recognizer == null)
-						{
-							continue;
-						}
-
 						hasResult = _recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
 						if (hasResult && !EmitResultsOnlyOnStop)
 						{
@@ -486,7 +478,7 @@ public class VoskSpeechToText : MonoBehaviour
 				else
 				{
 					// Wait for some data
-					await Task.Delay(20);
+					await Task.Delay(100);
 				}
 			}
 		}
@@ -510,7 +502,6 @@ public class VoskSpeechToText : MonoBehaviour
 
 		try
 		{
-			DrainPendingAudio();
 			string finalResult;
 			lock (_recognizerLock)
 			{
@@ -529,29 +520,6 @@ public class VoskSpeechToText : MonoBehaviour
 			Debug.LogError($"[Vosk] Failed to emit final result: {exception}");
 			OnStatusUpdated?.Invoke("Vosk failed to process recording.");
 		}
-	}
-
-	private void DrainPendingAudio()
-	{
-		while (_threadedBufferQueue.TryDequeue(out short[] voiceResult))
-		{
-			lock (_recognizerLock)
-			{
-				if (!_recognizerReady || _recognizer == null)
-				{
-					return;
-				}
-
-				_recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
-			}
-		}
-	}
-
-	private void ClearQueuedRecognitionData()
-	{
-		while (_threadedBufferQueue.TryDequeue(out _)) { }
-		while (_threadedResultQueue.TryDequeue(out _)) { }
-		while (_threadedPartialResultQueue.TryDequeue(out _)) { }
 	}
 
 
