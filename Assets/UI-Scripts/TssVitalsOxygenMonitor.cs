@@ -133,11 +133,12 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             unit = " psi", direction = AlertDirection.Low,
             warningThreshold = 700f, criticalThreshold = 600f, valueFormat = "F0" },
 
-        // --- Coolant Storage (min 80%, egress fills to >95% — warn below 95%) ---
+        // --- Coolant Storage (warn < 85%, critical <= 80% or > 100%) ---
         new VitalRule {
             label = "COOLANT STORAGE", path = "telemetry.eva1.coolant_storage",
-            unit = "%", direction = AlertDirection.Low,
-            warningThreshold = 95f, criticalThreshold = 80f, valueFormat = "F1" },
+            unit = "%", direction = AlertDirection.Range,
+            warningThreshold = 85f, criticalThreshold = 80f,
+            warningThresholdHigh = 100.01f, criticalThresholdHigh = 100.01f, valueFormat = "F1" },
 
         // --- Heart Rate (50–160 bpm) ---
         new VitalRule {
@@ -152,51 +153,51 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "O2 CONSUMPTION", path = "telemetry.eva1.oxy_consumption",
             unit = " psi/min", direction = AlertDirection.Range,
-            warningThreshold = 0.09f, criticalThreshold = 0.05f,
-            warningThresholdHigh = 0.11f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+            warningThreshold = 0.063f, criticalThreshold = 0.05f,
+            warningThresholdHigh = 0.138f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
 
         // --- CO2 Production (nominal 0.10, range 0.05–0.15 psi/min) ---
         new VitalRule {
             label = "CO2 PRODUCTION", path = "telemetry.eva1.co2_production",
             unit = " psi/min", direction = AlertDirection.Range,
-            warningThreshold = 0.09f, criticalThreshold = 0.05f,
-            warningThresholdHigh = 0.11f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+            warningThreshold = 0.063f, criticalThreshold = 0.05f,
+            warningThresholdHigh = 0.138f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
 
         // --- Suit Pressure: O2 (nominal 4.0, range 3.5–4.1 psi) ---
         new VitalRule {
             label = "SUIT O2 PRESSURE", path = "telemetry.eva1.suit_pressure_oxy",
             unit = " psi", direction = AlertDirection.Range,
-            warningThreshold = 3.9f, criticalThreshold = 3.5f,
-            warningThresholdHigh = 4.05f, criticalThresholdHigh = 4.1f, valueFormat = "F2",
+            warningThreshold = 3.625f, criticalThreshold = 3.5f,
+            warningThresholdHigh = 4.075f, criticalThresholdHigh = 4.1f, valueFormat = "F2",
             actionMessage = "Swap to secondary O2 tank (DCU). Return to PR." },
 
         // --- Suit Pressure: CO2 (nominal 0.0, max 0.1 psi) ---
         new VitalRule {
             label = "SUIT CO2 PRESSURE", path = "telemetry.eva1.suit_pressure_co2",
             unit = " psi", direction = AlertDirection.High,
-            warningThreshold = 0.005f, criticalThreshold = 0.1f, valueFormat = "F3",
+            warningThreshold = 0.075f, criticalThreshold = 0.1f, valueFormat = "F3",
             actionMessage = "Vent scrubber via DCU CO2 switch." },
 
         // --- Suit Pressure: Other (nominal 0.0, max 0.5 psi) ---
         new VitalRule {
             label = "SUIT OTHER PRESSURE", path = "telemetry.eva1.suit_pressure_other",
             unit = " psi", direction = AlertDirection.High,
-            warningThreshold = 0.005f, criticalThreshold = 0.5f, valueFormat = "F3",
+            warningThreshold = 0.375f, criticalThreshold = 0.5f, valueFormat = "F3",
             actionMessage = "Return to PR immediately." },
 
         // --- Suit Pressure: Total (nominal 4.0, range 3.5–4.5 psi) ---
         new VitalRule {
             label = "SUIT TOTAL PRESSURE", path = "telemetry.eva1.suit_pressure_total",
             unit = " psi", direction = AlertDirection.Range,
-            warningThreshold = 3.9f, criticalThreshold = 3.5f,
-            warningThresholdHigh = 4.1f, criticalThresholdHigh = 4.5f, valueFormat = "F2",
+            warningThreshold = 3.625f, criticalThreshold = 3.5f,
+            warningThresholdHigh = 4.375f, criticalThresholdHigh = 4.5f, valueFormat = "F2",
             actionMessage = "Check O2 tank pressure: if off nominal range, perform Off Nominal Suit O2 Pressure procedure. Check CO2 scrubber: if off nom. range, perform Off Nominal Suit CO2 Pressure procedure." },
 
         // --- Helmet CO2 (nominal 0.0, max 0.15 psi) ---
         new VitalRule {
             label = "HELMET CO2", path = "telemetry.eva1.helmet_pressure_co2",
             unit = " psi", direction = AlertDirection.High,
-            warningThreshold = 0.005f, criticalThreshold = 0.15f, valueFormat = "F3",
+            warningThreshold = 0.113f, criticalThreshold = 0.15f, valueFormat = "F3",
             actionMessage = "Swap to secondary fan (DCU). Return to PR." },
 
         // --- Primary Fan only (nominal 30,000 rpm — alert if above or below 30,000) ---
@@ -223,8 +224,8 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "TEMPERATURE", path = "telemetry.eva1.temperature",
             unit = "°C", direction = AlertDirection.Range,
-            warningThreshold = 19f, criticalThreshold = 10f,
-            warningThresholdHigh = 23f, criticalThresholdHigh = 32f, valueFormat = "F1",
+            warningThreshold = 12.75f, criticalThreshold = 10f,
+            warningThresholdHigh = 29.25f, criticalThresholdHigh = 32f, valueFormat = "F1",
             actionMessage = "Astronaut must slow down." },
 
         // --- Coolant Liquid Pressure (nominal 500, range 100–700 psi) ---
@@ -238,7 +239,7 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "COOLANT GAS PRESSURE", path = "telemetry.eva1.coolant_gas_pressure",
             unit = " psi", direction = AlertDirection.High,
-            warningThreshold = 0.5f, criticalThreshold = 700f, valueFormat = "F1" },
+            warningThreshold = 525f, criticalThreshold = 700f, valueFormat = "F1" },
     };
 
     [Header("Popup Alert")]
