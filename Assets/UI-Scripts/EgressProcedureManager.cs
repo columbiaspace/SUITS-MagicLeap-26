@@ -44,6 +44,12 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private Sprite dcuBattLocalUmbSprite; // dcu-batt-local-umb.png — BATT LOCAL / UMB
     [SerializeField] private Sprite dcuBattSecPriSprite;  // dcu-batt-sec-pri.png — BATT SEC / PRI
 
+    [Header("Display")]
+    [SerializeField] private float dcuImageScale = 0.52f;
+
+    private float _uiaImageScale;
+    private float _imageScaleZ;
+
     // ── Internals ──────────────────────────────────────────────────────
     private enum CondType { Timed, UiaBool, DcuBool, DcuBattBool, HmdWait }
 
@@ -72,6 +78,12 @@ public class EgressProcedureManager : MonoBehaviour
     private void Awake()
     {
         Resolve();
+        if (displayImage != null)
+        {
+            Vector3 scale = displayImage.rectTransform.localScale;
+            _uiaImageScale = scale.x;
+            _imageScaleZ = scale.z;
+        }
     }
 
     private void OnEnable()
@@ -236,8 +248,7 @@ public class EgressProcedureManager : MonoBehaviour
         if (stepText != null)
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
-        if (displayImage != null)
-            displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
+        ApplyStepImage(step.Image);
 
         AnnounceStep(index, step);
 
@@ -534,5 +545,29 @@ public class EgressProcedureManager : MonoBehaviour
         }
         catch (Exception e) { Debug.LogWarning($"[Egress] DCU.batt({field}): {e.Message}"); }
         return false;
+    }
+
+    private void ApplyStepImage(Sprite sprite)
+    {
+        if (displayImage == null)
+        {
+            return;
+        }
+
+        Sprite shown = sprite != null ? sprite : uiaPanelSprite;
+        displayImage.sprite = shown;
+
+        float uniform = IsDcuSprite(shown) ? dcuImageScale : _uiaImageScale;
+        if (uniform > 0f)
+        {
+            displayImage.rectTransform.localScale = new Vector3(uniform, uniform, _imageScaleZ);
+        }
+    }
+
+    private bool IsDcuSprite(Sprite sprite)
+    {
+        return sprite == dcuPanelSprite || sprite == dcuOxySprite || sprite == dcuFanSprite
+            || sprite == dcuPumpSprite || sprite == dcuCo2Sprite
+            || sprite == dcuBattLocalUmbSprite || sprite == dcuBattSecPriSprite;
     }
 }
