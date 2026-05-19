@@ -28,6 +28,11 @@ namespace TssApi
         [Header("Procedure Data")]
         [SerializeField] private TextAsset ltvProceduresJson;
 
+        [Header("Testing")]
+        [Tooltip("When true, the poll loop stops issuing UDP requests so a dummy feeder can drive _ltv directly via OverrideLtvData. Don't ship this on.")]
+        [SerializeField] private bool skipUdpPolling = false;
+        public bool SkipUdpPolling { get => skipUdpPolling; set => skipUdpPolling = value; }
+
         public event Action<Dictionary<string, object>> EvaUpdated;
 
         public static TssUnityApiService Instance { get; private set; }
@@ -558,11 +563,25 @@ namespace TssApi
             return false;
         }
 
+        public void OverrideLtvData(Dictionary<string, object> data)
+        {
+            if (data == null) return;
+            MergeIntoLtv(data);
+            _sourceOnline = true;
+            _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+        }
+
         private IEnumerator PollLoop()
         {
             WaitForSeconds wait = new WaitForSeconds(Mathf.Max(0.05f, pollIntervalSeconds));
             while (true)
             {
+                if (skipUdpPolling)
+                {
+                    yield return wait;
+                    continue;
+                }
+
                 Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
                 Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
                 Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
@@ -573,14 +592,17 @@ namespace TssApi
                     EvaUpdated?.Invoke(GetEva());
                 }
 
+                // Merge each feed in place. Wholesale-replacing _ltv with ltvRaw would
+                // erase error_procedures (which only ships in the LtvErrors feed) any
+                // time UdpGetLtvErrors times out on a poll while UdpGetLtv succeeds.
                 if (ltvRaw != null)
                 {
-                    _ltv = ltvRaw;
+                    MergeIntoLtv(ltvRaw);
                 }
 
                 if (ltvErrorsRaw != null)
                 {
-                    MergeLtvErrors(ltvErrorsRaw);
+                    MergeIntoLtv(ltvErrorsRaw);
                 }
 
                 bool newOnline = evaRaw != null && ltvRaw != null;
@@ -662,14 +684,14 @@ namespace TssApi
             _procedures = parsed as Dictionary<string, object> ?? new Dictionary<string, object>();
         }
 
-        private void MergeLtvErrors(Dictionary<string, object> ltvErrorsRaw)
+        private void MergeIntoLtv(Dictionary<string, object> source)
         {
             if (_ltv == null)
             {
                 _ltv = new Dictionary<string, object>();
             }
 
-            foreach (KeyValuePair<string, object> kvp in ltvErrorsRaw)
+            foreach (KeyValuePair<string, object> kvp in source)
             {
                 _ltv[kvp.Key] = kvp.Value;
             }
