@@ -35,7 +35,12 @@ namespace TssApi
 
         public event Action<Dictionary<string, object>> EvaUpdated;
 
+        /// <summary>Fires when UDP polling reaches or loses both EVA and LTV feeds.</summary>
+        public event Action<bool> SourceOnlineChanged;
+
         public static TssUnityApiService Instance { get; private set; }
+
+        public bool IsSourceOnline => _sourceOnline;
 
         private TssUdpClient _udp;
         private Coroutine _pollCoroutine;
@@ -567,7 +572,7 @@ namespace TssApi
         {
             if (data == null) return;
             MergeIntoLtv(data);
-            _sourceOnline = true;
+            SetSourceOnline(true);
             _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
@@ -632,9 +637,20 @@ namespace TssApi
                     }
                 }
 
-                _sourceOnline = newOnline;
+                SetSourceOnline(newOnline);
                 yield return wait;
             }
+        }
+
+        private void SetSourceOnline(bool online)
+        {
+            if (_sourceOnline == online)
+            {
+                return;
+            }
+
+            _sourceOnline = online;
+            SourceOnlineChanged?.Invoke(_sourceOnline);
         }
 
         private static string DescribeKeys(Dictionary<string, object> dict)

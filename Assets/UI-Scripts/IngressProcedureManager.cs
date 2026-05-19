@@ -22,7 +22,7 @@ public class IngressProcedureManager : MonoBehaviour
     [Tooltip("Scene to load once Ingress completes.")]
     [SerializeField] private string completionScene = "Mission";
     [Tooltip("Seconds to wait after the completion announcement before loading Mission.")]
-    [SerializeField] private float completionRedirectDelay = 7f;
+    [SerializeField] private float completionRedirectDelay = 3f;
 
     [Header("UIA Sprites")]
     [SerializeField] private Sprite uiaPanelSprite;

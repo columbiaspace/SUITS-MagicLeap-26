@@ -24,7 +24,7 @@ public class EgressProcedureManager : MonoBehaviour
     [Tooltip("Scene to load once Egress completes.")]
     [SerializeField] private string completionScene = "Mission";
     [Tooltip("Seconds to wait after the completion announcement before loading Mission.")]
-    [SerializeField] private float completionRedirectDelay = 2f;
+    [SerializeField] private float completionRedirectDelay = 3f;
 
     // ── Sprites ────────────────────────────────────────────────────────
     [Header("UIA Sprites")]
