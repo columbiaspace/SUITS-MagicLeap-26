@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit.UI;
+using UnityEngine.XR.MagicLeap;
 #if XR_HANDS_1_1_OR_NEWER
 using UnityEngine.XR.Hands;
 #endif
@@ -34,6 +35,10 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     [SerializeField] private Color palmTrackedColor = new Color(1f, 0.85f, 0.15f, 0.9f);
     [SerializeField] private Color palmMenuVisibleColor = new Color(0.1f, 1f, 0.25f, 0.95f);
 
+    [Header("Debug Logging")]
+    [SerializeField] private bool logHandState = true;
+    [SerializeField] private float handStateLogIntervalSeconds = 1f;
+
     [Header("Legacy Hand Menu")]
     [SerializeField] private bool disableLegacyPalmFollow = true;
 
@@ -59,12 +64,39 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     private static readonly List<XRHandSubsystem> s_HandSubsystems = new List<XRHandSubsystem>();
 #endif
 
+    // Hand-tracking is a runtime ("dangerous") permission on ML2. Manifest declaration
+    // alone is not enough: until MLPermissions grants HAND_TRACKING at runtime, the
+    // XRHandSubsystem exists but every XRHand.isTracked stays false, so the dot is gray.
+    private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
+    private bool handTrackingPermissionGranted;
+    private bool handTrackingPermissionRequested;
+    private bool loggedSubsystemFound;
+    private bool loggedSubsystemRunning;
+    private bool loggedSubsystemMissing;
+    private float lastHandStateLogTime;
+    private float lastRightPalmDot = float.NaN;
+    private float lastLeftPalmDot = float.NaN;
+
     private void Awake()
     {
         CacheUiComponents();
 
         if (disableLegacyPalmFollow)
             DisableLegacyHandMenu();
+
+        permissionCallbacks.OnPermissionGranted += OnHandTrackingPermissionGranted;
+        permissionCallbacks.OnPermissionDenied += OnHandTrackingPermissionDenied;
+        permissionCallbacks.OnPermissionDeniedAndDontAskAgain += OnHandTrackingPermissionDenied;
+    }
+
+    private void Start()
+    {
+        if (handTrackingPermissionRequested)
+            return;
+
+        handTrackingPermissionRequested = true;
+        Debug.Log($"[FixedPalmMenuPresenter] Permission requested: {MLPermission.HandTracking}", this);
+        MLPermissions.RequestPermission(MLPermission.HandTracking, permissionCallbacks);
     }
 
     private void OnEnable()
@@ -73,9 +105,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         EnsureTrackedDeviceRaycasters();
         ConfigureCanvasesForXrUi();
         EnsurePalmDetectionIndicator();
-#if XR_HANDS_1_1_OR_NEWER
-        ResolveHandSubsystem();
-#else
+#if !XR_HANDS_1_1_OR_NEWER
         Debug.LogWarning("[FixedPalmMenuPresenter] XR Hands package symbols are unavailable; palm gesture detection is disabled.", this);
 #endif
         SetMenuVisible(false, true);
@@ -89,11 +119,36 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void OnDestroy()
     {
+        permissionCallbacks.OnPermissionGranted -= OnHandTrackingPermissionGranted;
+        permissionCallbacks.OnPermissionDenied -= OnHandTrackingPermissionDenied;
+        permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnHandTrackingPermissionDenied;
+
         if (palmDetectionIndicatorMaterial != null)
             Destroy(palmDetectionIndicatorMaterial);
 
         if (palmDetectionIndicator != null)
             Destroy(palmDetectionIndicator);
+    }
+
+    private void OnHandTrackingPermissionGranted(string permission)
+    {
+        if (permission != MLPermission.HandTracking)
+            return;
+
+        handTrackingPermissionGranted = true;
+        Debug.Log($"[FixedPalmMenuPresenter] Permission granted: {permission}. Resolving XRHandSubsystem...", this);
+#if XR_HANDS_1_1_OR_NEWER
+        ResolveHandSubsystem();
+#endif
+    }
+
+    private void OnHandTrackingPermissionDenied(string permission)
+    {
+        if (permission != MLPermission.HandTracking)
+            return;
+
+        handTrackingPermissionGranted = false;
+        Debug.LogWarning($"[FixedPalmMenuPresenter] Permission denied: {permission}. Hand tracking disabled; dot stays gray.", this);
     }
 
     private void Update()
@@ -250,6 +305,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
             return;
 
         isVisible = visible;
+        Debug.Log($"[FixedPalmMenuPresenter] Menu {(visible ? "shown" : "hidden")}.", this);
 
         if (canvasGroup != null)
         {
@@ -308,15 +364,31 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     private PalmGestureState GetPalmGestureState()
     {
 #if XR_HANDS_1_1_OR_NEWER
+        if (!handTrackingPermissionGranted)
+        {
+            LogHandStateRateLimited(false, false, false, false);
+            return PalmGestureState.NoTrackedPalm;
+        }
+
         if (handSubsystem == null || !handSubsystem.running)
             ResolveHandSubsystem();
 
         if (handSubsystem == null)
+        {
+            LogHandStateRateLimited(false, false, false, false);
             return PalmGestureState.NoTrackedPalm;
+        }
 
         bool leftTracked = IsPalmTracked(handSubsystem.leftHand);
         bool rightTracked = IsPalmTracked(handSubsystem.rightHand);
-        if (IsPalmPresentingMenu(handSubsystem.leftHand) || IsPalmPresentingMenu(handSubsystem.rightHand))
+
+        // Menu only opens for the right hand (per Phase 3 spec). Left hand still
+        // contributes to dot state so the user gets feedback either way.
+        bool rightPresenting = IsPalmPresentingMenu(handSubsystem.rightHand, isRightHand: true);
+        bool leftPresenting = IsPalmPresentingMenu(handSubsystem.leftHand, isRightHand: false);
+        LogHandStateRateLimited(leftTracked, rightTracked, leftPresenting, rightPresenting);
+
+        if (rightPresenting)
             return PalmGestureState.PalmPresentingMenu;
 
         return leftTracked || rightTracked ? PalmGestureState.PalmTracked : PalmGestureState.NoTrackedPalm;
@@ -336,15 +408,32 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
         foreach (XRHandSubsystem subsystem in s_HandSubsystems)
         {
-            if (subsystem != null && subsystem.running)
+            if (subsystem == null)
+                continue;
+
+            handSubsystem = subsystem;
+            if (!loggedSubsystemFound)
             {
-                handSubsystem = subsystem;
+                Debug.Log($"[FixedPalmMenuPresenter] XRHandSubsystem found (running={subsystem.running}).", this);
+                loggedSubsystemFound = true;
+            }
+
+            if (subsystem.running)
+            {
+                if (!loggedSubsystemRunning)
+                {
+                    Debug.Log("[FixedPalmMenuPresenter] XRHandSubsystem running; joint data should now flow.", this);
+                    loggedSubsystemRunning = true;
+                }
                 return;
             }
         }
 
-        if (s_HandSubsystems.Count > 0)
-            handSubsystem = s_HandSubsystems[0];
+        if (handSubsystem == null && !loggedSubsystemMissing)
+        {
+            Debug.LogWarning("[FixedPalmMenuPresenter] No XRHandSubsystem present after permission grant. Check OpenXR HandTracking feature is enabled for Android.", this);
+            loggedSubsystemMissing = true;
+        }
     }
 
     private static bool IsPalmTracked(XRHand hand)
@@ -356,7 +445,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         return palm.TryGetPose(out _);
     }
 
-    private bool IsPalmPresentingMenu(XRHand hand)
+    private bool IsPalmPresentingMenu(XRHand hand, bool isRightHand)
     {
         if (!hand.isTracked || cameraTransform == null)
             return false;
@@ -366,13 +455,32 @@ public class FixedPalmMenuPresenter : MonoBehaviour
             return false;
 
         Vector3 directionToCamera = (cameraTransform.position - palmPose.position).normalized;
+        // Palm joint convention in OpenXR XR Hands: +Y of the palm-local frame points
+        // out of the palm regardless of handedness, so we don't flip for left vs right.
         Vector3 palmNormal = palmPose.rotation * Vector3.up;
-        bool palmFacesCamera = Vector3.Dot(palmNormal, directionToCamera) >= palmFacingCameraThreshold;
-
-        if (!palmFacesCamera)
+        float palmDot = Vector3.Dot(palmNormal, directionToCamera);
+        if (isRightHand) lastRightPalmDot = palmDot; else lastLeftPalmDot = palmDot;
+        if (palmDot < palmFacingCameraThreshold)
             return false;
 
         return !requireOpenHand || IsOpenHand(hand);
+    }
+
+    private void LogHandStateRateLimited(bool leftTracked, bool rightTracked, bool leftPresenting, bool rightPresenting)
+    {
+        if (!logHandState) return;
+        if (Time.unscaledTime - lastHandStateLogTime < handStateLogIntervalSeconds) return;
+        lastHandStateLogTime = Time.unscaledTime;
+        Debug.Log(
+            $"[FixedPalmMenuPresenter] L:tracked={leftTracked} dot={Fmt(lastLeftPalmDot)} present={leftPresenting} | " +
+            $"R:tracked={rightTracked} dot={Fmt(lastRightPalmDot)} present={rightPresenting} | " +
+            $"threshold={palmFacingCameraThreshold:F2}",
+            this);
+    }
+
+    private static string Fmt(float value)
+    {
+        return float.IsNaN(value) ? "n/a" : value.ToString("F2");
     }
 
     private static bool IsOpenHand(XRHand hand)
