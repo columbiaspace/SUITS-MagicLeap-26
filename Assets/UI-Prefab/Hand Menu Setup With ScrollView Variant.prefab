@@ -1951,6 +1951,8 @@ MonoBehaviour:
   requireOpenHand: 1
   palmFacingCameraThreshold: 0.55
   hideDelaySeconds: 0.2
+  assignMainCameraToCanvases: 1
+  requireTrackedDeviceRaycaster: 1
   disableLegacyPalmFollow: 1
 --- !u!1 &5849728896677497699
 GameObject:

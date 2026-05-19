@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.UI;
+using UnityEngine.XR.Interaction.Toolkit.UI;
 #if XR_HANDS_1_1_OR_NEWER
 using UnityEngine.XR.Hands;
 #endif
@@ -20,11 +21,16 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     [SerializeField] private float palmFacingCameraThreshold = 0.55f;
     [SerializeField] private float hideDelaySeconds = 0.2f;
 
+    [Header("XR UI Interaction")]
+    [SerializeField] private bool assignMainCameraToCanvases = true;
+    [SerializeField] private bool requireTrackedDeviceRaycaster = true;
+
     [Header("Legacy Hand Menu")]
     [SerializeField] private bool disableLegacyPalmFollow = true;
 
     private Canvas[] canvases;
     private GraphicRaycaster[] graphicRaycasters;
+    private TrackedDeviceGraphicRaycaster[] trackedDeviceGraphicRaycasters;
     private CanvasGroup canvasGroup;
     private float lastValidGestureTime = float.NegativeInfinity;
     private bool isVisible;
@@ -45,6 +51,8 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     private void OnEnable()
     {
         ResolveCamera();
+        EnsureTrackedDeviceRaycasters();
+        ConfigureCanvasesForXrUi();
 #if XR_HANDS_1_1_OR_NEWER
         ResolveHandSubsystem();
 #else
@@ -56,6 +64,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     private void Update()
     {
         ResolveCamera();
+        ConfigureCanvasesForXrUi();
 
         bool gestureIsValid = IsAnyPalmPresentingMenu();
         if (gestureIsValid)
@@ -72,6 +81,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     {
         canvases = GetComponentsInChildren<Canvas>(true);
         graphicRaycasters = GetComponentsInChildren<GraphicRaycaster>(true);
+        trackedDeviceGraphicRaycasters = GetComponentsInChildren<TrackedDeviceGraphicRaycaster>(true);
         canvasGroup = GetComponent<CanvasGroup>();
         if (canvasGroup == null)
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
@@ -81,6 +91,40 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     {
         if (cameraTransform == null && Camera.main != null)
             cameraTransform = Camera.main.transform;
+    }
+
+    private void EnsureTrackedDeviceRaycasters()
+    {
+        if (!requireTrackedDeviceRaycaster)
+            return;
+
+        if (trackedDeviceGraphicRaycasters != null && trackedDeviceGraphicRaycasters.Length > 0)
+            return;
+
+        Canvas rootCanvas = GetComponent<Canvas>();
+        if (rootCanvas == null)
+            return;
+
+        gameObject.AddComponent<TrackedDeviceGraphicRaycaster>();
+        trackedDeviceGraphicRaycasters = GetComponentsInChildren<TrackedDeviceGraphicRaycaster>(true);
+    }
+
+    private void ConfigureCanvasesForXrUi()
+    {
+        if (!assignMainCameraToCanvases || cameraTransform == null || canvases == null)
+            return;
+
+        Camera eventCamera = cameraTransform.GetComponent<Camera>();
+        if (eventCamera == null)
+            return;
+
+        foreach (Canvas canvas in canvases)
+        {
+            if (canvas == null || canvas.renderMode != RenderMode.WorldSpace)
+                continue;
+
+            canvas.worldCamera = eventCamera;
+        }
     }
 
     private void DisableLegacyHandMenu()
@@ -123,6 +167,15 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         if (graphicRaycasters != null)
         {
             foreach (GraphicRaycaster raycaster in graphicRaycasters)
+            {
+                if (raycaster != null)
+                    raycaster.enabled = visible;
+            }
+        }
+
+        if (trackedDeviceGraphicRaycasters != null)
+        {
+            foreach (TrackedDeviceGraphicRaycaster raycaster in trackedDeviceGraphicRaycasters)
             {
                 if (raycaster != null)
                     raycaster.enabled = visible;
