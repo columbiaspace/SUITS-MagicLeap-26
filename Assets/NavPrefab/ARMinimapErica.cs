@@ -587,20 +587,6 @@ public class ARMinimapErica : MonoBehaviour
         return dot;
     }
 
-    /// <summary>
-    /// Returns the current TSS (posx, posy) for the configured EVA ID, or Vector2.zero
-    /// if the TSS data is not yet available. Used by external scripts (e.g. PinchPingSpawner)
-    /// that need the EVA position without duplicating the IMU-bucket parsing logic.
-    /// </summary>
-    public Vector2 GetEvaTssPosition()
-    {
-        Dictionary<string, object> imuEva = GetImuBucket();
-        return new Vector2(
-            (float)ToDouble(imuEva, "posx"),
-            (float)ToDouble(imuEva, "posy")
-        );
-    }
-
     // -------------------------------------------------------------------------
     // Debug logging
     // -------------------------------------------------------------------------
