@@ -577,6 +577,16 @@ public class ARMinimapErica : MonoBehaviour
     // TSS data helpers
     // -------------------------------------------------------------------------
 
+    /// <summary>
+    /// Current TSS (posx, posy) for the configured EVA ID, or Vector2.zero when unavailable.
+    /// </summary>
+    public Vector2 GetEvaTssPosition()
+    {
+        Dictionary<string, object> imuEva = GetImuBucket();
+        if (imuEva == null) return Vector2.zero;
+        return new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
+    }
+
     private Dictionary<string, object> GetImuBucket()
     {
         if (tssApi == null) return null;
