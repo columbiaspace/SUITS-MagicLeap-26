@@ -1193,7 +1193,7 @@ MonoBehaviour:
   voskModelPath: vosk-model-en-us-0.22-lgraph.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
-  silenceStopSeconds: 5
+  silenceStopSeconds: 2
   voiceDetectionThreshold: 0.01
   maxRecordingSeconds: 15
   logTranscripts: 1
