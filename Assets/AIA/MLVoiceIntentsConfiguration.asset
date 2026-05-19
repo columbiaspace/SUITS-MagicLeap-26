@@ -51,11 +51,13 @@ MonoBehaviour:
   - Id: 118
     Value: hide reference map
   - Id: 119
-    Value: go to ltv
+    Value: go to ltv1
   - Id: 120
     Value: return to base
   - Id: 121
     Value: clear path
+  - Id: 122
+    Value: go to ltv2
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []

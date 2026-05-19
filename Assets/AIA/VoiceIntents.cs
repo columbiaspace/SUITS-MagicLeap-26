@@ -33,7 +33,7 @@ public class VoiceIntents : MonoBehaviour
     // MLVoice intent IDs for minimap navigation (NavVoiceCoordinator).
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint NavVoiceEventIdMin = 119;
-    private const uint NavVoiceEventIdMax = 121;
+    private const uint NavVoiceEventIdMax = 122;
 
     /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
     public static event Action HudClearDisplayRequested;
@@ -85,7 +85,7 @@ public class VoiceIntents : MonoBehaviour
              "on LtvVoiceCoordinator so LtvSceneBootstrapper still sees PendingVoiceTrigger.")]
     [SerializeField] private SceneVoiceCoordinator sceneVoiceCoordinator;
 
-    [Tooltip("Optional Mission minimap nav voice coordinator (go to LTV / return / clear path).")]
+    [Tooltip("Optional Mission minimap nav voice coordinator (LTV1 / LTV2 / return to base / clear path).")]
     [SerializeField] private NavVoiceCoordinator navVoiceCoordinator;
 
     [Header("Debugging")]

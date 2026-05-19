@@ -1011,11 +1011,9 @@ MonoBehaviour:
   trailLineWidth: 2.5
   recordDistance: 0.25
   maxTrailPoints: 500
-  showPlannedPath: 1
-  plannedPathColor: {r: 0.2, g: 1, b: 0.8, a: 1}
-  plannedPathLineWidth: 2.5
-  pathStart: {x: -5670, y: -10060}
-  pathGoal: {x: -5635, y: -9960}
+  baseTss: {x: -5670, y: -10060}
+  ltv1Tss: {x: -5635, y: -9960}
+  ltv2Tss: {x: -5615, y: -9995}
   voiceNavPathColor: {r: 1, g: 0.92156863, b: 0.015686275, a: 1}
   voiceNavPathLineWidth: 3.5
   showWaypoints: 1
@@ -3150,10 +3148,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   minimap: {fileID: 224362100}
-  goToLtvPhrases:
+  goToLtv1Phrases:
+  - go to ltv1
+  - go to l tv 1
+  - go to the ltv1
   - go to ltv
-  - go to l t v
-  - go to the ltv
+  - ltv1
+  goToLtv2Phrases:
+  - go to ltv2
+  - go to l tv 2
+  - ltv2
   returnPhrases:
   - return to base
   - return to home
@@ -3163,6 +3167,8 @@ MonoBehaviour:
   - go to start
   - back to base
   - rth
+  - return
+  - base
   clearPathPhrases:
   - clear path
   - clear the path
