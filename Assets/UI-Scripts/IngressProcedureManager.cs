@@ -43,7 +43,11 @@ public class IngressProcedureManager : MonoBehaviour
         UiaBool,
         DcuBool,
         DcuBattBool,
+        HmdWait,
     }
+
+    private const string HmdOxyTanksBelow10 = "oxy_tanks_below_10";
+    private const string HmdCoolantBelow5 = "coolant_below_5";
 
     private class Step
     {
@@ -135,6 +139,8 @@ public class IngressProcedureManager : MonoBehaviour
             { Label = lbl, Image = img, Cond = CondType.DcuBool, Field = field, Expected = exp };
         Step B(string lbl, Sprite img, string field, bool exp) => new Step
             { Label = lbl, Image = img, Cond = CondType.DcuBattBool, Field = field, Expected = exp };
+        Step H(string lbl, Sprite img, string hmdKey) => new Step
+            { Label = lbl, Image = img, Cond = CondType.HmdWait, Field = hmdKey };
 
         // 12 steps total (steps 5–9 in checklist are HMD timed waits + surrounding steps)
         _steps = new List<Step>
@@ -146,16 +152,16 @@ public class IngressProcedureManager : MonoBehaviour
                 dcuBattLocalUmbSprite, "ps", false),
             U("UIA: OXYGEN O2 VENT – OPEN (Vent O2 tanks)\n",
                 uiaO2VentSprite, "oxy_vent", true),
-            T("HMD: Wait until both Primary and Secondary OXY tanks are < 10 psi\n",
-                uiaPanelSprite, 3f),
+            H("HMD: Wait until both Primary and Secondary OXY tanks are < 10 psi\n",
+                uiaPanelSprite, HmdOxyTanksBelow10),
             U("UIA: OXYGEN O2 VENT – CLOSE\n",
                 uiaO2VentSprite, "oxy_vent", false),
             D("DCU: PUMP – OPEN (Empty water tanks)\n",
                 dcuPumpSprite, "pump", true),
             U("UIA: EV-1 WASTE WATER – OPEN\n",
                 uiaWaterWasteSprite, "eva1_water_waste", true),
-            T("HMD: Wait until water EV1 Coolant tank is < 5%\n",
-                uiaPanelSprite, 3f),
+            H("HMD: Wait until water EV1 Coolant tank is < 5%\n",
+                uiaPanelSprite, HmdCoolantBelow5),
             U("UIA: EV-1 WASTE WATER – CLOSE\n",
                 uiaWaterWasteSprite, "eva1_water_waste", false),
             U("UIA: EV-1 EMU PWR – OFF\n",
@@ -192,7 +198,7 @@ public class IngressProcedureManager : MonoBehaviour
 
         if (step.Cond == CondType.Timed)
             _timerCo = StartCoroutine(TimedAdvance(step.Secs));
-        else if (_latestData != null)
+        else
             TryAdvance();
     }
 
@@ -272,6 +278,17 @@ public class IngressProcedureManager : MonoBehaviour
         var step = _steps[_current];
         if (step.Cond == CondType.Timed) return;
 
+        if (step.Cond == CondType.HmdWait)
+        {
+            RefreshHmdStepText(step);
+            if (IsHmdWaitMet(step.Field))
+            {
+                Advance();
+            }
+
+            return;
+        }
+
         bool met = step.Cond switch
         {
             CondType.UiaBool     => ReadUiaBool(step.Field) == step.Expected,
@@ -281,6 +298,97 @@ public class IngressProcedureManager : MonoBehaviour
         };
 
         if (met) Advance();
+    }
+
+    private void RefreshHmdStepText(Step step)
+    {
+        if (stepText == null || step == null)
+        {
+            return;
+        }
+
+        string progress = step.Field switch
+        {
+            HmdOxyTanksBelow10 =>
+                $"Pri: {FmtTelemetry("oxy_pri_pressure", "psi")} | Sec: {FmtTelemetry("oxy_sec_pressure", "psi")} (need both < 10 psi)",
+            HmdCoolantBelow5 =>
+                $"Coolant: {FmtTelemetry("coolant_storage", "%")} (need < 5%)",
+            _ => string.Empty,
+        };
+
+        stepText.text = string.IsNullOrEmpty(progress)
+            ? $"Step {_current + 1} of {_steps.Count}\n{step.Label}"
+            : $"Step {_current + 1} of {_steps.Count}\n{step.Label}\n{progress}";
+    }
+
+    private bool IsHmdWaitMet(string key)
+    {
+        if (_latestData == null || string.IsNullOrEmpty(key))
+        {
+            return false;
+        }
+
+        switch (key)
+        {
+            case HmdOxyTanksBelow10:
+                return ReadTelemetry("oxy_pri_pressure", out double pri) && pri < 10.0 &&
+                       ReadTelemetry("oxy_sec_pressure", out double sec) && sec < 10.0;
+            case HmdCoolantBelow5:
+                return ReadTelemetry("coolant_storage", out double coolant) && coolant < 5.0;
+            default:
+                return false;
+        }
+    }
+
+    private string FmtTelemetry(string field, string unit)
+    {
+        if (!ReadTelemetry(field, out double value))
+        {
+            return "---";
+        }
+
+        return value.ToString("F1", System.Globalization.CultureInfo.InvariantCulture) + " " + unit;
+    }
+
+    private bool ReadTelemetry(string field, out double value)
+    {
+        value = 0;
+        object raw = GetPath(_latestData, "telemetry.eva1." + field);
+        return TryCoerceDouble(raw, out value);
+    }
+
+    private static bool TryCoerceDouble(object raw, out double value)
+    {
+        value = 0;
+        if (raw == null)
+        {
+            return false;
+        }
+
+        if (raw is double d) { value = d; return true; }
+        if (raw is float f) { value = f; return true; }
+        if (raw is int i) { value = i; return true; }
+        if (raw is long l) { value = l; return true; }
+        if (raw is string s)
+        {
+            return double.TryParse(s, System.Globalization.NumberStyles.Any,
+                System.Globalization.CultureInfo.InvariantCulture, out value);
+        }
+
+        if (raw is IConvertible c)
+        {
+            try
+            {
+                value = c.ToDouble(System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        return false;
     }
 
     private bool ReadUiaBool(string field)
