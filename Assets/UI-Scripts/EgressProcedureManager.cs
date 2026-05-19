@@ -237,12 +237,7 @@ public class EgressProcedureManager : MonoBehaviour
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
         if (displayImage != null)
-        {
-            Sprite sprite = step.Image != null ? step.Image : uiaPanelSprite;
-            sprite = ResolveDcuSprite(step, sprite);
-
-            displayImage.sprite = sprite;
-        }
+            displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
 
         AnnounceStep(index, step);
 
@@ -293,23 +288,6 @@ public class EgressProcedureManager : MonoBehaviour
     private void KillTimer()
     {
         if (_timerCo != null) { StopCoroutine(_timerCo); _timerCo = null; }
-    }
-
-    private Sprite ResolveDcuSprite(Step step, Sprite sprite)
-    {
-        return ProcedureDcuSpriteResolver.Resolve(
-            step?.Label,
-            sprite,
-            new ProcedureDcuSpriteResolver.Sprites
-            {
-                Panel = dcuPanelSprite,
-                Oxy = dcuOxySprite,
-                Fan = dcuFanSprite,
-                Pump = dcuPumpSprite,
-                Co2 = dcuCo2Sprite,
-                BattLocalUmb = dcuBattLocalUmbSprite,
-                BattSecPri = dcuBattSecPriSprite,
-            });
     }
 
     // ── TSS data ───────────────────────────────────────────────────────
