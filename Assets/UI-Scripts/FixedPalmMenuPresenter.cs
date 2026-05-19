@@ -25,6 +25,15 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     [SerializeField] private bool assignMainCameraToCanvases = true;
     [SerializeField] private bool requireTrackedDeviceRaycaster = true;
 
+    [Header("Palm Debug Indicator")]
+    [SerializeField] private bool showPalmDetectionIndicator = true;
+    [SerializeField] private float indicatorDistanceFromCamera = 0.65f;
+    [SerializeField] private Vector2 indicatorOffsetFromCenter = new Vector2(0.25f, -0.22f);
+    [SerializeField] private float indicatorScale = 0.025f;
+    [SerializeField] private Color noPalmColor = new Color(0.45f, 0.45f, 0.45f, 0.85f);
+    [SerializeField] private Color palmTrackedColor = new Color(1f, 0.85f, 0.15f, 0.9f);
+    [SerializeField] private Color palmMenuVisibleColor = new Color(0.1f, 1f, 0.25f, 0.95f);
+
     [Header("Legacy Hand Menu")]
     [SerializeField] private bool disableLegacyPalmFollow = true;
 
@@ -34,6 +43,16 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     private CanvasGroup canvasGroup;
     private float lastValidGestureTime = float.NegativeInfinity;
     private bool isVisible;
+    private GameObject palmDetectionIndicator;
+    private Renderer palmDetectionIndicatorRenderer;
+    private Material palmDetectionIndicatorMaterial;
+
+    private enum PalmGestureState
+    {
+        NoTrackedPalm,
+        PalmTracked,
+        PalmPresentingMenu,
+    }
 
 #if XR_HANDS_1_1_OR_NEWER
     private XRHandSubsystem handSubsystem;
@@ -53,6 +72,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         ResolveCamera();
         EnsureTrackedDeviceRaycasters();
         ConfigureCanvasesForXrUi();
+        EnsurePalmDetectionIndicator();
 #if XR_HANDS_1_1_OR_NEWER
         ResolveHandSubsystem();
 #else
@@ -61,17 +81,34 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         SetMenuVisible(false, true);
     }
 
+    private void OnDisable()
+    {
+        if (palmDetectionIndicator != null)
+            palmDetectionIndicator.SetActive(false);
+    }
+
+    private void OnDestroy()
+    {
+        if (palmDetectionIndicatorMaterial != null)
+            Destroy(palmDetectionIndicatorMaterial);
+
+        if (palmDetectionIndicator != null)
+            Destroy(palmDetectionIndicator);
+    }
+
     private void Update()
     {
         ResolveCamera();
         ConfigureCanvasesForXrUi();
 
-        bool gestureIsValid = IsAnyPalmPresentingMenu();
+        PalmGestureState gestureState = GetPalmGestureState();
+        bool gestureIsValid = gestureState == PalmGestureState.PalmPresentingMenu;
         if (gestureIsValid)
             lastValidGestureTime = Time.time;
 
         bool shouldShow = gestureIsValid || Time.time - lastValidGestureTime <= hideDelaySeconds;
         SetMenuVisible(shouldShow);
+        UpdatePalmDetectionIndicator(gestureState);
 
         if (shouldShow)
             PositionInFrontOfCamera();
@@ -124,6 +161,72 @@ public class FixedPalmMenuPresenter : MonoBehaviour
                 continue;
 
             canvas.worldCamera = eventCamera;
+        }
+    }
+
+    private void EnsurePalmDetectionIndicator()
+    {
+        if (!showPalmDetectionIndicator || palmDetectionIndicator != null)
+            return;
+
+        palmDetectionIndicator = GameObject.CreatePrimitive(PrimitiveType.Sphere);
+        palmDetectionIndicator.name = "Palm Menu Detection Indicator";
+
+        Collider indicatorCollider = palmDetectionIndicator.GetComponent<Collider>();
+        if (indicatorCollider != null)
+            Destroy(indicatorCollider);
+
+        palmDetectionIndicatorRenderer = palmDetectionIndicator.GetComponent<Renderer>();
+        if (palmDetectionIndicatorRenderer != null)
+        {
+            Shader indicatorShader = Shader.Find("Unlit/Color");
+            if (indicatorShader == null)
+                indicatorShader = Shader.Find("Sprites/Default");
+
+            if (indicatorShader != null)
+            {
+                palmDetectionIndicatorMaterial = new Material(indicatorShader);
+                palmDetectionIndicatorRenderer.material = palmDetectionIndicatorMaterial;
+            }
+        }
+    }
+
+    private void UpdatePalmDetectionIndicator(PalmGestureState gestureState)
+    {
+        if (!showPalmDetectionIndicator)
+        {
+            if (palmDetectionIndicator != null)
+                palmDetectionIndicator.SetActive(false);
+            return;
+        }
+
+        EnsurePalmDetectionIndicator();
+        if (palmDetectionIndicator == null || cameraTransform == null)
+            return;
+
+        palmDetectionIndicator.SetActive(true);
+        palmDetectionIndicator.transform.position =
+            cameraTransform.position +
+            cameraTransform.forward * indicatorDistanceFromCamera +
+            cameraTransform.right * indicatorOffsetFromCenter.x +
+            cameraTransform.up * indicatorOffsetFromCenter.y;
+        palmDetectionIndicator.transform.rotation = Quaternion.LookRotation(cameraTransform.forward, cameraTransform.up);
+        palmDetectionIndicator.transform.localScale = Vector3.one * indicatorScale;
+
+        if (palmDetectionIndicatorMaterial != null)
+            palmDetectionIndicatorMaterial.color = GetIndicatorColor(gestureState);
+    }
+
+    private Color GetIndicatorColor(PalmGestureState gestureState)
+    {
+        switch (gestureState)
+        {
+            case PalmGestureState.PalmPresentingMenu:
+                return palmMenuVisibleColor;
+            case PalmGestureState.PalmTracked:
+                return palmTrackedColor;
+            default:
+                return noPalmColor;
         }
     }
 
@@ -202,18 +305,23 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         transform.localScale = fixedWorldScale;
     }
 
-    private bool IsAnyPalmPresentingMenu()
+    private PalmGestureState GetPalmGestureState()
     {
 #if XR_HANDS_1_1_OR_NEWER
         if (handSubsystem == null || !handSubsystem.running)
             ResolveHandSubsystem();
 
         if (handSubsystem == null)
-            return false;
+            return PalmGestureState.NoTrackedPalm;
 
-        return IsPalmPresentingMenu(handSubsystem.leftHand) || IsPalmPresentingMenu(handSubsystem.rightHand);
+        bool leftTracked = IsPalmTracked(handSubsystem.leftHand);
+        bool rightTracked = IsPalmTracked(handSubsystem.rightHand);
+        if (IsPalmPresentingMenu(handSubsystem.leftHand) || IsPalmPresentingMenu(handSubsystem.rightHand))
+            return PalmGestureState.PalmPresentingMenu;
+
+        return leftTracked || rightTracked ? PalmGestureState.PalmTracked : PalmGestureState.NoTrackedPalm;
 #else
-        return false;
+        return PalmGestureState.NoTrackedPalm;
 #endif
     }
 
@@ -237,6 +345,15 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
         if (s_HandSubsystems.Count > 0)
             handSubsystem = s_HandSubsystems[0];
+    }
+
+    private static bool IsPalmTracked(XRHand hand)
+    {
+        if (!hand.isTracked)
+            return false;
+
+        XRHandJoint palm = hand.GetJoint(XRHandJointID.Palm);
+        return palm.TryGetPose(out _);
     }
 
     private bool IsPalmPresentingMenu(XRHand hand)

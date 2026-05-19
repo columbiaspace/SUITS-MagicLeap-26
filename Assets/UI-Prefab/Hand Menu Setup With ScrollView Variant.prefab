@@ -1953,6 +1953,13 @@ MonoBehaviour:
   hideDelaySeconds: 0.2
   assignMainCameraToCanvases: 1
   requireTrackedDeviceRaycaster: 1
+  showPalmDetectionIndicator: 1
+  indicatorDistanceFromCamera: 0.65
+  indicatorOffsetFromCenter: {x: 0.25, y: -0.22}
+  indicatorScale: 0.025
+  noPalmColor: {r: 0.45, g: 0.45, b: 0.45, a: 0.85}
+  palmTrackedColor: {r: 1, g: 0.85, b: 0.15, a: 0.9}
+  palmMenuVisibleColor: {r: 0.1, g: 1, b: 0.25, a: 0.95}
   disableLegacyPalmFollow: 1
 --- !u!1 &5849728896677497699
 GameObject:
