@@ -985,7 +985,7 @@ MonoBehaviour:
   VoiceIntentsConfiguration: {fileID: 11400000, guid: bc0d55f56ba294532829093db7f9abb8, type: 2}
   targetObject: {fileID: 0}
   rotationSpeed: 50
-  sendVoicePromptToAi: 0
+  sendVoicePromptToAi: 1
   aiGenerateUrl: http://192.168.50.19:13853/chat
   aiModel: gemma4:26b
   logAiResponse: 1

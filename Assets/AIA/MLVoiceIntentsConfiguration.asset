@@ -40,6 +40,16 @@ MonoBehaviour:
     Value: end ingress
   - Id: 113
     Value: end ltv repair
+  - Id: 114
+    Value: clear display
+  - Id: 115
+    Value: show display
+  - Id: 116
+    Value: next step
+  - Id: 117
+    Value: show reference map
+  - Id: 118
+    Value: hide reference map
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []
