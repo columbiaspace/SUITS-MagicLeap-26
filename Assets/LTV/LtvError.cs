@@ -30,7 +30,8 @@ namespace LtvDiagnostics
 
             Criticality = ParseDigit(Code, 0);
             SubsystemId = ParseDigit(Code, 1);
-            Priority = Criticality * 10 + SubsystemId;
+            // ERM (4800 / recovery_mode) must run before any other error when active.
+            Priority = Code == "4800" ? int.MaxValue : Criticality * 10 + SubsystemId;
             Danger = ClassifyDanger(Criticality);
         }
 

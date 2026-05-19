@@ -161,9 +161,13 @@ public class LtvInstructionService : MonoBehaviour
                 Debug.Log("[LTV] No error_procedures returned from TSS — likely UDP timeout or empty response.", this);
             }
 
+            // Cold-start with no TSS data: do NOT fire AllErrorsResolved. That message
+            // means "we finished work," not "TSS hasn't responded yet" — and firing it
+            // here latches the HUD onto "All LTV errors resolved" until ErrorChanged
+            // fires later. RefreshLoop will queue real errors as they arrive; PopNextError
+            // will fire AllErrorsResolved once we've actually had work to finish.
             diagnosisActive = false;
             DiagnosisStarted?.Invoke(0);
-            AllErrorsResolved?.Invoke();
             EmitSnapshot();
             return;
         }
@@ -553,6 +557,9 @@ public class LtvInstructionService : MonoBehaviour
         }
 
         int addedCount = 0;
+        int filteredNoNeedResolve = 0;
+        int filteredEmptyProcedures = 0;
+        int filteredAlreadyQueued = 0;
         for (int i = 0; i < errorProcedures.Count; i++)
         {
             Dictionary<string, object> raw = errorProcedures[i];
@@ -562,15 +569,13 @@ public class LtvInstructionService : MonoBehaviour
             }
 
             LtvError error = ParseError(raw);
-            if (error == null || !error.NeedsResolved || error.Procedures.Count == 0)
+            if (error == null)
             {
                 continue;
             }
-
-            if (queuedCodes.Contains(error.Code))
-            {
-                continue;
-            }
+            if (!error.NeedsResolved) { filteredNoNeedResolve++; continue; }
+            if (error.Procedures.Count == 0) { filteredEmptyProcedures++; continue; }
+            if (queuedCodes.Contains(error.Code)) { filteredAlreadyQueued++; continue; }
 
             errorHeap.Insert(error);
             queuedCodes.Add(error.Code);
@@ -584,6 +589,25 @@ public class LtvInstructionService : MonoBehaviour
                     this
                 );
             }
+        }
+
+        // Surface the silent-filter case: TSS returned entries but none made it into the
+        // heap, leaving the HUD stuck on "no errors." Dumps the first raw entry's keys so
+        // a field-name mismatch (needs_resolution vs needs_resolved, steps vs procedures)
+        // shows up in the console instead of as an invisible no-op.
+        if (enableDebugLogs && addedCount == 0 && errorProcedures.Count > 0
+            && filteredAlreadyQueued < errorProcedures.Count)
+        {
+            string firstKeys = errorProcedures[0] != null
+                ? string.Join(",", errorProcedures[0].Keys)
+                : "(null)";
+            Debug.LogWarning(
+                $"[LTV] Refresh saw {errorProcedures.Count} TSS entries but queued 0. " +
+                $"filtered needs_resolved=false:{filteredNoNeedResolve}, " +
+                $"empty_procedures:{filteredEmptyProcedures}, already_queued:{filteredAlreadyQueued}. " +
+                $"First entry keys: [{firstKeys}]",
+                this
+            );
         }
 
         return addedCount;

@@ -46,11 +46,11 @@ public class NavVoiceCoordinator : MonoBehaviour
     {
         switch (eventId)
         {
-            case 114:
+            case 119:
                 return ExecuteGoToLtv($"MLVoice id={eventId}");
-            case 115:
+            case 120:
                 return ExecuteReturn($"MLVoice id={eventId}");
-            case 116:
+            case 121:
                 return ExecuteClearPath($"MLVoice id={eventId}");
         }
 

@@ -232,17 +232,47 @@ public class AIAVoskInputController : MonoBehaviour
     }
 
     /// <summary>
-    /// Starts a new Vosk recording session. If a session is already active it is
-    /// stopped first so the wake phrase always produces a fresh session.
-    /// The Stop Recording button has been removed from the AIA panel; the only
-    /// ways a recording ends are: (a) VAD silence timeout, (b) max-recording watchdog,
-    /// or (c) this method being called again (new "hey luna").
+    /// Wired to the on-screen "Start/Stop Recording" button.
+    /// - Idle  → start a new recording session.
+    /// - Active → stop the recording. The final transcript that Vosk emits on stop
+    ///   flows through HandleTranscriptionResult → VoiceIntents.SubmitPromptFromText,
+    ///   which POSTs the transcript to the AIA /chat endpoint and renders the response
+    ///   in the AIA panel. So clicking Stop also submits the in-progress query.
     /// </summary>
     public void ToggleRecording()
     {
-        StartRecordingFromVoiceIntent();
+        if (!EnsureMicrophonePermission())
+        {
+            return;
+        }
+
+        if (isVoskInitializing)
+        {
+            UpdateStatus("Vosk is still initializing...");
+            return;
+        }
+
+        if (!isVoskInitialized)
+        {
+            InitializeVosk(startRecordingWhenReady: true);
+            return;
+        }
+
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            StopRecording();
+        }
+        else
+        {
+            StartRecording();
+        }
     }
 
+    /// <summary>
+    /// "Hey Luna" wake-phrase entry point. Always starts a fresh session — if a
+    /// recording is already active, it is stopped first so the user gets a new
+    /// transcript window rather than appending to an old one.
+    /// </summary>
     public void StartRecordingFromVoiceIntent()
     {
         if (!EnsureMicrophonePermission())
@@ -256,8 +286,6 @@ public class AIAVoskInputController : MonoBehaviour
             return;
         }
 
-        // If a session is already active, stop it and restart after one frame so
-        // the VoiceProcessor/Vosk coroutine chain fully unwinds before reinit.
         if (voiceProcessor != null && voiceProcessor.IsRecording)
         {
             StopRecording();
@@ -276,8 +304,6 @@ public class AIAVoskInputController : MonoBehaviour
 
     private IEnumerator RestartRecordingNextFrame()
     {
-        // Wait one frame for StopRecording's Microphone.End / OnRecordingStop
-        // callbacks to complete before reinitializing the recognizer.
         yield return null;
         if (isVoskInitialized)
         {

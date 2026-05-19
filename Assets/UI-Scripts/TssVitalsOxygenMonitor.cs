@@ -6,10 +6,9 @@ using UnityEngine;
 
 /// <summary>
 /// Polls the TSS EVA telemetry packet and grades every configured vital against
-/// "low / critical" thresholds. Originally oxygen-only — kept the class name for
-/// existing scene/prefab references — now drives the WarningCanvas off any vital
-/// that drifts out of range (oxygen, battery, suit-pressure CO2, heart rate,
-/// temperature, coolant, …).
+/// min/max/nominal thresholds per the EVA Telemetry Ranges spec. Fires
+/// VitalsAlertChanged with the full list of active alerts (critical-first) so
+/// the WarningCanvasUI can display all of them simultaneously.
 /// </summary>
 public class TssVitalsOxygenMonitor : MonoBehaviour
 {
@@ -26,7 +25,9 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         /// <summary>Trigger when value drops at/below threshold (oxygen, battery, coolant…).</summary>
         Low,
         /// <summary>Trigger when value rises at/above threshold (heart rate, CO2, temperature…).</summary>
-        High
+        High,
+        /// <summary>Trigger when value falls outside a min/max band. Low-side uses warningThreshold/criticalThreshold; high-side uses warningThresholdHigh/criticalThresholdHigh.</summary>
+        Range
     }
 
     [Serializable]
@@ -41,17 +42,26 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         [Tooltip("Optional second path. Used if the first is missing or, for Low rules, to take the lowest value.")]
         public string secondaryPath;
 
-        [Tooltip("Suffix appended to the value in the warning text (%, psi, bpm, °F).")]
+        [Tooltip("Suffix appended to the value in the warning text (%, psi, bpm, °C).")]
         public string unit = "%";
 
-        [Tooltip("Whether the alert fires when value goes Low (≤) or High (≥).")]
+        [Tooltip("Whether the alert fires when value goes Low (≤), High (≥), or outside a Range.")]
         public AlertDirection direction = AlertDirection.Low;
 
-        [Tooltip("Yellow-warning threshold.")]
+        [Tooltip("Yellow-warning threshold (low-side for Range).")]
         public float warningThreshold = 30f;
 
-        [Tooltip("Red-critical threshold.")]
+        [Tooltip("Red-critical threshold (low-side for Range).")]
         public float criticalThreshold = 15f;
+
+        [Tooltip("For Range direction: high-side yellow-warning threshold.")]
+        public float warningThresholdHigh;
+
+        [Tooltip("For Range direction: high-side red-critical threshold.")]
+        public float criticalThresholdHigh;
+
+        [Tooltip("Actionable procedure shown in the warning headline (e.g. 'Swap to secondary fan (DCU).').")]
+        public string actionMessage;
 
         [Tooltip("Format string for the value, e.g. F1 → '12.3'.")]
         public string valueFormat = "F1";
@@ -72,8 +82,8 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
     public static event Action<float> CriticalOxygenEntered;
     /// <summary>Backwards-compat event — fires whenever the *oxygen* rule changes state.</summary>
     public static event Action<OxygenState, float> OxygenStateChanged;
-    /// <summary>Fires whenever the worst-case vital state changes (any vital).</summary>
-    public static event Action<VitalsAlert> VitalsAlertChanged;
+    /// <summary>Fires whenever the set of active alerts changes. List is sorted critical-first.</summary>
+    public static event Action<IReadOnlyList<VitalsAlert>> VitalsAlertChanged;
 
     [Header("TSS API Source")]
     [SerializeField] private TssUnityApiService tssApi;
@@ -83,35 +93,148 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
     [SerializeField] private string primaryOxygenPath = "telemetry.eva1.oxy_pri_storage";
     [SerializeField] private string secondaryOxygenPath = "telemetry.eva1.oxy_sec_storage";
     [SerializeField] private float oxygenLowPercent = 30f;
-    [SerializeField] private float oxygenCriticalPercent = 15f;
+    [SerializeField] private float oxygenCriticalPercent = 20f;
     [SerializeField] private bool useLowestAvailableSource = true;
 
     [Header("Other Vitals — leave empty to disable")]
     [SerializeField]
     private List<VitalRule> vitalRules = new List<VitalRule>
     {
+        // --- Battery (min 20%, drops throughout EVA) ---
         new VitalRule {
-            label = "BATTERY", path = "telemetry.eva1.primary_battery_level",
-            secondaryPath = "telemetry.eva1.secondary_battery_level", unit = "%",
-            direction = AlertDirection.Low, warningThreshold = 30f, criticalThreshold = 15f },
+            label = "PRIMARY BATTERY", path = "telemetry.eva1.primary_battery_level",
+            unit = "%", direction = AlertDirection.Low,
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
         new VitalRule {
-            label = "HEART RATE", path = "telemetry.eva1.heart_rate", unit = "bpm",
-            direction = AlertDirection.High, warningThreshold = 150f, criticalThreshold = 180f, valueFormat = "F0" },
+            label = "SECONDARY BATTERY", path = "telemetry.eva1.secondary_battery_level",
+            unit = "%", direction = AlertDirection.Low,
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
+
+        // --- Oxygen Storage (min 20%, drops throughout EVA) ---
         new VitalRule {
-            label = "SUIT CO2", path = "telemetry.eva1.suit_pressure_co2", unit = "psi",
-            direction = AlertDirection.High, warningThreshold = 0.5f, criticalThreshold = 1f, valueFormat = "F2" },
+            label = "O2 PRIMARY STORAGE", path = "telemetry.eva1.oxy_pri_storage",
+            unit = "%", direction = AlertDirection.Low,
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
         new VitalRule {
-            label = "HELMET CO2", path = "telemetry.eva1.helmet_pressure_co2", unit = "psi",
-            direction = AlertDirection.High, warningThreshold = 0.5f, criticalThreshold = 1f, valueFormat = "F2" },
+            label = "O2 SECONDARY STORAGE", path = "telemetry.eva1.oxy_sec_storage",
+            unit = "%", direction = AlertDirection.Low,
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
+
+        // --- Oxygen Tank Pressure (min 600 psi, starts full at 3,000 and drains) ---
         new VitalRule {
-            label = "TEMP", path = "telemetry.eva1.temperature", unit = "°F",
-            direction = AlertDirection.High, warningThreshold = 100f, criticalThreshold = 105f, valueFormat = "F1" },
+            label = "O2 PRIMARY PRESSURE", path = "telemetry.eva1.oxy_pri_pressure",
+            unit = " psi", direction = AlertDirection.Low,
+            warningThreshold = 700f, criticalThreshold = 600f, valueFormat = "F0" },
         new VitalRule {
-            label = "COOLANT", path = "telemetry.eva1.coolant_storage", unit = "%",
-            direction = AlertDirection.Low, warningThreshold = 30f, criticalThreshold = 15f, valueFormat = "F1" },
+            label = "O2 SECONDARY PRESSURE", path = "telemetry.eva1.oxy_sec_pressure",
+            unit = " psi", direction = AlertDirection.Low,
+            warningThreshold = 700f, criticalThreshold = 600f, valueFormat = "F0" },
+
+        // --- Coolant Storage (min 80%, egress fills to >95% — warn below 95%) ---
         new VitalRule {
-            label = "SUIT PRESSURE", path = "telemetry.eva1.suit_pressure_total", unit = "psi",
-            direction = AlertDirection.Low, warningThreshold = 3.5f, criticalThreshold = 3f, valueFormat = "F2" }
+            label = "COOLANT STORAGE", path = "telemetry.eva1.coolant_storage",
+            unit = "%", direction = AlertDirection.Low,
+            warningThreshold = 95f, criticalThreshold = 80f, valueFormat = "F1" },
+
+        // --- Heart Rate (50–160 bpm) ---
+        new VitalRule {
+            label = "HEART RATE", path = "telemetry.eva1.heart_rate",
+            unit = " bpm", direction = AlertDirection.Range,
+            warningThreshold = 60f, criticalThreshold = 50f,
+            warningThresholdHigh = 150f, criticalThresholdHigh = 160f, valueFormat = "F0",
+            actionMessage = "Astronaut must slow down." },
+
+        // --- O2 Consumption (nominal 0.10, range 0.05–0.15 psi/min) ---
+        new VitalRule {
+            label = "O2 CONSUMPTION", path = "telemetry.eva1.oxy_consumption",
+            unit = " psi/min", direction = AlertDirection.Range,
+            warningThreshold = 0.09f, criticalThreshold = 0.05f,
+            warningThresholdHigh = 0.11f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+
+        // --- CO2 Production (nominal 0.10, range 0.05–0.15 psi/min) ---
+        new VitalRule {
+            label = "CO2 PRODUCTION", path = "telemetry.eva1.co2_production",
+            unit = " psi/min", direction = AlertDirection.Range,
+            warningThreshold = 0.09f, criticalThreshold = 0.05f,
+            warningThresholdHigh = 0.11f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+
+        // --- Suit Pressure: O2 (nominal 4.0, range 3.5–4.1 psi) ---
+        new VitalRule {
+            label = "SUIT O2 PRESSURE", path = "telemetry.eva1.suit_pressure_oxy",
+            unit = " psi", direction = AlertDirection.Range,
+            warningThreshold = 3.9f, criticalThreshold = 3.5f,
+            warningThresholdHigh = 4.05f, criticalThresholdHigh = 4.1f, valueFormat = "F2",
+            actionMessage = "Swap to secondary O2 tank (DCU). Return to PR." },
+
+        // --- Suit Pressure: CO2 (nominal 0.0, max 0.1 psi) ---
+        new VitalRule {
+            label = "SUIT CO2 PRESSURE", path = "telemetry.eva1.suit_pressure_co2",
+            unit = " psi", direction = AlertDirection.High,
+            warningThreshold = 0.005f, criticalThreshold = 0.1f, valueFormat = "F3",
+            actionMessage = "Vent scrubber via DCU CO2 switch." },
+
+        // --- Suit Pressure: Other (nominal 0.0, max 0.5 psi) ---
+        new VitalRule {
+            label = "SUIT OTHER PRESSURE", path = "telemetry.eva1.suit_pressure_other",
+            unit = " psi", direction = AlertDirection.High,
+            warningThreshold = 0.005f, criticalThreshold = 0.5f, valueFormat = "F3",
+            actionMessage = "Return to PR immediately." },
+
+        // --- Suit Pressure: Total (nominal 4.0, range 3.5–4.5 psi) ---
+        new VitalRule {
+            label = "SUIT TOTAL PRESSURE", path = "telemetry.eva1.suit_pressure_total",
+            unit = " psi", direction = AlertDirection.Range,
+            warningThreshold = 3.9f, criticalThreshold = 3.5f,
+            warningThresholdHigh = 4.1f, criticalThresholdHigh = 4.5f, valueFormat = "F2",
+            actionMessage = "Review O2 pressure and scrubber values." },
+
+        // --- Helmet CO2 (nominal 0.0, max 0.15 psi) ---
+        new VitalRule {
+            label = "HELMET CO2", path = "telemetry.eva1.helmet_pressure_co2",
+            unit = " psi", direction = AlertDirection.High,
+            warningThreshold = 0.005f, criticalThreshold = 0.15f, valueFormat = "F3",
+            actionMessage = "Swap to secondary fan (DCU). Return to PR." },
+
+        // --- Primary Fan only (nominal 30,000 rpm — alert if above or below 30,000) ---
+        new VitalRule {
+            label = "PRIMARY FAN", path = "telemetry.eva1.fan_pri_rpm",
+            unit = " rpm", direction = AlertDirection.Range,
+            warningThreshold = 29999f, criticalThreshold = 20000f,
+            warningThresholdHigh = 30001f, criticalThresholdHigh = 40000f, valueFormat = "F0",
+            actionMessage = "Set DCU FAN to SEC. Return to PR immediately." },
+
+        // --- CO2 Scrubbers (max 60% — vent when approaching full) ---
+        new VitalRule {
+            label = "SCRUBBER A", path = "telemetry.eva1.scrubber_a_co2_storage",
+            unit = "%", direction = AlertDirection.High,
+            warningThreshold = 50f, criticalThreshold = 60f, valueFormat = "F0",
+            actionMessage = "Flip CO2 switch on DCU to vent scrubber." },
+        new VitalRule {
+            label = "SCRUBBER B", path = "telemetry.eva1.scrubber_b_co2_storage",
+            unit = "%", direction = AlertDirection.High,
+            warningThreshold = 50f, criticalThreshold = 60f, valueFormat = "F0",
+            actionMessage = "Flip CO2 switch on DCU to vent scrubber." },
+
+        // --- Temperature (nominal 21°C, range 10–32°C) ---
+        new VitalRule {
+            label = "TEMPERATURE", path = "telemetry.eva1.temperature",
+            unit = "°C", direction = AlertDirection.Range,
+            warningThreshold = 19f, criticalThreshold = 10f,
+            warningThresholdHigh = 23f, criticalThresholdHigh = 32f, valueFormat = "F1",
+            actionMessage = "Astronaut must slow down." },
+
+        // --- Coolant Liquid Pressure (nominal 500, range 100–700 psi) ---
+        new VitalRule {
+            label = "COOLANT LIQUID PRESSURE", path = "telemetry.eva1.coolant_liquid_pressure",
+            unit = " psi", direction = AlertDirection.Range,
+            warningThreshold = 450f, criticalThreshold = 100f,
+            warningThresholdHigh = 550f, criticalThresholdHigh = 700f, valueFormat = "F0" },
+
+        // --- Coolant Gas Pressure (nominal 0 psi — any reading indicates coolant turning gaseous) ---
+        new VitalRule {
+            label = "COOLANT GAS PRESSURE", path = "telemetry.eva1.coolant_gas_pressure",
+            unit = " psi", direction = AlertDirection.High,
+            warningThreshold = 0.5f, criticalThreshold = 700f, valueFormat = "F1" },
     };
 
     [Header("Popup Alert")]
@@ -132,6 +255,8 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
 
     // Multi-vital tracked state.
     public VitalsAlert CurrentAlert { get; private set; }
+    public IReadOnlyList<VitalsAlert> CurrentAlerts => _currentAlerts;
+    private List<VitalsAlert> _currentAlerts = new List<VitalsAlert>();
 
     private Coroutine refreshCoroutine;
     private GUIStyle popupStyle;
@@ -215,10 +340,6 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
 
     private void TryResolveApiService()
     {
-        // Always prefer the persistent singleton over an Inspector-wired reference,
-        // because scene-embedded TssUnityApiService components destroy themselves
-        // when a singleton from an earlier scene already exists, leaving any
-        // pre-assigned tssApi pointing at a destroyed component (no EVA updates).
         if (TssUnityApiService.Instance != null)
         {
             tssApi = TssUnityApiService.Instance;
@@ -365,13 +486,19 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
 
     private void EvaluateAllVitals(Dictionary<string, object> packet)
     {
-        VitalsAlert worst = new VitalsAlert
+        var active = new List<VitalsAlert>();
+
+        // Legacy oxygen path feeds in first
+        if (CurrentState == OxygenState.RunningLow || CurrentState == OxygenState.CriticallyLow)
         {
-            State = CurrentState,
-            Headline = BuildOxygenHeadline(CurrentState, CurrentOxygenPercent),
-            Rule = null,
-            Value = CurrentOxygenPercent
-        };
+            active.Add(new VitalsAlert
+            {
+                State = CurrentState,
+                Headline = BuildOxygenHeadline(CurrentState, CurrentOxygenPercent),
+                Rule = null,
+                Value = CurrentOxygenPercent
+            });
+        }
 
         if (vitalRules != null)
         {
@@ -379,33 +506,45 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             {
                 VitalRule rule = vitalRules[i];
                 if (rule == null || !rule.enabled || string.IsNullOrWhiteSpace(rule.path)) continue;
-
                 if (!TryReadVitalValue(packet, rule, out float value)) continue;
 
                 OxygenState ruleState = EvaluateRuleState(rule, value);
-                if (Severity(ruleState) > Severity(worst.State))
+                if (ruleState == OxygenState.RunningLow || ruleState == OxygenState.CriticallyLow)
                 {
-                    worst = new VitalsAlert
+                    active.Add(new VitalsAlert
                     {
                         State = ruleState,
                         Headline = BuildVitalHeadline(rule, ruleState, value),
                         Rule = rule,
                         Value = value
-                    };
+                    });
                 }
             }
         }
 
-        if (worst.State != CurrentAlert.State || worst.Headline != CurrentAlert.Headline)
-        {
-            CurrentAlert = worst;
-            VitalsAlertChanged?.Invoke(worst);
+        // Sort critical before warning
+        active.Sort((a, b) => Severity(b.State).CompareTo(Severity(a.State)));
 
-            if (logStateTransitions && worst.State != OxygenState.Good && worst.State != OxygenState.Unknown)
-            {
-                Debug.Log($"[Vitals] {worst.Headline}");
-            }
+        // Fire only when the alert set actually changes
+        if (!AlertListsEqual(_currentAlerts, active))
+        {
+            _currentAlerts = active;
+            CurrentAlert = active.Count > 0 ? active[0] : default;
+            VitalsAlertChanged?.Invoke(_currentAlerts);
+
+            if (logStateTransitions && active.Count > 0)
+                Debug.Log($"[Vitals] {active.Count} active alert(s). Worst: {active[0].Headline}");
         }
+    }
+
+    private static bool AlertListsEqual(List<VitalsAlert> a, List<VitalsAlert> b)
+    {
+        if (a.Count != b.Count) return false;
+        for (int i = 0; i < a.Count; i++)
+        {
+            if (a[i].State != b[i].State || a[i].Headline != b[i].Headline) return false;
+        }
+        return true;
     }
 
     private bool TryReadVitalValue(Dictionary<string, object> packet, VitalRule rule, out float value)
@@ -446,16 +585,25 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
 
     private static OxygenState EvaluateRuleState(VitalRule rule, float value)
     {
-        if (rule.direction == AlertDirection.Low)
+        switch (rule.direction)
         {
-            if (value <= rule.criticalThreshold) return OxygenState.CriticallyLow;
-            if (value <= rule.warningThreshold) return OxygenState.RunningLow;
-            return OxygenState.Good;
+            case AlertDirection.Low:
+                if (value <= rule.criticalThreshold) return OxygenState.CriticallyLow;
+                if (value <= rule.warningThreshold)  return OxygenState.RunningLow;
+                return OxygenState.Good;
+            case AlertDirection.High:
+                if (value >= rule.criticalThreshold) return OxygenState.CriticallyLow;
+                if (value >= rule.warningThreshold)  return OxygenState.RunningLow;
+                return OxygenState.Good;
+            case AlertDirection.Range:
+                if (value <= rule.criticalThreshold || value >= rule.criticalThresholdHigh)
+                    return OxygenState.CriticallyLow;
+                if (value <= rule.warningThreshold || value >= rule.warningThresholdHigh)
+                    return OxygenState.RunningLow;
+                return OxygenState.Good;
+            default:
+                return OxygenState.Good;
         }
-
-        if (value >= rule.criticalThreshold) return OxygenState.CriticallyLow;
-        if (value >= rule.warningThreshold) return OxygenState.RunningLow;
-        return OxygenState.Good;
     }
 
     private static int Severity(OxygenState state) => state switch
@@ -470,13 +618,12 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
     {
         string formatted = value.ToString(rule.valueFormat);
         string label = string.IsNullOrEmpty(rule.label) ? rule.path : rule.label;
+        string action = string.IsNullOrEmpty(rule.actionMessage) ? "" : $" — {rule.actionMessage}";
         return state switch
         {
-            OxygenState.CriticallyLow =>
-                $"CRITICAL {label}: {formatted}{rule.unit} — RETURN IMMEDIATELY",
-            OxygenState.RunningLow =>
-                $"{label} WARNING: {formatted}{rule.unit}",
-            _ => $"{label}: {formatted}{rule.unit}"
+            OxygenState.CriticallyLow => $"CRITICAL {label}: {formatted}{rule.unit}{action}",
+            OxygenState.RunningLow    => $"{label} WARNING: {formatted}{rule.unit}{action}",
+            _                         => $"{label}: {formatted}{rule.unit}"
         };
     }
 
@@ -567,35 +714,11 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             return false;
         }
 
-        if (raw is float f)
-        {
-            value = f;
-            return true;
-        }
-
-        if (raw is double d)
-        {
-            value = (float)d;
-            return true;
-        }
-
-        if (raw is long l)
-        {
-            value = l;
-            return true;
-        }
-
-        if (raw is int i)
-        {
-            value = i;
-            return true;
-        }
-
-        if (raw is string s && float.TryParse(s, out float parsed))
-        {
-            value = parsed;
-            return true;
-        }
+        if (raw is float f) { value = f; return true; }
+        if (raw is double d) { value = (float)d; return true; }
+        if (raw is long l) { value = l; return true; }
+        if (raw is int i) { value = i; return true; }
+        if (raw is string s && float.TryParse(s, out float parsed)) { value = parsed; return true; }
 
         return false;
     }
@@ -638,12 +761,17 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             if (rule == null) continue;
 
             if (rule.direction == AlertDirection.Low && rule.criticalThreshold > rule.warningThreshold)
-            {
                 rule.criticalThreshold = rule.warningThreshold;
-            }
+
             if (rule.direction == AlertDirection.High && rule.criticalThreshold < rule.warningThreshold)
-            {
                 rule.criticalThreshold = rule.warningThreshold;
+
+            if (rule.direction == AlertDirection.Range)
+            {
+                if (rule.criticalThreshold > rule.warningThreshold)
+                    rule.criticalThreshold = rule.warningThreshold;
+                if (rule.criticalThresholdHigh < rule.warningThresholdHigh)
+                    rule.criticalThresholdHigh = rule.warningThresholdHigh;
             }
         }
     }
