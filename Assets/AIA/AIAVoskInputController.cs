@@ -157,8 +157,6 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
-    [SerializeField] private bool preloadVoskOnStart = true;
-    [SerializeField, Range(0f, 1f)] private float wakePhraseHandoffDelaySeconds = 0.35f;
     [SerializeField] private float silenceStopSeconds = 1.8f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
@@ -200,9 +198,6 @@ public class AIAVoskInputController : MonoBehaviour
     // so subsequent partials don't double-trigger before recording stops.
     private bool _routedSceneVoiceThisSession;
     private Coroutine initializationTimeoutCoroutine;
-    private Coroutine wakePhraseRecordingCoroutine;
-    private bool pendingWakeStartAfterPermission;
-    private bool suppressVoskStatusUpdates;
 
     private void Awake()
     {
@@ -218,10 +213,6 @@ public class AIAVoskInputController : MonoBehaviour
         ConfigureVosk();
 
         hasRecordPermission = MLPermissions.CheckPermission(MLPermission.RecordAudio).IsOk;
-        if (hasRecordPermission)
-        {
-            TryPreloadVosk();
-        }
         RefreshButtonVisuals();
     }
 
@@ -248,12 +239,6 @@ public class AIAVoskInputController : MonoBehaviour
         if (voiceProcessor != null && voiceProcessor.IsRecording)
         {
             voiceProcessor.StopRecording();
-        }
-
-        if (wakePhraseRecordingCoroutine != null)
-        {
-            StopCoroutine(wakePhraseRecordingCoroutine);
-            wakePhraseRecordingCoroutine = null;
         }
     }
 
@@ -301,53 +286,40 @@ public class AIAVoskInputController : MonoBehaviour
     /// </summary>
     public void StartRecordingFromVoiceIntent()
     {
-        if (!EnsureMicrophonePermission(fromWakePhrase: true))
+        if (!EnsureMicrophonePermission())
         {
             return;
         }
 
-        if (wakePhraseRecordingCoroutine != null)
+        if (isVoskInitializing)
         {
-            StopCoroutine(wakePhraseRecordingCoroutine);
+            UpdateStatus("Vosk is still initializing...");
+            return;
         }
 
-        wakePhraseRecordingCoroutine = StartCoroutine(StartRecordingAfterWakePhraseHandoff());
-    }
-
-    private IEnumerator StartRecordingAfterWakePhraseHandoff()
-    {
         if (voiceProcessor != null && voiceProcessor.IsRecording)
         {
             StopRecording();
-            yield return null;
+            StartCoroutine(RestartRecordingNextFrame());
+            return;
         }
 
         if (!isVoskInitialized)
         {
-            if (!isVoskInitializing)
-            {
-                InitializeVosk(startRecordingWhenReady: false);
-            }
-
-            while (isVoskInitializing)
-            {
-                yield return null;
-            }
-
-            if (!isVoskInitialized)
-            {
-                wakePhraseRecordingCoroutine = null;
-                yield break;
-            }
-        }
-
-        if (wakePhraseHandoffDelaySeconds > 0f)
-        {
-            yield return new WaitForSeconds(wakePhraseHandoffDelaySeconds);
+            InitializeVosk(startRecordingWhenReady: true);
+            return;
         }
 
         StartRecording();
-        wakePhraseRecordingCoroutine = null;
+    }
+
+    private IEnumerator RestartRecordingNextFrame()
+    {
+        yield return null;
+        if (isVoskInitialized)
+        {
+            StartRecording();
+        }
     }
 
     private void TryResolveReferences()
@@ -448,7 +420,7 @@ public class AIAVoskInputController : MonoBehaviour
         }
     }
 
-    private bool EnsureMicrophonePermission(bool fromWakePhrase = false)
+    private bool EnsureMicrophonePermission()
     {
         if (hasRecordPermission || MLPermissions.CheckPermission(MLPermission.RecordAudio).IsOk)
         {
@@ -456,8 +428,7 @@ public class AIAVoskInputController : MonoBehaviour
             return true;
         }
 
-        pendingStartAfterPermission = !fromWakePhrase;
-        pendingWakeStartAfterPermission = fromWakePhrase;
+        pendingStartAfterPermission = true;
         UpdateStatus("Microphone permission required for Vosk recording.");
         MLPermissions.RequestPermission(MLPermission.RecordAudio, permissionCallbacks);
         return false;
@@ -472,16 +443,8 @@ public class AIAVoskInputController : MonoBehaviour
 
         hasRecordPermission = true;
 
-        if (pendingWakeStartAfterPermission)
-        {
-            pendingWakeStartAfterPermission = false;
-            StartRecordingFromVoiceIntent();
-            return;
-        }
-
         if (!pendingStartAfterPermission)
         {
-            TryPreloadVosk();
             return;
         }
 
@@ -497,40 +460,22 @@ public class AIAVoskInputController : MonoBehaviour
         }
 
         pendingStartAfterPermission = false;
-        pendingWakeStartAfterPermission = false;
         UpdateStatus("Microphone permission denied.");
         RefreshButtonVisuals();
     }
 
-    private void TryPreloadVosk()
-    {
-        if (!preloadVoskOnStart || isVoskInitialized || isVoskInitializing || voskSpeechToText == null)
-        {
-            return;
-        }
-
-        InitializeVosk(startRecordingWhenReady: false, showStatus: false);
-    }
-
-    private void InitializeVosk(bool startRecordingWhenReady, bool showStatus = true)
+    private void InitializeVosk(bool startRecordingWhenReady)
     {
         if (voskSpeechToText == null)
         {
-            if (showStatus)
-            {
-                UpdateStatus("Vosk speech recognizer is missing.");
-            }
+            UpdateStatus("Vosk speech recognizer is missing.");
             return;
         }
 
         try
         {
             isVoskInitializing = true;
-            suppressVoskStatusUpdates = !showStatus;
-            if (showStatus)
-            {
-                UpdateStatus("Loading Vosk model...");
-            }
+            UpdateStatus("Loading Vosk model...");
             RefreshButtonVisuals();
 
             string safeModelPath = GetSafeVoskModelPath();
@@ -547,12 +492,8 @@ public class AIAVoskInputController : MonoBehaviour
         {
             Debug.LogError($"[Vosk] Failed to initialize: {exception}");
             isVoskInitializing = false;
-            suppressVoskStatusUpdates = false;
             StopInitializationTimeout();
-            if (showStatus)
-            {
-                UpdateStatus("Vosk initialization failed.");
-            }
+            UpdateStatus("Vosk initialization failed.");
             RefreshButtonVisuals();
         }
     }
@@ -708,7 +649,6 @@ public class AIAVoskInputController : MonoBehaviour
         {
             isVoskInitializing = false;
             isVoskInitialized = true;
-            suppressVoskStatusUpdates = false;
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             if (isRecording)
             {
@@ -725,19 +665,9 @@ public class AIAVoskInputController : MonoBehaviour
             }
             StopInitializationTimeout();
         }
-        else if (IsVoskFailureStatus(status))
-        {
-            isVoskInitializing = false;
-            suppressVoskStatusUpdates = false;
-            StopInitializationTimeout();
-            UpdateStatus(status);
-        }
         else if (!string.IsNullOrWhiteSpace(status))
         {
-            if (!suppressVoskStatusUpdates)
-            {
-                UpdateStatus(status);
-            }
+            UpdateStatus(status);
         }
 
         RefreshButtonVisuals();
@@ -943,18 +873,6 @@ public class AIAVoskInputController : MonoBehaviour
         rmsAmplitudeThisSession = 0f;
         lastPartialTranscriptTime = -1f;
         lastPartialTranscriptText = string.Empty;
-    }
-
-    private static bool IsVoskFailureStatus(string status)
-    {
-        if (string.IsNullOrWhiteSpace(status))
-        {
-            return false;
-        }
-
-        return status.IndexOf("failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               status.IndexOf("could not", StringComparison.OrdinalIgnoreCase) >= 0 ||
-               status.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private string GetSafeVoskModelPath()
