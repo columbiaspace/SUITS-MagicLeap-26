@@ -94,35 +94,19 @@ public class VoiceProcessor : MonoBehaviour
     }
 
     [Header("Voice Detection Settings")]
-    // Magic Leap 2's headset mic often peaks around 0.02-0.04 for normal indoor
-    // speech. This is only the peak gate; RMS and noise-floor gates below keep
-    // single-sample spikes from resetting the silence timer.
+    // Lowered from the upstream 0.05f default. Magic Leap 2's headset mic regularly
+    // peaks around 0.02–0.04 for normal indoor speech, so the old threshold caused
+    // Vosk to receive zero frames and return an empty transcript ("Vosk could not
+    // transcribe that recording"). 0.01 lets typical speech through while still
+    // rejecting room tone (which is usually well under 0.005).
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
     private float _minimumSpeakingSampleValue = 0.01f;
-
-    [SerializeField, Tooltip("Minimum RMS frame volume required before audio is considered speech."), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingRmsValue = 0.0015f;
-
-    [SerializeField, Tooltip("Speech must rise this many times above the learned room-noise RMS floor."), Range(1.0f, 10.0f)]
-    private float _noiseFloorMultiplier = 2.0f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;
 
-    [SerializeField, Tooltip("How long speech-like audio must persist before recording opens."), Range(0.0f, 0.5f)]
-    private float _speechStartDebounceSeconds = 0.06f;
-
-    [SerializeField, Tooltip("How long quiet audio must persist before speech is considered paused."), Range(0.0f, 0.5f)]
-    private float _speechEndDebounceSeconds = 0.12f;
-
-    [SerializeField, Tooltip("Audio kept before the gate opens, so the first word is not clipped."), Range(0.0f, 0.5f)]
-    private float _preSpeechBufferSeconds = 0.25f;
-
     [SerializeField, Tooltip("Auto detect speech using the volume threshold.")]
     private bool _autoDetect;
-
-    [SerializeField, Tooltip("When auto-detecting, still send every frame to Vosk. The gate only decides when speech has started and when to stop.")]
-    private bool _sendAllFramesToRecognizerWhileAutoDetecting = true;
 
     public float SilenceTimer
     {
@@ -136,57 +120,19 @@ public class VoiceProcessor : MonoBehaviour
         set { _minimumSpeakingSampleValue = Mathf.Clamp01(value); }
     }
 
-    public float MinimumSpeakingRmsValue
-    {
-        get { return _minimumSpeakingRmsValue; }
-        set { _minimumSpeakingRmsValue = Mathf.Clamp01(value); }
-    }
-
-    public float NoiseFloorMultiplier
-    {
-        get { return _noiseFloorMultiplier; }
-        set { _noiseFloorMultiplier = Mathf.Max(1f, value); }
-    }
-
-    public float SpeechStartDebounceSeconds
-    {
-        get { return _speechStartDebounceSeconds; }
-        set { _speechStartDebounceSeconds = Mathf.Clamp(value, 0f, 0.5f); }
-    }
-
-    public float SpeechEndDebounceSeconds
-    {
-        get { return _speechEndDebounceSeconds; }
-        set { _speechEndDebounceSeconds = Mathf.Clamp(value, 0f, 0.5f); }
-    }
-
     /// <summary>
     /// Highest absolute sample amplitude observed in the most recent capture frame.
     /// Useful for diagnosing "no audio detected" issues: if this never exceeds the
     /// threshold during a recording, the mic is too quiet or the threshold too high.
     /// </summary>
     public float LastFrameMaxAmplitude { get; private set; }
-    public float LastFrameRmsAmplitude { get; private set; }
-    public float EstimatedNoiseFloorRms { get; private set; }
-    public float CurrentRmsSpeechThreshold { get; private set; }
-    public bool HasDetectedSpeech { get; private set; }
 
     public bool StopRecordingAfterSilence { get; set; }
 
-    public bool SendAllFramesToRecognizerWhileAutoDetecting
-    {
-        get { return _sendAllFramesToRecognizerWhileAutoDetecting; }
-        set { _sendAllFramesToRecognizerWhileAutoDetecting = value; }
-    }
-
     private float _timeAtSilenceBegan;
-    private float _timeAtSpeechCandidateBegan;
-    private float _timeAtQuietCandidateBegan;
     private bool _audioDetected;
     private bool _didDetect;
     private bool _transmit;
-    private readonly Queue<short[]> _preSpeechFrames = new Queue<short[]>();
-    private int _maxPreSpeechFrames = 1;
 
 
     AudioClip _audioClip;
@@ -289,15 +235,8 @@ public class VoiceProcessor : MonoBehaviour
         FrameLength = frameSize;
         _audioDetected = false;
         _didDetect = false;
-        HasDetectedSpeech = false;
         _transmit = false;
-        _timeAtSilenceBegan = Time.unscaledTime;
-        _timeAtSpeechCandidateBegan = -1f;
-        _timeAtQuietCandidateBegan = -1f;
-        _preSpeechFrames.Clear();
-        _maxPreSpeechFrames = Mathf.Max(1, Mathf.CeilToInt(_preSpeechBufferSeconds / ((float) frameSize / sampleRate)));
-        EstimatedNoiseFloorRms = Mathf.Max(0.0001f, _minimumSpeakingRmsValue / _noiseFloorMultiplier);
-        CurrentRmsSpeechThreshold = _minimumSpeakingRmsValue;
+        _timeAtSilenceBegan = Time.time;
 
         _audioClip = Microphone.Start(CurrentDeviceName, true, 1, sampleRate);
 
@@ -366,8 +305,8 @@ public class VoiceProcessor : MonoBehaviour
                 _audioClip.GetData(startClipSamples, 0);
 
                 // combine to form full frame
-                Array.Copy(endClipSamples, 0, sampleBuffer, 0, numSamplesClipEnd);
-                Array.Copy(startClipSamples, 0, sampleBuffer, numSamplesClipEnd, numSamplesClipStart);
+                Buffer.BlockCopy(endClipSamples, 0, sampleBuffer, 0, numSamplesClipEnd);
+                Buffer.BlockCopy(startClipSamples, 0, sampleBuffer, numSamplesClipEnd, numSamplesClipStart);
             }
             else
             {
@@ -375,111 +314,56 @@ public class VoiceProcessor : MonoBehaviour
             }
 
             startReadPos = endReadPos % _audioClip.samples;
-
-            // Convert once per frame and use both peak and RMS energy. Peak-only
-            // detection is easily fooled by clicks, wind, or short headset spikes.
-            float maxVolume = 0.0f;
-            float sumSquares = 0.0f;
-            short[] pcmBuffer = new short[sampleBuffer.Length];
-            for (int i = 0; i < sampleBuffer.Length; i++)
-            {
-                float abs = sampleBuffer[i] < 0 ? -sampleBuffer[i] : sampleBuffer[i];
-                if (abs > maxVolume)
-                {
-                    maxVolume = abs;
-                }
-                sumSquares += sampleBuffer[i] * sampleBuffer[i];
-                pcmBuffer[i] = (short) Math.Floor(sampleBuffer[i] * short.MaxValue);
-            }
-            float rmsVolume = Mathf.Sqrt(sumSquares / sampleBuffer.Length);
-            LastFrameMaxAmplitude = maxVolume;
-            LastFrameRmsAmplitude = rmsVolume;
-
             if (_autoDetect == false)
             {
-                _transmit = _audioDetected = true;
-                HasDetectedSpeech = true;
-                OnFrameCaptured?.Invoke(pcmBuffer);
+                _transmit =_audioDetected = true;
             }
             else
             {
-                bool speechCandidate = IsSpeechCandidate(maxVolume, rmsVolume);
-                float now = Time.unscaledTime;
-                bool sentFrameToRecognizer = false;
-                _transmit = false;
-
-                if (_sendAllFramesToRecognizerWhileAutoDetecting && OnFrameCaptured != null)
+                // Absolute value: speech waveforms swing both positive and negative,
+                // so checking sampleBuffer[i] > maxVolume alone misses every trough.
+                float maxVolume = 0.0f;
+                for (int i = 0; i < sampleBuffer.Length; i++)
                 {
-                    OnFrameCaptured.Invoke(pcmBuffer);
-                    sentFrameToRecognizer = true;
+                    float abs = sampleBuffer[i] < 0 ? -sampleBuffer[i] : sampleBuffer[i];
+                    if (abs > maxVolume)
+                    {
+                        maxVolume = abs;
+                    }
                 }
+                LastFrameMaxAmplitude = maxVolume;
 
-                if (!_audioDetected)
+                if (maxVolume >= _minimumSpeakingSampleValue)
                 {
-                    if (!_sendAllFramesToRecognizerWhileAutoDetecting)
-                    {
-                        BufferPreSpeechFrame(pcmBuffer);
-                    }
-                    UpdateNoiseFloor(rmsVolume, speechCandidate);
-
-                    if (speechCandidate)
-                    {
-                        if (_timeAtSpeechCandidateBegan < 0f)
-                        {
-                            _timeAtSpeechCandidateBegan = now;
-                        }
-
-                        if (now - _timeAtSpeechCandidateBegan >= _speechStartDebounceSeconds)
-                        {
-                            _audioDetected = true;
-                            _didDetect = true;
-                            HasDetectedSpeech = true;
-                            _transmit = true;
-                            _timeAtSilenceBegan = now;
-                            _timeAtQuietCandidateBegan = -1f;
-                            if (!_sendAllFramesToRecognizerWhileAutoDetecting)
-                            {
-                                FlushPreSpeechFrames();
-                                continue;
-                            }
-                        }
-                    }
-                    else
-                    {
-                        _timeAtSpeechCandidateBegan = -1f;
-                    }
+                    _transmit= _audioDetected = true;
+                    _timeAtSilenceBegan = Time.time;
                 }
                 else
                 {
-                    if (speechCandidate)
-                    {
-                        _transmit = true;
-                        _timeAtSilenceBegan = now;
-                        _timeAtQuietCandidateBegan = -1f;
-                    }
-                    else
-                    {
-                        if (_timeAtQuietCandidateBegan < 0f)
-                        {
-                            _timeAtQuietCandidateBegan = now;
-                        }
+                    _transmit = false;
 
-                        if (now - _timeAtQuietCandidateBegan < _speechEndDebounceSeconds)
-                        {
-                            _transmit = true;
-                        }
-                        else if (now - _timeAtSilenceBegan > _silenceTimer)
-                        {
-                            _audioDetected = false;
-                        }
+                    if (_audioDetected && Time.time - _timeAtSilenceBegan > _silenceTimer)
+                    {
+                        _audioDetected = false;
                     }
                 }
-
-                if (!sentFrameToRecognizer && _audioDetected && OnFrameCaptured != null)
-                    OnFrameCaptured.Invoke(pcmBuffer);
             }
 
-            if (!_audioDetected)
+            if (_audioDetected)
+            {
+                _didDetect = true;
+                // converts to 16-bit int samples
+                short[] pcmBuffer = new short[sampleBuffer.Length];
+                for (int i = 0; i < FrameLength; i++)
+                {
+                    pcmBuffer[i] = (short) Math.Floor(sampleBuffer[i] * short.MaxValue);
+                }
+
+                // raise buffer event
+                if (OnFrameCaptured != null && _transmit)
+                    OnFrameCaptured.Invoke(pcmBuffer);
+            }
+            else
             {
                 if (_didDetect)
                 {
@@ -502,41 +386,5 @@ public class VoiceProcessor : MonoBehaviour
         _recordDataCoroutine = null;
         if (RestartRecording != null)
             RestartRecording.Invoke();
-    }
-
-    private bool IsSpeechCandidate(float maxVolume, float rmsVolume)
-    {
-        CurrentRmsSpeechThreshold = Mathf.Max(_minimumSpeakingRmsValue, EstimatedNoiseFloorRms * _noiseFloorMultiplier);
-        return maxVolume >= _minimumSpeakingSampleValue && rmsVolume >= CurrentRmsSpeechThreshold;
-    }
-
-    private void UpdateNoiseFloor(float rmsVolume, bool speechCandidate)
-    {
-        if (speechCandidate || _audioDetected)
-        {
-            return;
-        }
-
-        float smoothing = rmsVolume > EstimatedNoiseFloorRms ? 0.08f : 0.25f;
-        EstimatedNoiseFloorRms = Mathf.Lerp(EstimatedNoiseFloorRms, rmsVolume, smoothing);
-    }
-
-    private void BufferPreSpeechFrame(short[] pcmBuffer)
-    {
-        short[] copy = new short[pcmBuffer.Length];
-        Array.Copy(pcmBuffer, copy, pcmBuffer.Length);
-        _preSpeechFrames.Enqueue(copy);
-        while (_preSpeechFrames.Count > _maxPreSpeechFrames)
-        {
-            _preSpeechFrames.Dequeue();
-        }
-    }
-
-    private void FlushPreSpeechFrames()
-    {
-        while (_preSpeechFrames.Count > 0)
-        {
-            OnFrameCaptured?.Invoke(_preSpeechFrames.Dequeue());
-        }
     }
 }
