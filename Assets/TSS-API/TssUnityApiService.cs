@@ -52,8 +52,11 @@ namespace TssApi
         // Diagnostics for "server is running but client sees nothing" issues — logs every
         // online/offline transition and warns once per OfflineWarnIntervalSeconds while down.
         private const float OfflineWarnIntervalSeconds = 5f;
+        private const int ReconnectAttemptCount = 10;
+        private const float ReconnectIntervalSeconds = 1.5f;
         private float _offlineWarnTimer;
         private bool _firstPollLogged;
+        private bool _reconnectBurstDoneWhileOffline;
 
         private void Awake()
         {
@@ -587,32 +590,10 @@ namespace TssApi
                     continue;
                 }
 
-                Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
-                Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
-                Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
-
-                if (evaRaw != null)
-                {
-                    _eva = evaRaw;
-                    EvaUpdated?.Invoke(GetEva());
-                }
-
-                // Merge each feed in place. Wholesale-replacing _ltv with ltvRaw would
-                // erase error_procedures (which only ships in the LtvErrors feed) any
-                // time UdpGetLtvErrors times out on a poll while UdpGetLtv succeeds.
-                if (ltvRaw != null)
-                {
-                    MergeIntoLtv(ltvRaw);
-                }
-
-                if (ltvErrorsRaw != null)
-                {
-                    MergeIntoLtv(ltvErrorsRaw);
-                }
-
-                bool newOnline = evaRaw != null && ltvRaw != null;
+                bool newOnline = PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw);
                 if (newOnline)
                 {
+                    _reconnectBurstDoneWhileOffline = false;
                     _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     if (!_sourceOnline || !_firstPollLogged)
                     {
@@ -635,11 +616,81 @@ namespace TssApi
                         Debug.LogWarning($"[TSS] Still offline — verify the server is reachable at {tssHost}:{tssPort} from this device. " +
                                          "On Android, set TSS_HOST in the scene; on macOS Editor, set TSS_HOST=... before launching Unity.");
                     }
+
+                    if (!_reconnectBurstDoneWhileOffline)
+                    {
+                        _reconnectBurstDoneWhileOffline = true;
+                        yield return ReconnectBurst();
+                        newOnline = _sourceOnline;
+                    }
                 }
 
                 SetSourceOnline(newOnline);
                 yield return wait;
             }
+        }
+
+        private bool PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw)
+        {
+            evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
+            ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
+            Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
+
+            if (evaRaw != null)
+            {
+                _eva = evaRaw;
+                EvaUpdated?.Invoke(GetEva());
+            }
+
+            if (ltvRaw != null)
+            {
+                MergeIntoLtv(ltvRaw);
+            }
+
+            if (ltvErrorsRaw != null)
+            {
+                MergeIntoLtv(ltvErrorsRaw);
+            }
+
+            return evaRaw != null && ltvRaw != null;
+        }
+
+        private IEnumerator ReconnectBurst()
+        {
+            Debug.LogWarning($"[TSS] Connection failed. Retrying {ReconnectAttemptCount} times every {ReconnectIntervalSeconds:F1}s.");
+
+            for (int attempt = 1; attempt <= ReconnectAttemptCount; attempt++)
+            {
+                ReinitializeUdp();
+
+                if (PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw))
+                {
+                    _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    if (!_firstPollLogged)
+                    {
+                        Debug.Log($"[TSS] ONLINE — connected on reconnect attempt {attempt}/{ReconnectAttemptCount} from {tssHost}:{tssPort}. EVA keys: {DescribeKeys(evaRaw)}; LTV keys: {DescribeKeys(ltvRaw)}.");
+                        _firstPollLogged = true;
+                    }
+                    else
+                    {
+                        Debug.Log($"[TSS] Reconnected on attempt {attempt}/{ReconnectAttemptCount}.");
+                    }
+
+                    _offlineWarnTimer = 0f;
+                    SetSourceOnline(true);
+                    yield break;
+                }
+
+                Debug.LogWarning($"[TSS] Reconnect attempt {attempt}/{ReconnectAttemptCount} failed.");
+
+                if (attempt < ReconnectAttemptCount)
+                {
+                    yield return new WaitForSeconds(ReconnectIntervalSeconds);
+                }
+            }
+
+            Debug.LogWarning($"[TSS] Could not connect after {ReconnectAttemptCount} attempts.");
+            SetSourceOnline(false);
         }
 
         private void SetSourceOnline(bool online)
@@ -670,6 +721,17 @@ namespace TssApi
             if (_udp != null)
             {
                 return;
+            }
+
+            ReinitializeUdp();
+        }
+
+        private void ReinitializeUdp()
+        {
+            if (_udp != null)
+            {
+                _udp.Dispose();
+                _udp = null;
             }
 
             try
