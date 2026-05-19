@@ -157,7 +157,7 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
-    [SerializeField] private float silenceStopSeconds = 1.5f;
+    [SerializeField] private float silenceStopSeconds = 2f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
         "The Magic Leap 2 headset mic typically peaks around 0.02–0.04 for normal " +
