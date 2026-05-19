@@ -701,13 +701,16 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   warningContainer: {fileID: 0}
-  entryHeight: 90
   entrySpacing: 4
   entryPaddingX: 12
   entryPaddingY: 6
   fontSize: 20
-  runningLowColor: {r: 0.89, g: 0.55, b: 0.1, a: 0.5882353}
-  criticallyLowColor: {r: 0.85, g: 0.12, b: 0.12, a: 0.5882353}
+  fallbackContainerWidth: 300
+  runningLowColor: {r: 0.89, g: 0.55, b: 0.1, a: 0.49019608}
+  criticallyLowColor: {r: 0.85, g: 0.12, b: 0.12, a: 0.49019608}
+  sideOffset: {x: 500, y: 0}
+  centerDuration: 10
+  slideDuration: 0.5
 --- !u!1 &9200010
 GameObject:
   m_ObjectHideFlags: 0
@@ -2366,6 +2369,7 @@ MonoBehaviour:
   udpTimeoutMs: 500
   udpRetries: 2
   ltvProceduresJson: {fileID: 0}
+  skipUdpPolling: 0
 --- !u!4 &1138549944
 Transform:
   m_ObjectHideFlags: 0
@@ -3805,8 +3809,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 168, y: 0}
-  m_SizeDelta: {x: 336, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &5000030042
 CanvasRenderer:
