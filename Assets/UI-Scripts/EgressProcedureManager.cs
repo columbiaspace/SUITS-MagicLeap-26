@@ -147,7 +147,7 @@ public class EgressProcedureManager : MonoBehaviour
         _steps = new List<Step>
         {
             // ── Connect UIA to DCU & start Depress ────────────────────
-            T("EV1: Verify umbilical connection from UIA to DCU"),
+            T("EV1: Verify umbilical connection from UIA to DCU", dcuPanelSprite),
             U("UIA: EV1 EMU PWR – ON\n",
                 uiaPwrSprite,        "eva1_power",         true),
             B("DCU: BATT – UMB\n",
@@ -206,7 +206,7 @@ public class EgressProcedureManager : MonoBehaviour
                 dcuCo2Sprite,        "co2",                true),
             D("DCU: Verify OXY – PRI\n",
                 dcuOxySprite,        "oxy",                true),
-            T("EV-1: Disconnect UIA and DCU umbilical"),
+            T("EV-1: Disconnect UIA and DCU umbilical", dcuPanelSprite),
             T("Verbally announce completion of egress"),
             T("Begin navigation procedure"),
         };
@@ -231,29 +231,7 @@ public class EgressProcedureManager : MonoBehaviour
         if (displayImage != null)
         {
             Sprite sprite = step.Image != null ? step.Image : uiaPanelSprite;
-            // Ensure DCU CO₂ steps always use `dcu-co2.png` even if a sprite slot was cleared in the inspector.
-            if (dcuCo2Sprite != null &&
-                step.Label != null &&
-                step.Label.IndexOf("CO2", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                sprite = dcuCo2Sprite;
-            }
-
-            // Force the correct BATT image based on the label. "BATT – UMB" / "BATT – LOCAL"
-            // must use `dcu-batt-local-umb.png`; "BATT – PRI" / "BATT – SEC" must use `dcu-batt-sec-pri.png`.
-            if (step.Label != null &&
-                step.Label.IndexOf("BATT", StringComparison.OrdinalIgnoreCase) >= 0)
-            {
-                bool isLocalOrUmb =
-                    step.Label.IndexOf("UMB",   StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    step.Label.IndexOf("LOCAL", StringComparison.OrdinalIgnoreCase) >= 0;
-                bool isSecOrPri =
-                    step.Label.IndexOf("SEC", StringComparison.OrdinalIgnoreCase) >= 0 ||
-                    step.Label.IndexOf("PRI", StringComparison.OrdinalIgnoreCase) >= 0;
-
-                if (isLocalOrUmb && dcuBattLocalUmbSprite != null) sprite = dcuBattLocalUmbSprite;
-                else if (isSecOrPri && dcuBattSecPriSprite != null) sprite = dcuBattSecPriSprite;
-            }
+            sprite = ResolveDcuSprite(step, sprite);
 
             displayImage.sprite = sprite;
         }
@@ -307,6 +285,23 @@ public class EgressProcedureManager : MonoBehaviour
     private void KillTimer()
     {
         if (_timerCo != null) { StopCoroutine(_timerCo); _timerCo = null; }
+    }
+
+    private Sprite ResolveDcuSprite(Step step, Sprite sprite)
+    {
+        return ProcedureDcuSpriteResolver.Resolve(
+            step?.Label,
+            sprite,
+            new ProcedureDcuSpriteResolver.Sprites
+            {
+                Panel = dcuPanelSprite,
+                Oxy = dcuOxySprite,
+                Fan = dcuFanSprite,
+                Pump = dcuPumpSprite,
+                Co2 = dcuCo2Sprite,
+                BattLocalUmb = dcuBattLocalUmbSprite,
+                BattSecPri = dcuBattSecPriSprite,
+            });
     }
 
     // ── TSS data ───────────────────────────────────────────────────────
