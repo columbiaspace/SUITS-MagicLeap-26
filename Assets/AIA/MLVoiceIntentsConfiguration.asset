@@ -50,6 +50,8 @@ MonoBehaviour:
     Value: show reference map
   - Id: 118
     Value: hide reference map
+  - Id: 119
+    Value: previous step
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []
