@@ -101,7 +101,7 @@ public class VoiceProcessor : MonoBehaviour
     private float _minimumSpeakingSampleValue = 0.01f;
 
     [SerializeField, Tooltip("Minimum RMS frame volume required before audio is considered speech."), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingRmsValue = 0.0015f;
+    private float _minimumSpeakingRmsValue = 0.002f;
 
     [SerializeField, Tooltip("Speech must rise this many times above the learned room-noise RMS floor."), Range(1.0f, 10.0f)]
     private float _noiseFloorMultiplier = 2.0f;
@@ -110,7 +110,7 @@ public class VoiceProcessor : MonoBehaviour
     private float _silenceTimer = 1.0f;
 
     [SerializeField, Tooltip("How long speech-like audio must persist before recording opens."), Range(0.0f, 0.5f)]
-    private float _speechStartDebounceSeconds = 0.06f;
+    private float _speechStartDebounceSeconds = 0.1f;
 
     [SerializeField, Tooltip("How long quiet audio must persist before speech is considered paused."), Range(0.0f, 0.5f)]
     private float _speechEndDebounceSeconds = 0.12f;
@@ -120,9 +120,6 @@ public class VoiceProcessor : MonoBehaviour
 
     [SerializeField, Tooltip("Auto detect speech using the volume threshold.")]
     private bool _autoDetect;
-
-    [SerializeField, Tooltip("When auto-detecting, still send every frame to Vosk. The gate only decides when speech has started and when to stop.")]
-    private bool _sendAllFramesToRecognizerWhileAutoDetecting = true;
 
     public float SilenceTimer
     {
@@ -169,15 +166,8 @@ public class VoiceProcessor : MonoBehaviour
     public float LastFrameRmsAmplitude { get; private set; }
     public float EstimatedNoiseFloorRms { get; private set; }
     public float CurrentRmsSpeechThreshold { get; private set; }
-    public bool HasDetectedSpeech { get; private set; }
 
     public bool StopRecordingAfterSilence { get; set; }
-
-    public bool SendAllFramesToRecognizerWhileAutoDetecting
-    {
-        get { return _sendAllFramesToRecognizerWhileAutoDetecting; }
-        set { _sendAllFramesToRecognizerWhileAutoDetecting = value; }
-    }
 
     private float _timeAtSilenceBegan;
     private float _timeAtSpeechCandidateBegan;
@@ -289,7 +279,6 @@ public class VoiceProcessor : MonoBehaviour
         FrameLength = frameSize;
         _audioDetected = false;
         _didDetect = false;
-        HasDetectedSpeech = false;
         _transmit = false;
         _timeAtSilenceBegan = Time.unscaledTime;
         _timeAtSpeechCandidateBegan = -1f;
@@ -398,28 +387,17 @@ public class VoiceProcessor : MonoBehaviour
             if (_autoDetect == false)
             {
                 _transmit = _audioDetected = true;
-                HasDetectedSpeech = true;
                 OnFrameCaptured?.Invoke(pcmBuffer);
             }
             else
             {
                 bool speechCandidate = IsSpeechCandidate(maxVolume, rmsVolume);
                 float now = Time.unscaledTime;
-                bool sentFrameToRecognizer = false;
                 _transmit = false;
-
-                if (_sendAllFramesToRecognizerWhileAutoDetecting && OnFrameCaptured != null)
-                {
-                    OnFrameCaptured.Invoke(pcmBuffer);
-                    sentFrameToRecognizer = true;
-                }
 
                 if (!_audioDetected)
                 {
-                    if (!_sendAllFramesToRecognizerWhileAutoDetecting)
-                    {
-                        BufferPreSpeechFrame(pcmBuffer);
-                    }
+                    BufferPreSpeechFrame(pcmBuffer);
                     UpdateNoiseFloor(rmsVolume, speechCandidate);
 
                     if (speechCandidate)
@@ -433,15 +411,11 @@ public class VoiceProcessor : MonoBehaviour
                         {
                             _audioDetected = true;
                             _didDetect = true;
-                            HasDetectedSpeech = true;
                             _transmit = true;
                             _timeAtSilenceBegan = now;
                             _timeAtQuietCandidateBegan = -1f;
-                            if (!_sendAllFramesToRecognizerWhileAutoDetecting)
-                            {
-                                FlushPreSpeechFrames();
-                                continue;
-                            }
+                            FlushPreSpeechFrames();
+                            continue;
                         }
                     }
                     else
@@ -475,7 +449,7 @@ public class VoiceProcessor : MonoBehaviour
                     }
                 }
 
-                if (!sentFrameToRecognizer && _audioDetected && OnFrameCaptured != null)
+                if (_audioDetected && OnFrameCaptured != null)
                     OnFrameCaptured.Invoke(pcmBuffer);
             }
 
