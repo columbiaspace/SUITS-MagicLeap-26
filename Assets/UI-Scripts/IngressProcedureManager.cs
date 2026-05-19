@@ -21,8 +21,8 @@ public class IngressProcedureManager : MonoBehaviour
     [SerializeField] private ProcedureStepSpeaker stepSpeaker;
     [Tooltip("Scene to load once Ingress completes.")]
     [SerializeField] private string completionScene = "Mission";
-    [Tooltip("Seconds to wait between announcement and scene transition.")]
-    [SerializeField] private float completionRedirectDelay = 4f;
+    [Tooltip("Seconds to wait after the completion announcement before loading Mission.")]
+    [SerializeField] private float completionRedirectDelay = 7f;
 
     [Header("UIA Sprites")]
     [SerializeField] private Sprite uiaPanelSprite;
@@ -221,12 +221,16 @@ public class IngressProcedureManager : MonoBehaviour
     private IEnumerator ShowCompleteAfterDelay(float secs)
     {
         yield return new WaitForSeconds(secs);
+        yield return AnnounceCompletionAndRedirect();
+    }
 
-        const string completionMessage = "Ingress procedure complete.";
+    private IEnumerator AnnounceCompletionAndRedirect()
+    {
+        const string completionMessage = ProcedureVoiceAnnouncements.IngressCompletion;
         if (stepText != null) stepText.text = completionMessage;
 
         if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
-        if (stepSpeaker != null) stepSpeaker.Announce(completionMessage);
+        ProcedureVoiceAnnouncements.Announce(completionMessage, stepSpeaker);
 
         if (!string.IsNullOrEmpty(completionScene))
         {

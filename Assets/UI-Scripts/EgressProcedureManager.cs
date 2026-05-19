@@ -23,8 +23,8 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private ProcedureStepSpeaker stepSpeaker;
     [Tooltip("Scene to load once Egress completes.")]
     [SerializeField] private string completionScene = "Mission";
-    [Tooltip("Seconds to wait between announcement and scene transition.")]
-    [SerializeField] private float completionRedirectDelay = 4f;
+    [Tooltip("Seconds to wait after the completion announcement before loading Mission.")]
+    [SerializeField] private float completionRedirectDelay = 2f;
 
     // ── Sprites ────────────────────────────────────────────────────────
     [Header("UIA Sprites")]
@@ -282,11 +282,11 @@ public class EgressProcedureManager : MonoBehaviour
 
     private IEnumerator AnnounceAndRedirect()
     {
-        const string completionMessage = "Egress procedure complete.";
+        const string completionMessage = ProcedureVoiceAnnouncements.EgressCompletion;
         if (stepText != null) stepText.text = completionMessage;
 
         if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
-        if (stepSpeaker != null) stepSpeaker.Announce(completionMessage);
+        ProcedureVoiceAnnouncements.Announce(completionMessage, stepSpeaker);
 
         if (!string.IsNullOrEmpty(completionScene))
         {

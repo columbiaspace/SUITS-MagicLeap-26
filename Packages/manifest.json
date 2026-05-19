@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.magicleap.unitysdk": "file:/Users/tu15/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
+    "com.magicleap.unitysdk": "file:/Users/admin/MagicLeap/tools/unity/v2.6.0/com.magicleap.unitysdk.tgz",
     "com.unity.collab-proxy": "2.11.3",
     "com.unity.feature.development": "1.0.1",
     "com.unity.shadergraph": "14.0.12",

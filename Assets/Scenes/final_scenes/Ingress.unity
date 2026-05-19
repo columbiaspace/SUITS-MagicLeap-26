@@ -739,12 +739,12 @@ MonoBehaviour:
   tssApi: {fileID: 920001003}
   stepSpeaker: {fileID: 0}
   completionScene: Mission
-  completionRedirectDelay: 4
+  completionRedirectDelay: 3
   uiaPanelSprite: {fileID: 21300000, guid: 3dbd26b70b98e41e29ddcee375ec57f7, type: 3}
   uiaPwrSprite: {fileID: 21300000, guid: 03eff23ba50fd434f9c38ab27ef3638a, type: 3}
   uiaO2VentSprite: {fileID: 21300000, guid: 091e377850a60439b985fba14352e91d, type: 3}
   uiaWaterWasteSprite: {fileID: 21300000, guid: b879001c78f4d46ff889585dfb9f6c71, type: 3}
-  dcuPanelSprite: {fileID: 21300000, guid: 825ecc72bbe094942bf9bbcf950a3edd, type: 3}
+  dcuPanelSprite: {fileID: 21300000, guid: 650408aa0421441408012e35fdd3c758, type: 3}
   dcuPumpSprite: {fileID: 21300000, guid: cf12f7b6574ef4c57902d75bd9cecb94, type: 3}
   dcuCo2Sprite: {fileID: 21300000, guid: 4d9dc4434b834452e8947d6a36b28a39, type: 3}
   dcuBattLocalUmbSprite: {fileID: 21300000, guid: 89f3543df33d14e0baa0bbb217e0e177, type: 3}
