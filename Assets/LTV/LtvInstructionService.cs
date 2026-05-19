@@ -283,6 +283,24 @@ public class LtvInstructionService : MonoBehaviour
         EmitSnapshot();
     }
 
+    /// Step back to the previous step in the current error's procedure.
+    /// No-op when already on step 0, when no error is active, or during verification.
+    public void RetreatStep()
+    {
+        if (currentError == null || verifying || currentStepIndex <= 0) return;
+        currentStepIndex--;
+        if (enableDebugLogs)
+        {
+            Debug.Log(
+                $"[LTV] Step {currentStepIndex + 1}/{currentError.Procedures.Count} " +
+                $"for error {currentError.Code}: {currentError.Procedures[currentStepIndex]} (retreated)",
+                this
+            );
+        }
+        StepChanged?.Invoke(currentError, currentStepIndex);
+        EmitSnapshot();
+    }
+
     /// <summary>
     /// Alias for AdvanceStep. Kept for LtvInstructionDebugPanel compatibility.
     /// Returns true if the step was advanced.

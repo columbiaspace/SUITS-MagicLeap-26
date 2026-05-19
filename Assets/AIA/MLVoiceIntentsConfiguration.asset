@@ -58,6 +58,8 @@ MonoBehaviour:
     Value: clear path
   - Id: 122
     Value: go to ltv2
+  - Id: 123
+    Value: previous step
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []

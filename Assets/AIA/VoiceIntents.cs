@@ -34,6 +34,7 @@ public class VoiceIntents : MonoBehaviour
     // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
     private const uint NavVoiceEventIdMin = 119;
     private const uint NavVoiceEventIdMax = 122;
+    private const uint LtvPreviousStepEventId = 123;
 
     /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
     public static event Action HudClearDisplayRequested;
@@ -41,6 +42,8 @@ public class VoiceIntents : MonoBehaviour
     public static event Action HudShowDisplayRequested;
     /// <summary>Fires when the MLVoice "next step" phrase is detected. Consumed by LTV scene only.</summary>
     public static event Action LtvNextStepRequested;
+    /// <summary>Fires when the MLVoice "previous step" phrase is detected. Consumed by LTV scene only.</summary>
+    public static event Action LtvPreviousStepRequested;
     /// <summary>Fires when the MLVoice "show reference map" phrase is detected. Consumed by LTV scene only.</summary>
     public static event Action LtvReferenceMapShowRequested;
     /// <summary>Fires when the MLVoice "hide reference map" phrase is detected. Consumed by LTV scene only.</summary>
@@ -376,6 +379,11 @@ public class VoiceIntents : MonoBehaviour
             case LtvNextStepEventId:
                 Debug.Log("[LTV] 'next step' phrase detected");
                 LtvNextStepRequested?.Invoke();
+                break;
+
+            case LtvPreviousStepEventId:
+                Debug.Log("[LTV] 'previous step' phrase detected");
+                LtvPreviousStepRequested?.Invoke();
                 break;
 
             case LtvReferenceMapShowEventId:
