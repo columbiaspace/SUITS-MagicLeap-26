@@ -157,20 +157,20 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
-    [SerializeField] private float silenceStopSeconds = 1.8f;
+    [SerializeField] private float silenceStopSeconds = 2f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
         "The Magic Leap 2 headset mic typically peaks around 0.02–0.04 for normal " +
         "indoor speech; RMS/noise-floor gates also apply so brief spikes are ignored.")]
-    private float voiceDetectionThreshold = 0.01f;
+    private float voiceDetectionThreshold = 0.012f;
     [SerializeField, Range(0f, 1f), Tooltip("Minimum RMS frame volume required before Vosk treats a frame as speech.")]
-    private float voiceDetectionRmsThreshold = 0.002f;
+    private float voiceDetectionRmsThreshold = 0.0025f;
     [SerializeField, Range(1f, 10f), Tooltip("Speech must be this many times louder than the learned room-noise RMS floor.")]
-    private float voiceDetectionNoiseMultiplier = 2.0f;
+    private float voiceDetectionNoiseMultiplier = 2.2f;
     [SerializeField, Range(0f, 0.5f), Tooltip("Speech-like audio must persist this long before recording opens.")]
-    private float speechStartDebounceSeconds = 0.1f;
+    private float speechStartDebounceSeconds = 0.12f;
     [SerializeField, Range(0f, 0.5f), Tooltip("Quiet audio must persist this long before the silence timer can close the recording.")]
-    private float speechEndDebounceSeconds = 0.12f;
+    private float speechEndDebounceSeconds = 0.18f;
     [SerializeField, Tooltip(
         "Hard cap on recording length (seconds). If the user starts a recording and " +
         "the VAD never trips (e.g. mic is muted), recording is force-stopped after this many seconds " +
@@ -516,7 +516,7 @@ public class AIAVoskInputController : MonoBehaviour
             }
             else
             {
-                UpdateStatus("Recording your question... Pause briefly or tap Stop.");
+                UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
             }
 
             voskSpeechToText.ToggleRecording();
@@ -660,7 +660,7 @@ public class AIAVoskInputController : MonoBehaviour
                 }
                 else
                 {
-                    UpdateStatus("Recording your question... Pause briefly or tap Stop.");
+                    UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
                 }
             }
             StopInitializationTimeout();
