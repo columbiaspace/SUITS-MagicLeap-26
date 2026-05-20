@@ -293,8 +293,11 @@ public class LtvGroundArrow : MonoBehaviour
         Dictionary<string, object> imuEva = GetImuEvaBucket();
         if (imuEva == null) return false;
 
-        evaX = (float)ToDouble(imuEva, "posx");
-        evaY = (float)ToDouble(imuEva, "posy");
+        Vector2 pos = EvaTssCoordinateAdjust.Apply(
+            (float)ToDouble(imuEva, "posx"),
+            (float)ToDouble(imuEva, "posy"));
+        evaX = pos.x;
+        evaY = pos.y;
         heading = (float)ToDouble(imuEva, "heading");
         return true;
     }

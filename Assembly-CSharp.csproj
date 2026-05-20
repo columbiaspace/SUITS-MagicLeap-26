@@ -55,6 +55,7 @@
      <Compile Include="Assets/Vosk/Scripts/VoskSpeechToText.cs" />
      <Compile Include="Assets/UI-Scripts/LTVReferenceMapController.cs" />
      <Compile Include="Assets/NavScripts/NavGridUtilities.cs" />
+     <Compile Include="Assets/NavScripts/EvaTssCoordinateAdjust.cs" />
      <Compile Include="Assets/UI-Scripts/SceneLoader.cs" />
      <Compile Include="Assets/Samples/Magic Leap SDK/2.6.0-pre.R15/ML Rig &amp; OpenXR Input/MagicLeapController.cs" />
      <Compile Include="Assets/UI-Scripts/IngressProcedureManager.cs" />

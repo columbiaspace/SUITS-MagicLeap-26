@@ -5,7 +5,7 @@ using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 // Minimap pin placement:
-//   TSS posx/posy (meters) → TssCoordsToNormalized → 0..1 fraction on the map image
+//   TSS IMU posx/posy → EvaTssCoordinateAdjust → rock-yard TSS (meters) → TssCoordsToNormalized
 //   → TssCoordsToMapPixels → anchoredPosition on the RectTransform.
 //   Map bounds define which TSS region the image covers; adjust them in the Inspector
 //   to match whatever area rock-yard.tiff was exported from.
@@ -160,11 +160,12 @@ public class ARMinimapErica : MonoBehaviour
     {
         if (playerIcon == null || minimapRect == null) return;
 
-        float x       = (float)ToDouble(imuEva, "posx");
-        float y       = (float)ToDouble(imuEva, "posy");
+        if (imuEva == null) return;
+
+        Vector2 pos   = ImuToNavTss(imuEva);
         float heading = (float)ToDouble(imuEva, "heading");
 
-        playerIcon.anchoredPosition = TssCoordsToMapPixels(x, y);
+        playerIcon.anchoredPosition = TssCoordsToMapPixels(pos.x, pos.y);
         playerIcon.localEulerAngles = new Vector3(0f, 0f, -heading);
     }
 
@@ -363,13 +364,9 @@ public class ARMinimapErica : MonoBehaviour
     private bool TryGetEvaTss(Dictionary<string, object> imuEva, out Vector2 tssPos)
     {
         if (imuEva != null)
-        {
-            tssPos = new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
-        }
+            tssPos = ImuToNavTss(imuEva);
         else
-        {
             tssPos = GetEvaTssPosition();
-        }
 
         const float margin = 100f;
         return tssPos.x >= mapMinX - margin && tssPos.x <= mapMaxX + margin
@@ -589,11 +586,10 @@ public class ARMinimapErica : MonoBehaviour
         if (_logTimer < logIntervalSeconds) return;
         _logTimer = 0f;
 
-        float x       = (float)ToDouble(imuEva, "posx");
-        float y       = (float)ToDouble(imuEva, "posy");
+        Vector2 pos   = ImuToNavTss(imuEva);
         float heading = (float)ToDouble(imuEva, "heading");
-        Vector2 n     = TssCoordsToNormalized(x, y);
-        Vector2 px    = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
+        Vector2 n     = TssCoordsToNormalized(pos.x, pos.y);
+        Vector2 px    = minimapRect != null ? TssCoordsToMapPixels(pos.x, pos.y) : Vector2.zero;
 
         string bucket = imuEva == null
             ? $"NULL (wrong evaId or TSS not connected)"
@@ -601,7 +597,7 @@ public class ARMinimapErica : MonoBehaviour
 
         Debug.Log(
             $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
-            $"  TSS ({x:F1}, {y:F1})  heading {heading:F1}°\n" +
+            $"  TSS ({pos.x:F1}, {pos.y:F1})  heading {heading:F1}°\n" +
             $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
             $"  trail pts:{_trailPoints.Count}  voice nav segs:{_voiceNavSegments.Count}"
         );
@@ -612,13 +608,20 @@ public class ARMinimapErica : MonoBehaviour
     // -------------------------------------------------------------------------
 
     /// <summary>
-    /// Current TSS (posx, posy) for the configured EVA ID, or Vector2.zero when unavailable.
+    /// Current rock-yard TSS position for the configured EVA ID (IMU + offset), or zero when unavailable.
     /// </summary>
     public Vector2 GetEvaTssPosition()
     {
-        Dictionary<string, object> imuEva = GetImuBucket();
+        return ImuToNavTss(GetImuBucket());
+    }
+
+    /// <summary>Raw IMU posx/posy from TSS, adjusted into rock-yard TSS coordinates.</summary>
+    private static Vector2 ImuToNavTss(Dictionary<string, object> imuEva)
+    {
         if (imuEva == null) return Vector2.zero;
-        return new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
+        return EvaTssCoordinateAdjust.Apply(
+            (float)ToDouble(imuEva, "posx"),
+            (float)ToDouble(imuEva, "posy"));
     }
 
     private Dictionary<string, object> GetImuBucket()
