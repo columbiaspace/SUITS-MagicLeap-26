@@ -107,6 +107,7 @@ MonoBehaviour:
   forwardDistance: 0.75
   heightBelowFollow: 1.1
   useTssHeading: 1
+  useWorldSpaceBearing: 1
   meshYawOffsetDegrees: 0
   useTssData: 1
   debugEvaX: 0
