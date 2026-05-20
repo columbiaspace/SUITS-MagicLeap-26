@@ -201,7 +201,6 @@ public class IngressProcedureManager : MonoBehaviour
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
         ApplyStepImage(step.Image);
-        ApplyStepImage(step.Image);
 
         AnnounceStep(index, step);
 
@@ -499,28 +498,5 @@ public class IngressProcedureManager : MonoBehaviour
         }
         catch (Exception e) { Debug.LogWarning($"[Ingress] DCU.batt({field}): {e.Message}"); }
         return false;
-    }
-
-    private void ApplyStepImage(Sprite sprite)
-    {
-        if (displayImage == null)
-        {
-            return;
-        }
-
-        Sprite shown = sprite != null ? sprite : uiaPanelSprite;
-        displayImage.sprite = shown;
-
-        float uniform = IsDcuSprite(shown) ? dcuImageScale : _uiaImageScale;
-        if (uniform > 0f)
-        {
-            displayImage.rectTransform.localScale = new Vector3(uniform, uniform, _imageScaleZ);
-        }
-    }
-
-    private bool IsDcuSprite(Sprite sprite)
-    {
-        return sprite == dcuPanelSprite || sprite == dcuPumpSprite || sprite == dcuCo2Sprite
-            || sprite == dcuBattLocalUmbSprite || sprite == dcuBattSecPriSprite;
     }
 }
