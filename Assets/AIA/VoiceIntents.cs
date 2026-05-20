@@ -70,7 +70,7 @@ public class VoiceIntents : MonoBehaviour
 
     [Header("AI Generation")]
     [SerializeField] private bool sendVoicePromptToAi = true;
-    [SerializeField] private string aiGenerateUrl = "http://192.168.50.19:13853/chat";
+    [SerializeField] private string aiGenerateUrl = "http://172.20.10.6:13853/chat";
     [SerializeField] private string aiModel = "gemma4:26b";
     [SerializeField] private bool logAiResponse = true;
     [SerializeField] private bool speakAiResponse = true;
