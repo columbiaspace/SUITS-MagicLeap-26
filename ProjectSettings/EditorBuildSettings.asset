@@ -8,7 +8,7 @@ EditorBuildSettings:
   - enabled: 0
     path: Assets/Scenes/working_scenes/Thea-UI.unity
     guid: 3b8f2cec444e84f17aa046c9e583d07b
-  - enabled: 1
+  - enabled: 0
     path: Assets/Scenes/final_scenes/Starter.unity
     guid: 6002158857ea7482ea8717f7bfd0efb1
   - enabled: 1
