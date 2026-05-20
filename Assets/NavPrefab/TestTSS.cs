@@ -112,8 +112,7 @@ public class TestTSS : MonoBehaviour
                 $"  STEP 5 — posx (raw)         : {Raw(imuEva, "posx")}\n" +
                 $"           posy (raw)         : {Raw(imuEva, "posy")}\n" +
                 $"           heading            : {Raw(imuEva, "heading")}\n" +
-                $"  RESULT — nav TSS posx={posX:F3}  posy={posY:F3}  heading={heading:F2}° " +
-                $"(offset {EvaTssCoordinateAdjust.OffsetX:F0}, {EvaTssCoordinateAdjust.OffsetY:F0})"
+                $"  RESULT — {EvaTssCoordinateAdjust.FormatPositionLog((float)rawX, (float)rawY)}  heading={heading:F2}°"
             );
         }
 

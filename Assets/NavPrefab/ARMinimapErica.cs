@@ -586,6 +586,8 @@ public class ARMinimapErica : MonoBehaviour
         if (_logTimer < logIntervalSeconds) return;
         _logTimer = 0f;
 
+        float rawX = imuEva != null ? (float)ToDouble(imuEva, "posx") : 0f;
+        float rawY = imuEva != null ? (float)ToDouble(imuEva, "posy") : 0f;
         Vector2 pos   = ImuToNavTss(imuEva);
         float heading = ReadImuHeading();
         Vector2 n     = TssCoordsToNormalized(pos.x, pos.y);
@@ -595,9 +597,14 @@ public class ARMinimapErica : MonoBehaviour
             ? $"NULL (wrong evaId or TSS not connected)"
             : $"OK [{string.Join(", ", new List<string>(imuEva.Keys))}]";
 
+        string coordLog = imuEva != null
+            ? EvaTssCoordinateAdjust.FormatPositionLog(rawX, rawY)
+            : "IMU unavailable";
+
         Debug.Log(
             $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
-            $"  TSS ({pos.x:F1}, {pos.y:F1})  heading {heading:F1}°\n" +
+            $"  {coordLog}\n" +
+            $"  heading {heading:F1}°\n" +
             $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
             $"  trail pts:{_trailPoints.Count}  voice nav segs:{_voiceNavSegments.Count}"
         );

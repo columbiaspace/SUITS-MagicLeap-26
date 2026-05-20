@@ -65,6 +65,8 @@ public class LtvGroundArrow : MonoBehaviour
     private bool _loggedMissingEvaPose;
     private bool _loggedLookAheadFailure;
     private bool _loggedEmptyVoicePath;
+    private float _lastRawEvaX;
+    private float _lastRawEvaY;
 
     private void Awake()
     {
@@ -268,8 +270,12 @@ public class LtvGroundArrow : MonoBehaviour
                 distToGoal = Vector2.Distance(new Vector2(evaX, evaY), goal);
             }
 
+            string coordLog = useTssData
+                ? EvaTssCoordinateAdjust.FormatPositionLog(_lastRawEvaX, _lastRawEvaY)
+                : $"debug eva ({evaX:F1}, {evaY:F1})";
+
             Debug.Log(
-                $"[LtvGroundArrow] mode={modeLabel} eva=({evaX:F1},{evaY:F1}) heading={heading:F1}°  " +
+                $"[LtvGroundArrow] mode={modeLabel} {coordLog}  heading={heading:F1}°  " +
                 $"bearing={bearing:F1}° ({bearingSource}) rel={relative:F1}° yaw={yaw:F1}°  " +
                 (distToGoal > 0f ? $"distToGoal≈{distToGoal:F1}m" : ""),
                 this);
@@ -293,9 +299,9 @@ public class LtvGroundArrow : MonoBehaviour
         Dictionary<string, object> imuEva = GetImuEvaBucket();
         if (imuEva == null) return false;
 
-        Vector2 pos = EvaTssCoordinateAdjust.Apply(
-            (float)ToDouble(imuEva, "posx"),
-            (float)ToDouble(imuEva, "posy"));
+        _lastRawEvaX = (float)ToDouble(imuEva, "posx");
+        _lastRawEvaY = (float)ToDouble(imuEva, "posy");
+        Vector2 pos = EvaTssCoordinateAdjust.Apply(_lastRawEvaX, _lastRawEvaY);
         evaX = pos.x;
         evaY = pos.y;
         if (!tssApi.TryGetImuHeading(evaId, out heading))
