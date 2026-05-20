@@ -9,3 +9,5 @@ Logs/*
 *_DoNotShip/*
 *.apk
 Assets/XR/Temp/*
+Assets/TextMesh Pro/
+tools/
