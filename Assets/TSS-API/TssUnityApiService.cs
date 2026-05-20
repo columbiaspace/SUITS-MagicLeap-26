@@ -52,8 +52,11 @@ namespace TssApi
         // Diagnostics for "server is running but client sees nothing" issues — logs every
         // online/offline transition and warns once per OfflineWarnIntervalSeconds while down.
         private const float OfflineWarnIntervalSeconds = 5f;
-        private const int ReconnectAttemptCount = 10;
-        private const float ReconnectIntervalSeconds = 1.5f;
+        // Indefinite reconnect: one cheap probe (allocate a UdpClient + 3 small UDP
+        // requests bounded by udpTimeoutMs × udpRetries) every ReconnectIntervalSeconds.
+        // While the burst is active, the normal 1s PollLoop yields to it, so the
+        // headset's offline load is one probe per interval rather than continuous polling.
+        private const float ReconnectIntervalSeconds = 15f;
         private float _offlineWarnTimer;
         private bool _firstPollLogged;
         private bool _reconnectBurstDoneWhileOffline;
@@ -657,10 +660,12 @@ namespace TssApi
 
         private IEnumerator ReconnectBurst()
         {
-            Debug.LogWarning($"[TSS] Connection failed. Retrying {ReconnectAttemptCount} times every {ReconnectIntervalSeconds:F1}s.");
+            Debug.LogWarning($"[TSS] Connection failed. Retrying every {ReconnectIntervalSeconds:F1}s until reconnected.");
 
-            for (int attempt = 1; attempt <= ReconnectAttemptCount; attempt++)
+            int attempt = 0;
+            while (true)
             {
+                attempt++;
                 ReinitializeUdp();
 
                 if (PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw))
@@ -668,12 +673,12 @@ namespace TssApi
                     _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     if (!_firstPollLogged)
                     {
-                        Debug.Log($"[TSS] ONLINE — connected on reconnect attempt {attempt}/{ReconnectAttemptCount} from {tssHost}:{tssPort}. EVA keys: {DescribeKeys(evaRaw)}; LTV keys: {DescribeKeys(ltvRaw)}.");
+                        Debug.Log($"[TSS] ONLINE — connected on reconnect attempt {attempt} from {tssHost}:{tssPort}. EVA keys: {DescribeKeys(evaRaw)}; LTV keys: {DescribeKeys(ltvRaw)}.");
                         _firstPollLogged = true;
                     }
                     else
                     {
-                        Debug.Log($"[TSS] Reconnected on attempt {attempt}/{ReconnectAttemptCount}.");
+                        Debug.Log($"[TSS] Reconnected on attempt {attempt}.");
                     }
 
                     _offlineWarnTimer = 0f;
@@ -681,16 +686,15 @@ namespace TssApi
                     yield break;
                 }
 
-                Debug.LogWarning($"[TSS] Reconnect attempt {attempt}/{ReconnectAttemptCount} failed.");
-
-                if (attempt < ReconnectAttemptCount)
+                // Throttle the per-attempt log so an extended outage doesn't spam the
+                // headset console: first three attempts, then every 10th.
+                if (attempt <= 3 || attempt % 10 == 0)
                 {
-                    yield return new WaitForSeconds(ReconnectIntervalSeconds);
+                    Debug.LogWarning($"[TSS] Reconnect attempt {attempt} failed; retrying in {ReconnectIntervalSeconds:F1}s.");
                 }
-            }
 
-            Debug.LogWarning($"[TSS] Could not connect after {ReconnectAttemptCount} attempts.");
-            SetSourceOnline(false);
+                yield return new WaitForSeconds(ReconnectIntervalSeconds);
+            }
         }
 
         private void SetSourceOnline(bool online)
