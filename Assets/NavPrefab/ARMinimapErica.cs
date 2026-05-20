@@ -163,7 +163,7 @@ public class ARMinimapErica : MonoBehaviour
         if (imuEva == null) return;
 
         Vector2 pos   = ImuToNavTss(imuEva);
-        float heading = (float)ToDouble(imuEva, "heading");
+        float heading = ReadImuHeading();
 
         playerIcon.anchoredPosition = TssCoordsToMapPixels(pos.x, pos.y);
         playerIcon.localEulerAngles = new Vector3(0f, 0f, -heading);
@@ -587,7 +587,7 @@ public class ARMinimapErica : MonoBehaviour
         _logTimer = 0f;
 
         Vector2 pos   = ImuToNavTss(imuEva);
-        float heading = (float)ToDouble(imuEva, "heading");
+        float heading = ReadImuHeading();
         Vector2 n     = TssCoordsToNormalized(pos.x, pos.y);
         Vector2 px    = minimapRect != null ? TssCoordsToMapPixels(pos.x, pos.y) : Vector2.zero;
 
@@ -606,6 +606,14 @@ public class ARMinimapErica : MonoBehaviour
     // -------------------------------------------------------------------------
     // TSS data helpers
     // -------------------------------------------------------------------------
+
+    private float ReadImuHeading()
+    {
+        if (tssApi != null && tssApi.TryGetImuHeading(evaId, out float heading))
+            return heading;
+
+        return 0f;
+    }
 
     /// <summary>
     /// Current rock-yard TSS position for the configured EVA ID (IMU + offset), or zero when unavailable.

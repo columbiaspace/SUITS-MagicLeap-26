@@ -298,7 +298,8 @@ public class LtvGroundArrow : MonoBehaviour
             (float)ToDouble(imuEva, "posy"));
         evaX = pos.x;
         evaY = pos.y;
-        heading = (float)ToDouble(imuEva, "heading");
+        if (!tssApi.TryGetImuHeading(evaId, out heading))
+            heading = 0f;
         return true;
     }
 

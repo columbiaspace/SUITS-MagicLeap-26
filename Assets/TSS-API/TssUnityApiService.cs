@@ -50,6 +50,9 @@ namespace TssApi
         private float _offlineWarnTimer;
         private bool _firstPollLogged;
 
+        // Last valid IMU heading per EVA when TSS sends null/missing heading in a poll.
+        private readonly Dictionary<string, float> _lastImuHeadingByEva = new Dictionary<string, float>();
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -203,6 +206,36 @@ namespace TssApi
         {
             Dictionary<string, object> imuRoot = GetNestedDict(_eva, "imu");
             return GetNestedDict(imuRoot, "eva1");
+        }
+
+        /// <summary>
+        /// EVA heading in degrees clockwise from north (TSS: 0=N, 90=E).
+        /// Uses the latest numeric value, or the last good value when the current packet has null/missing heading.
+        /// </summary>
+        public bool TryGetImuHeading(string evaId, out float heading)
+        {
+            heading = 0f;
+            string id = NormalizeEvaId(evaId);
+            Dictionary<string, object> imuRoot = GetNestedDict(_eva, "imu");
+            Dictionary<string, object> imuEva = GetNestedDict(imuRoot, id);
+
+            if (imuEva != null
+                && imuEva.TryGetValue("heading", out object raw)
+                && raw != null
+                && TryToDouble(raw, out double parsed))
+            {
+                heading = (float)parsed;
+                _lastImuHeadingByEva[id] = heading;
+                return true;
+            }
+
+            if (_lastImuHeadingByEva.TryGetValue(id, out float cached))
+            {
+                heading = cached;
+                return true;
+            }
+
+            return false;
         }
 
         public Dictionary<string, object> GetStatus()
