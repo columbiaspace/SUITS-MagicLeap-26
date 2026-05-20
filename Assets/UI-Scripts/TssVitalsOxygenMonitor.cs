@@ -107,11 +107,13 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "PRIMARY BATTERY", path = "telemetry.eva1.primary_battery_level",
             unit = "%", direction = AlertDirection.Low,
-            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0",
+            actionMessage = "Switch DCU BATT to SEC. If already on SEC, monitor and return to PR when able." },
         new VitalRule {
             label = "SECONDARY BATTERY", path = "telemetry.eva1.secondary_battery_level",
             unit = "%", direction = AlertDirection.Low,
-            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0",
+            actionMessage = "Battery critically low. Return to PR immediately." },
 
         // --- Oxygen Storage (min 20%, drops throughout EVA) ---
         new VitalRule {
@@ -153,15 +155,15 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "O2 CONSUMPTION", path = "telemetry.eva1.oxy_consumption",
             unit = " psi/min", direction = AlertDirection.Range,
-            warningThreshold = 0.063f, criticalThreshold = 0.05f,
-            warningThresholdHigh = 0.138f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+            warningThreshold = 0.05f, criticalThreshold = 0.01f,
+            warningThresholdHigh = 0.15f, criticalThresholdHigh = 0.20f, valueFormat = "F3" },
 
         // --- CO2 Production (nominal 0.10, range 0.05–0.15 psi/min) ---
         new VitalRule {
             label = "CO2 PRODUCTION", path = "telemetry.eva1.co2_production",
             unit = " psi/min", direction = AlertDirection.Range,
-            warningThreshold = 0.063f, criticalThreshold = 0.05f,
-            warningThresholdHigh = 0.138f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+            warningThreshold = 0.05f, criticalThreshold = 0.01f,
+            warningThresholdHigh = 0.15f, criticalThresholdHigh = 0.20f, valueFormat = "F3" },
 
         // --- Suit Pressure: O2 (nominal 4.0, range 3.5–4.1 psi) ---
         new VitalRule {
@@ -198,11 +200,12 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             label = "HELMET CO2", path = "telemetry.eva1.helmet_pressure_co2",
             unit = " psi", direction = AlertDirection.High,
             warningThreshold = 0.113f, criticalThreshold = 0.15f, valueFormat = "F3",
-            actionMessage = "Swap to secondary fan (DCU). Return to PR." },
+            actionMessage = "Set DCU FAN to SEC. Return to PR immediately." },
 
-        // --- Primary Fan only (nominal 30,000 rpm — alert if above or below 30,000) ---
+        // --- Fan (checks max of primary and secondary — alerts if neither is at 30,000 rpm) ---
         new VitalRule {
-            label = "PRIMARY FAN", path = "telemetry.eva1.fan_pri_rpm",
+            label = "FAN", path = "telemetry.eva1.fan_pri_rpm",
+            secondaryPath = "telemetry.eva1.fan_sec_rpm",
             unit = " rpm", direction = AlertDirection.Range,
             warningThreshold = 29999f, criticalThreshold = 20000f,
             warningThresholdHigh = 30001f, criticalThresholdHigh = 30001f, valueFormat = "F0",
