@@ -84,7 +84,13 @@ public class VoskSpeechToText : MonoBehaviour
 
 	// Flag to signal we are ending
 	private bool _running;
+	private int _recordingSessionId;
 	private readonly object _recognizerLock = new object();
+	// Task handle for the most recently dispatched final-result worker.
+	// The next ThreadedWork awaits this before touching the recognizer
+	// so that session N+1 audio cannot be mixed into session N's
+	// decoder state (or wiped by its Reset()).
+	private Task _lastFinalizeTask;
 
 	//Thread safe queue of microphone data.
 	private readonly ConcurrentQueue<short[]> _threadedBufferQueue = new ConcurrentQueue<short[]>();
@@ -92,12 +98,25 @@ public class VoskSpeechToText : MonoBehaviour
 	//Thread safe queue of resuts
 	private readonly ConcurrentQueue<string> _threadedResultQueue = new ConcurrentQueue<string>();
 	private readonly ConcurrentQueue<string> _threadedPartialResultQueue = new ConcurrentQueue<string>();
+	// Status messages produced by background threads (e.g. the final-decode worker).
+	// Unity APIs like Text/UI must be touched from the main thread only, so we
+	// marshal these through Update() instead of invoking OnStatusUpdated directly.
+	private readonly ConcurrentQueue<string> _threadedStatusQueue = new ConcurrentQueue<string>();
 	private string _lastPartialResult = "";
+	private string _lastEndpointResult = "";
 
 
 
 	static readonly ProfilerMarker voskRecognizerCreateMarker = new ProfilerMarker("VoskRecognizer.Create");
 	static readonly ProfilerMarker voskRecognizerReadMarker = new ProfilerMarker("VoskRecognizer.AcceptWaveform");
+
+	// libvosk.so ships only as an Android x86_64 plugin (see
+	// Assets/Vosk/ThirdParty/Vosk/Plugins/Androidx86_64/libvosk.so.meta —
+	// Exclude Editor/OSXUniversal/Win/Linux are all 1). Calling any Vosk
+	// PInvoke on the Mac Editor or a non-Android build throws
+	// DllNotFoundException, so every entry point that ultimately reaches
+	// libvosk gates on this.
+	public static bool IsVoskNativeAvailable => Application.platform == RuntimePlatform.Android;
 
 	//If Auto start is enabled, starts vosk speech to text.
 	void Start()
@@ -128,6 +147,16 @@ public class VoskSpeechToText : MonoBehaviour
 			return;
 		}
 
+		if (!IsVoskNativeAvailable)
+		{
+			// libvosk is Android-only. On the Mac Editor (where we do most
+			// of our authoring) any PInvoke into libvosk would crash with a
+			// DllNotFoundException, so bail out cleanly instead.
+			Debug.LogWarning("[Vosk] Native library is only available on Android (Magic Leap 2). Skipping initialization on this platform.");
+			OnStatusUpdated?.Invoke("Vosk not available on this platform.");
+			return;
+		}
+
 		if (!string.IsNullOrEmpty(modelPath))
 		{
 			ModelPath = modelPath;
@@ -152,17 +181,42 @@ public class VoskSpeechToText : MonoBehaviour
 
 		OnStatusUpdated?.Invoke("Loading Model from: " + _decompressedModelPath);
 		//Vosk.Vosk.SetLogLevel(0);
-		try
+
+		// new Model(...) is a blocking PInvoke that mmaps the acoustic
+		// model and the HCLr.fst graph. On the Snapdragon SoC in the ML2
+		// this can take hundreds of milliseconds; running it on the Unity
+		// main thread stalls the compositor long enough to cause a black
+		// frame / flicker. Load it on a worker thread instead and just
+		// pump frames here until it completes.
+		Model loadedModel = null;
+		Exception modelLoadException = null;
+		string modelPathSnapshot = _decompressedModelPath;
+		var modelLoadTask = Task.Run(() =>
 		{
-			_model = new Model(_decompressedModelPath);
+			try
+			{
+				loadedModel = new Model(modelPathSnapshot);
+			}
+			catch (Exception exception)
+			{
+				modelLoadException = exception;
+			}
+		});
+
+		while (!modelLoadTask.IsCompleted)
+		{
+			yield return null;
 		}
-		catch (Exception exception)
+
+		if (modelLoadException != null || loadedModel == null)
 		{
-			Debug.LogError($"[Vosk] Failed to load model from '{_decompressedModelPath}': {exception}");
+			Debug.LogError($"[Vosk] Failed to load model from '{modelPathSnapshot}': {modelLoadException}");
 			OnStatusUpdated?.Invoke("Vosk failed to load model. Check model path and native library.");
 			_isInitializing = false;
 			yield break;
 		}
+
+		_model = loadedModel;
 
 		yield return null;
 
@@ -177,6 +231,10 @@ public class VoskSpeechToText : MonoBehaviour
 
 		if (startMicrophone)
 		{
+			_lastPartialResult = "";
+			_lastEndpointResult = "";
+			ClearQueuedRecognitionData();
+			int sessionId = Interlocked.Increment(ref _recordingSessionId);
 			_running = true;
 			ConfigureVoiceProcessorSilenceDetection();
 			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
@@ -189,7 +247,7 @@ public class VoskSpeechToText : MonoBehaviour
 				yield break;
 			}
 
-			Task.Run(ThreadedWork).ConfigureAwait(false);
+			Task.Run(() => ThreadedWork(sessionId)).ConfigureAwait(false);
 		}
 
 		_isInitializing = false;
@@ -381,6 +439,14 @@ public class VoskSpeechToText : MonoBehaviour
 	//Can be called from a script or a GUI button to start detection.
 	public void ToggleRecording()
 	{
+		if (!IsVoskNativeAvailable)
+		{
+			// Quietly no-op in the Editor / non-Android players. The AIA
+			// controller logs a clearer "Vosk not available" message at its
+			// own layer; we just want to make sure we never hit a PInvoke.
+			return;
+		}
+
 		Debug.Log("Toogle Recording");
 		if (!VoiceProcessor.IsRecording)
 		{
@@ -391,11 +457,21 @@ public class VoskSpeechToText : MonoBehaviour
 				return;
 			}
 
-			_running = true;
 			_lastPartialResult = "";
+			_lastEndpointResult = "";
+			ClearQueuedRecognitionData();
+			int sessionId = Interlocked.Increment(ref _recordingSessionId);
+			_running = true;
 			ConfigureVoiceProcessorSilenceDetection();
 			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
-			Task.Run(ThreadedWork).ConfigureAwait(false);
+			if (!VoiceProcessor.IsRecording)
+			{
+				Debug.LogError("[Vosk] Failed to start microphone recording.");
+				OnStatusUpdated?.Invoke("Vosk could not start microphone recording.");
+				_running = false;
+				return;
+			}
+			Task.Run(() => ThreadedWork(sessionId)).ConfigureAwait(false);
 		}
 		else
 		{
@@ -417,6 +493,11 @@ public class VoskSpeechToText : MonoBehaviour
 		{
 			OnPartialTranscriptionResult?.Invoke(partialResult);
 		}
+
+		if (_threadedStatusQueue.TryDequeue(out string statusMessage))
+		{
+			OnStatusUpdated?.Invoke(statusMessage);
+		}
 	}
 
 	//Callback from the voice processor when new audio is detected
@@ -436,17 +517,74 @@ public class VoskSpeechToText : MonoBehaviour
 	{
 		Debug.Log("Stopped");
 		_running = false;
-		EmitFinalResult();
+
+		if (!IsVoskNativeAvailable)
+		{
+			return;
+		}
+
+		// Snapshot every pending audio frame on the main thread *before*
+		// scheduling the finalize worker. As soon as the next recording
+		// session starts, VoiceProcessor will begin enqueueing fresh
+		// frames into _threadedBufferQueue, and we MUST NOT let those
+		// frames be drained into the previous session's decoder (which
+		// would corrupt the new session's leading audio and then get
+		// wiped by Reset()). Frames captured up to this instant belong
+		// to the session being closed; everything after this belongs to
+		// whatever session starts next.
+		var pendingAudio = new List<short[]>();
+		while (_threadedBufferQueue.TryDequeue(out short[] frame))
+		{
+			pendingAudio.Add(frame);
+		}
+
+		int stoppedSessionId = _recordingSessionId;
+
+		// FinalResult() performs the full Viterbi back-trace and was
+		// blocking the Unity main thread on the ML2, which is what caused
+		// the "flash / black-out" the user reported every time a recording
+		// ended. _recognizerLock serializes the background decode against
+		// ThreadedWork (and against OnDestroy disposal), so this is safe.
+		// The task handle is stashed so the next ThreadedWork can await
+		// it before touching the recognizer; combined with the snapshot
+		// above, that guarantees session N+1 frames cannot leak into
+		// session N's decode and session N's transcript cannot leak
+		// into session N+1's UI.
+		_lastFinalizeTask = Task.Run(() => EmitFinalResult(stoppedSessionId, pendingAudio));
 	}
 
 	//Feeds the autio logic into the vosk recorgnizer
-	private async Task ThreadedWork()
+	private async Task ThreadedWork(int sessionId)
 	{
+		// If the previous recording's finalize task is still running,
+		// wait for it before feeding the recognizer. EmitFinalResult
+		// drains the previous session's audio snapshot, runs
+		// FinalResult(), and calls Reset() — all under _recognizerLock.
+		// Without this await, the lock alone serializes individual
+		// AcceptWaveform calls but does not stop us from mixing session
+		// N+1 audio into session N's decoder state (with session N+1's
+		// leading frames then being wiped by Reset).
+		Task priorFinalize = _lastFinalizeTask;
+		if (priorFinalize != null && !priorFinalize.IsCompleted)
+		{
+			try
+			{
+				await priorFinalize.ConfigureAwait(false);
+			}
+			catch (Exception priorException)
+			{
+				// Prior finalize already logged its own failure; we
+				// only need to make sure that failure doesn't kill
+				// the new worker.
+				Debug.LogWarning($"[Vosk] Previous finalize task ended with exception: {priorException.Message}");
+			}
+		}
+
 		voskRecognizerReadMarker.Begin();
 
 		try
 		{
-			while (_running)
+			while (_running && sessionId == _recordingSessionId)
 			{
 				if (_threadedBufferQueue.TryDequeue(out short[] voiceResult))
 				{
@@ -454,10 +592,22 @@ public class VoskSpeechToText : MonoBehaviour
 					string result = null;
 					lock (_recognizerLock)
 					{
+						// OnDestroy can null the recognizer between our
+						// _running check and the lock acquisition. Bail
+						// instead of NPE-ing on a worker thread.
+						if (!_recognizerReady || _recognizer == null)
+						{
+							break;
+						}
+
 						hasResult = _recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
-						if (hasResult && !EmitResultsOnlyOnStop)
+						if (hasResult)
 						{
 							result = _recognizer.Result();
+							if (EmitResultsOnlyOnStop && HasRecognitionText(result))
+							{
+								_lastEndpointResult = result;
+							}
 						}
 						else if (!hasResult)
 						{
@@ -465,7 +615,7 @@ public class VoskSpeechToText : MonoBehaviour
 						}
 					}
 
-					if (hasResult && !string.IsNullOrWhiteSpace(result))
+					if (hasResult && !EmitResultsOnlyOnStop && !string.IsNullOrWhiteSpace(result))
 					{
 						_threadedResultQueue.Enqueue(result);
 					}
@@ -492,24 +642,81 @@ public class VoskSpeechToText : MonoBehaviour
 		}
 	}
 
-	private void EmitFinalResult()
+	private void EmitFinalResult(int sessionId, List<short[]> pendingAudio)
 	{
-		if (!_recognizerReady || _recognizer == null)
-		{
-			Debug.LogWarning("[Vosk] Cannot emit final result because recognizer is not ready.");
-			return;
-		}
-
 		try
 		{
 			string finalResult;
+			string endpointResult;
 			lock (_recognizerLock)
 			{
+				// The recognizer may have been disposed by OnDestroy while
+				// this task was queued. Bail out silently in that case
+				// instead of throwing a NullRef on a background thread.
+				if (!_recognizerReady || _recognizer == null)
+				{
+					Debug.LogWarning("[Vosk] Cannot emit final result because recognizer is not ready.");
+					return;
+				}
+
+				// Drain the audio that was captured up to the Stop moment.
+				// Iterating the local snapshot (instead of the shared
+				// _threadedBufferQueue) means session N+1 frames cannot
+				// sneak into session N's decode.
+				if (pendingAudio != null)
+				{
+					for (int i = 0; i < pendingAudio.Count; i++)
+					{
+						short[] frame = pendingAudio[i];
+						if (frame == null || frame.Length == 0)
+						{
+							continue;
+						}
+
+						if (_recognizer.AcceptWaveform(frame, frame.Length))
+						{
+							string drainEndpoint = _recognizer.Result();
+							if (HasRecognitionText(drainEndpoint))
+							{
+								_lastEndpointResult = drainEndpoint;
+							}
+						}
+					}
+				}
+
 				finalResult = _recognizer.FinalResult();
-				_recognizer.Dispose();
-				_recognizer = null;
-				_recognizerReady = false;
+				endpointResult = _lastEndpointResult;
+				_lastEndpointResult = "";
+
+				// Reuse the recognizer across sessions instead of
+				// disposing it. vosk_recognizer_reset() is essentially
+				// free and avoids the expensive vosk_recognizer_new_grm
+				// call (which rebuilds the decoding FST) on every Start.
+				// This was a major contributor to the per-transcription
+				// main-thread stall on ML2. Reset must always run so
+				// the recognizer is clean for whatever session ThreadedWork
+				// processes next.
+				_recognizer.Reset();
 				_lastPartialResult = "";
+			}
+
+			if (!HasRecognitionText(finalResult) && HasRecognitionText(endpointResult))
+			{
+				finalResult = endpointResult;
+			}
+
+			// Belt + suspenders against late finalization. If the user
+			// already started a new recording session while we were
+			// finalizing, dropping this transcript prevents an old
+			// utterance from being submitted to Luna against the new
+			// session's intent. The await in ThreadedWork already
+			// prevents recognizer-state corruption in this case; the
+			// session-id check here also prevents the stale text from
+			// surfacing in the UI.
+			if (sessionId != _recordingSessionId)
+			{
+				Debug.Log("[Vosk] Dropping stale final result from previous recording session.");
+				return;
 			}
 
 			Debug.Log($"[Vosk] Final result: {finalResult}");
@@ -518,10 +725,80 @@ public class VoskSpeechToText : MonoBehaviour
 		catch (Exception exception)
 		{
 			Debug.LogError($"[Vosk] Failed to emit final result: {exception}");
-			OnStatusUpdated?.Invoke("Vosk failed to process recording.");
+			// Marshal the status update through the main-thread queue —
+			// EmitFinalResult now runs on a worker thread and OnStatusUpdated
+			// subscribers touch UI objects.
+			_threadedStatusQueue.Enqueue("Vosk failed to process recording.");
 		}
 	}
 
+	private void ClearQueuedRecognitionData()
+	{
+		while (_threadedBufferQueue.TryDequeue(out _)) { }
+		while (_threadedResultQueue.TryDequeue(out _)) { }
+		while (_threadedPartialResultQueue.TryDequeue(out _)) { }
+	}
 
+	private static bool HasRecognitionText(string json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return false;
+		}
+
+		var result = new RecognitionResult(json);
+		return result.Phrases != null &&
+		       result.Phrases.Length > 0 &&
+		       !string.IsNullOrWhiteSpace(result.Phrases[0]?.Text);
+	}
+
+	private void OnDestroy()
+	{
+		// Stop the worker loop first so ThreadedWork exits its while loop
+		// before we tear the recognizer down underneath it.
+		_running = false;
+
+		if (VoiceProcessor != null)
+		{
+			VoiceProcessor.OnFrameCaptured -= VoiceProcessorOnOnFrameCaptured;
+			VoiceProcessor.OnRecordingStop -= VoiceProcessorOnOnRecordingStop;
+		}
+
+		if (!IsVoskNativeAvailable)
+		{
+			// Nothing native was ever created on this platform.
+			return;
+		}
+
+		try
+		{
+			lock (_recognizerLock)
+			{
+				if (_recognizer != null)
+				{
+					_recognizer.Dispose();
+					_recognizer = null;
+				}
+				_recognizerReady = false;
+			}
+		}
+		catch (Exception exception)
+		{
+			Debug.LogWarning($"[Vosk] Recognizer cleanup failed during OnDestroy: {exception}");
+		}
+
+		try
+		{
+			if (_model != null)
+			{
+				_model.Dispose();
+				_model = null;
+			}
+		}
+		catch (Exception exception)
+		{
+			Debug.LogWarning($"[Vosk] Model cleanup failed during OnDestroy: {exception}");
+		}
+	}
 
 }

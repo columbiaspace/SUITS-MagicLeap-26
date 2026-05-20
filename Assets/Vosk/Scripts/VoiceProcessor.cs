@@ -101,7 +101,7 @@ public class VoiceProcessor : MonoBehaviour
     // rejecting room tone (which is usually well under 0.005).
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
     private float _minimumSpeakingSampleValue = 0.009f;
-    private const float MinimumSpeakingRmsValue = 0.00225f;
+    private const float MinimumSpeakingRmsValue = 0.0025f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;
