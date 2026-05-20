@@ -5,7 +5,7 @@ using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 // Minimap pin placement:
-//   TSS posx/posy (meters) → TssCoordsToNormalized → 0..1 fraction on the map image
+//   TSS IMU posx/posy → EvaTssCoordinateAdjust → rock-yard TSS (meters) → TssCoordsToNormalized
 //   → TssCoordsToMapPixels → anchoredPosition on the RectTransform.
 //   Map bounds define which TSS region the image covers; adjust them in the Inspector
 //   to match whatever area rock-yard.tiff was exported from.
@@ -77,6 +77,7 @@ public class ARMinimapErica : MonoBehaviour
 
     // Voice-triggered EVA path
     private readonly List<Vector2>    _voiceNavPoints   = new List<Vector2>();
+    private readonly List<Vector2>    _voiceNavPathTss  = new List<Vector2>();
     private readonly List<GameObject> _voiceNavSegments = new List<GameObject>();
     private RectTransform _voiceNavContainer;
     private bool _voiceNavPathActive;
@@ -159,11 +160,12 @@ public class ARMinimapErica : MonoBehaviour
     {
         if (playerIcon == null || minimapRect == null) return;
 
-        float x       = (float)ToDouble(imuEva, "posx");
-        float y       = (float)ToDouble(imuEva, "posy");
-        float heading = (float)ToDouble(imuEva, "heading");
+        if (imuEva == null) return;
 
-        playerIcon.anchoredPosition = TssCoordsToMapPixels(x, y);
+        Vector2 pos   = ImuToNavTss(imuEva);
+        float heading = ReadImuHeading();
+
+        playerIcon.anchoredPosition = TssCoordsToMapPixels(pos.x, pos.y);
         playerIcon.localEulerAngles = new Vector3(0f, 0f, -heading);
     }
 
@@ -267,10 +269,17 @@ public class ARMinimapErica : MonoBehaviour
         return true;
     }
 
+    /// <summary>True while a voice-triggered path is drawn (yellow line on minimap).</summary>
+    public bool VoiceNavPathActive => _voiceNavPathActive;
+
+    /// <summary>TSS metre waypoints for the active voice path (for ground navigation arrow).</summary>
+    public IReadOnlyList<Vector2> VoiceNavPathTss => _voiceNavPathTss;
+
     /// <summary>Removes the yellow voice navigation path.</summary>
     public void ClearVoiceNavPath()
     {
         ClearVoiceNavSegments();
+        _voiceNavPathTss.Clear();
         _voiceNavPathActive = false;
         _voiceNavGoal = VoiceNavGoal.None;
         _voiceNavUsedTerrainAstar = false;
@@ -301,6 +310,7 @@ public class ARMinimapErica : MonoBehaviour
         if (tssDistance < 2f)
         {
             Debug.Log($"[ARMinimap] Voice nav ({label}): EVA already at destination (TSS distance {tssDistance:F1}m).");
+            _voiceNavPathTss.Clear();
             _voiceNavPathActive = false;
             _voiceNavGoal = VoiceNavGoal.None;
             _voiceNavUsedTerrainAstar = false;
@@ -308,7 +318,7 @@ public class ARMinimapErica : MonoBehaviour
         }
 
         bool usedTerrain = true;
-        List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, out _);
+        List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, out List<Vector2Int> gridCells);
         if (normPoints == null)
         {
             usedTerrain = false;
@@ -318,6 +328,8 @@ public class ARMinimapErica : MonoBehaviour
                 TssCoordsToNormalized(goalTss.x, goalTss.y)
             };
         }
+
+        CacheVoiceNavPathTss(evaTss, goalTss, gridCells);
 
         DrawNormPath(_voiceNavContainer, normPoints, voiceNavPathColor, voiceNavPathLineWidth,
                      _voiceNavPoints, _voiceNavSegments);
@@ -352,13 +364,9 @@ public class ARMinimapErica : MonoBehaviour
     private bool TryGetEvaTss(Dictionary<string, object> imuEva, out Vector2 tssPos)
     {
         if (imuEva != null)
-        {
-            tssPos = new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
-        }
+            tssPos = ImuToNavTss(imuEva);
         else
-        {
             tssPos = GetEvaTssPosition();
-        }
 
         const float margin = 100f;
         return tssPos.x >= mapMinX - margin && tssPos.x <= mapMaxX + margin
@@ -370,6 +378,29 @@ public class ARMinimapErica : MonoBehaviour
         foreach (GameObject seg in _voiceNavSegments) if (seg != null) Destroy(seg);
         _voiceNavSegments.Clear();
         _voiceNavPoints.Clear();
+    }
+
+    private void CacheVoiceNavPathTss(Vector2 evaTss, Vector2 goalTss, List<Vector2Int> gridCells)
+    {
+        _voiceNavPathTss.Clear();
+
+        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
+        if (gridCells != null && gridCells.Count >= 2 && terrain != null)
+        {
+            foreach (Vector2Int cell in gridCells)
+                _voiceNavPathTss.Add(terrain.GridToTssPos(cell));
+            return;
+        }
+
+        _voiceNavPathTss.Add(evaTss);
+        _voiceNavPathTss.Add(goalTss);
+        if (verboseDebug)
+        {
+            Debug.Log(
+                $"[ARMinimap] Voice path TSS cache: {_voiceNavPathTss.Count} points " +
+                $"({(gridCells != null && gridCells.Count >= 2 ? "A* grid" : "straight 2-point")}) " +
+                $"for ground arrow.");
+        }
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.
@@ -555,19 +586,25 @@ public class ARMinimapErica : MonoBehaviour
         if (_logTimer < logIntervalSeconds) return;
         _logTimer = 0f;
 
-        float x       = (float)ToDouble(imuEva, "posx");
-        float y       = (float)ToDouble(imuEva, "posy");
-        float heading = (float)ToDouble(imuEva, "heading");
-        Vector2 n     = TssCoordsToNormalized(x, y);
-        Vector2 px    = minimapRect != null ? TssCoordsToMapPixels(x, y) : Vector2.zero;
+        float rawX = imuEva != null ? (float)ToDouble(imuEva, "posx") : 0f;
+        float rawY = imuEva != null ? (float)ToDouble(imuEva, "posy") : 0f;
+        Vector2 pos   = ImuToNavTss(imuEva);
+        float heading = ReadImuHeading();
+        Vector2 n     = TssCoordsToNormalized(pos.x, pos.y);
+        Vector2 px    = minimapRect != null ? TssCoordsToMapPixels(pos.x, pos.y) : Vector2.zero;
 
         string bucket = imuEva == null
             ? $"NULL (wrong evaId or TSS not connected)"
             : $"OK [{string.Join(", ", new List<string>(imuEva.Keys))}]";
 
+        string coordLog = imuEva != null
+            ? EvaTssCoordinateAdjust.FormatPositionLog(rawX, rawY)
+            : "IMU unavailable";
+
         Debug.Log(
             $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
-            $"  TSS ({x:F1}, {y:F1})  heading {heading:F1}°\n" +
+            $"  {coordLog}\n" +
+            $"  heading {heading:F1}°\n" +
             $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
             $"  trail pts:{_trailPoints.Count}  voice nav segs:{_voiceNavSegments.Count}"
         );
@@ -577,14 +614,29 @@ public class ARMinimapErica : MonoBehaviour
     // TSS data helpers
     // -------------------------------------------------------------------------
 
+    private float ReadImuHeading()
+    {
+        if (tssApi != null && tssApi.TryGetImuHeading(evaId, out float heading))
+            return heading;
+
+        return 0f;
+    }
+
     /// <summary>
-    /// Current TSS (posx, posy) for the configured EVA ID, or Vector2.zero when unavailable.
+    /// Current rock-yard TSS position for the configured EVA ID (IMU + offset), or zero when unavailable.
     /// </summary>
     public Vector2 GetEvaTssPosition()
     {
-        Dictionary<string, object> imuEva = GetImuBucket();
+        return ImuToNavTss(GetImuBucket());
+    }
+
+    /// <summary>Raw IMU posx/posy from TSS, adjusted into rock-yard TSS coordinates.</summary>
+    private static Vector2 ImuToNavTss(Dictionary<string, object> imuEva)
+    {
         if (imuEva == null) return Vector2.zero;
-        return new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
+        return EvaTssCoordinateAdjust.Apply(
+            (float)ToDouble(imuEva, "posx"),
+            (float)ToDouble(imuEva, "posy"));
     }
 
     private Dictionary<string, object> GetImuBucket()
