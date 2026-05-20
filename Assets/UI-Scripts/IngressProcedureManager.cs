@@ -39,7 +39,7 @@ public class IngressProcedureManager : MonoBehaviour
 
     [Header("Display")]
     [Tooltip("Multiplier applied to displayImage scale when showing a DCU sprite (larger so the panel text is readable).")]
-    [SerializeField] private float dcuImageScale = 1.3f;
+    [SerializeField] private float dcuImageScale = 1.5f;
 
     private Vector3 _baseImageScale = Vector3.one;
 
