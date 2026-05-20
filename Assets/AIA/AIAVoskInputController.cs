@@ -12,6 +12,7 @@ public class AIAVoskInputController : MonoBehaviour
     private const string RecordingButtonLabel = "Stop Recording";
     private const string BusyButtonLabel = "Loading Vosk...";
     private const string DefaultVoskModelPath = "vosk-model-en-us-0.22-lgraph.zip";
+    private const string SendRecordingCommand = "send recording";
     private static readonly string[] NasaMissionKeyPhrases =
     {
         "ingress",
@@ -713,6 +714,12 @@ public class AIAVoskInputController : MonoBehaviour
             }
 
             partialTranscript = NormalizeDomainTranscript(partialTranscript);
+            if (partialTranscript.IndexOf(SendRecordingCommand, StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Debug.Log($"[Vosk] Send-recording command detected in partial transcript: '{partialTranscript}'. Stopping recording.");
+                StopRecording();
+                return;
+            }
 
             if (voiceIntents != null)
             {
