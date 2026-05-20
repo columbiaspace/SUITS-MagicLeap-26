@@ -35,6 +35,8 @@ public class VoiceIntents : MonoBehaviour
     private const uint NavVoiceEventIdMin = 119;
     private const uint NavVoiceEventIdMax = 122;
     private const uint LtvPreviousStepEventId = 123;
+    private const uint NavGoToBaseEventId = 124;
+    private const uint NavReturnHomeEventId = 125;
 
     /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
     public static event Action HudClearDisplayRequested;
@@ -419,7 +421,7 @@ public class VoiceIntents : MonoBehaviour
                         Debug.LogWarning($"[Luna] Scene-transition MLVoice intent '{voiceEvent.EventName}' did not match any configured transition in the current scene.");
                     }
                 }
-                else if (voiceEvent.EventID >= NavVoiceEventIdMin && voiceEvent.EventID <= NavVoiceEventIdMax)
+                else if (IsNavVoiceEventId(voiceEvent.EventID))
                 {
                     Debug.Log($"[Luna] Nav MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
                     if (!TryRouteNavVoiceCommand(voiceEvent.EventName, voiceEvent.EventID))
@@ -542,7 +544,7 @@ public class VoiceIntents : MonoBehaviour
             return false;
         }
 
-        if (mlVoiceEventId >= NavVoiceEventIdMin && mlVoiceEventId <= NavVoiceEventIdMax
+        if (IsNavVoiceEventId(mlVoiceEventId)
             && navVoiceCoordinator.TryHandleNavVoiceEvent(mlVoiceEventId, trimmedPrompt))
         {
             return true;
@@ -550,6 +552,13 @@ public class VoiceIntents : MonoBehaviour
 
         return !string.IsNullOrWhiteSpace(trimmedPrompt)
             && navVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+    }
+
+    private static bool IsNavVoiceEventId(uint eventId)
+    {
+        return (eventId >= NavVoiceEventIdMin && eventId <= NavVoiceEventIdMax)
+            || eventId == NavGoToBaseEventId
+            || eventId == NavReturnHomeEventId;
     }
 
     private void UpdateResponseTextBox(string text)

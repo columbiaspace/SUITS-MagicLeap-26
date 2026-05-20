@@ -60,6 +60,10 @@ MonoBehaviour:
     Value: go to ltv2
   - Id: 123
     Value: previous step
+  - Id: 124
+    Value: go to base
+  - Id: 125
+    Value: return home
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []
