@@ -126,7 +126,7 @@ public class LtvHudController : MonoBehaviour
     // Called by the previous-step Button's OnClick UnityEvent (wired in the scene)
     public void OnPreviousClicked()
     {
-        if (enableDebugLogs) Debug.Log("[LtvHud] >>> OnPreviousClicked fired!", this);
+        Debug.Log("[LtvHud] >>> OnPreviousClicked fired (shared button+voice path)", this);
         if (queueService != null && queueService.IsDiagnosisActive && !queueService.IsVerifying)
         {
             queueService.RetreatStep();
