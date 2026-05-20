@@ -40,8 +40,11 @@ public class IngressProcedureManager : MonoBehaviour
     [Header("Display")]
     [Tooltip("Multiplier applied to displayImage scale when showing a DCU sprite (larger so the panel text is readable).")]
     [SerializeField] private float dcuImageScale = 1.5f;
+    [Tooltip("Pixels to drop the displayImage by when showing a DCU sprite, so the enlarged panel does not cover the step text above it. Apply along the canvas Y axis; positive value = moves down.")]
+    [SerializeField] private float dcuImageDownOffset = 60f;
 
     private Vector3 _baseImageScale = Vector3.one;
+    private Vector2 _baseImageAnchoredPos;
 
     private enum CondType
     {
@@ -80,6 +83,7 @@ public class IngressProcedureManager : MonoBehaviour
         if (displayImage != null)
         {
             _baseImageScale = displayImage.rectTransform.localScale;
+            _baseImageAnchoredPos = displayImage.rectTransform.anchoredPosition;
         }
     }
 
@@ -252,8 +256,12 @@ public class IngressProcedureManager : MonoBehaviour
         Sprite shown = sprite != null ? sprite : uiaPanelSprite;
         displayImage.sprite = shown;
 
-        float multiplier = IsDcuSprite(shown) ? Mathf.Max(0.01f, dcuImageScale) : 1f;
+        bool isDcu = IsDcuSprite(shown);
+        float multiplier = isDcu ? Mathf.Max(0.01f, dcuImageScale) : 1f;
         displayImage.rectTransform.localScale = _baseImageScale * multiplier;
+        displayImage.rectTransform.anchoredPosition = isDcu
+            ? _baseImageAnchoredPos + new Vector2(0f, -dcuImageDownOffset)
+            : _baseImageAnchoredPos;
     }
 
     private bool IsDcuSprite(Sprite sprite)
