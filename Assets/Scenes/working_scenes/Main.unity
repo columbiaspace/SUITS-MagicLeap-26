@@ -971,7 +971,7 @@ MonoBehaviour:
   targetObject: {fileID: 0}
   rotationSpeed: 50
   sendVoicePromptToAi: 0
-  aiGenerateUrl: http://192.168.1.210:13853/chat
+  aiGenerateUrl: http://192.168.50.19:13853/chat
   aiModel: gemma4:26b
   logAiResponse: 1
   speakAiResponse: 1
@@ -1209,7 +1209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 192.168.1.210
+  tssHost: 192.168.50.110
   tssPort: 14141
   pollIntervalSeconds: 1
   udpTimeoutMs: 500
