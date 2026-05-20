@@ -129,6 +129,11 @@ public class ARMinimapErica : MonoBehaviour
         LogDebug(imuEva);
 
         // Voice path may have been drawn with a straight-line fallback before TerrainAnalyzer was ready.
+        if (!_voiceNavPathActive && _voiceNavGoal != VoiceNavGoal.None)
+        {
+            RetryActiveVoiceNavPath(imuEva);
+        }
+
         if (_voiceNavPathActive && !_voiceNavUsedTerrainAstar
             && TerrainAnalyzer.Instance != null && TerrainAnalyzer.Instance.IsReady)
         {
@@ -245,27 +250,27 @@ public class ARMinimapErica : MonoBehaviour
     /// <summary>A* path from current EVA position to LTV1 (green waypoint).</summary>
     public bool VoiceGoToLtv1()
     {
-        if (!DrawVoiceNavPath(ltv1Tss, retryOnly: false, imuEva: null, label: "EVA→LTV1"))
-            return false;
         _voiceNavGoal = VoiceNavGoal.Ltv1;
+        if (!DrawVoiceNavPath(ltv1Tss, retryOnly: false, imuEva: null, label: "EVA→LTV1"))
+            return true;
         return true;
     }
 
     /// <summary>A* path from current EVA position to LTV2 (yellow waypoint).</summary>
     public bool VoiceGoToLtv2()
     {
-        if (!DrawVoiceNavPath(ltv2Tss, retryOnly: false, imuEva: null, label: "EVA→LTV2"))
-            return false;
         _voiceNavGoal = VoiceNavGoal.Ltv2;
+        if (!DrawVoiceNavPath(ltv2Tss, retryOnly: false, imuEva: null, label: "EVA→LTV2"))
+            return true;
         return true;
     }
 
     /// <summary>A* path from current EVA position to base (blue waypoint).</summary>
     public bool VoiceReturnToBase()
     {
-        if (!DrawVoiceNavPath(baseTss, retryOnly: false, imuEva: null, label: "EVA→base"))
-            return false;
         _voiceNavGoal = VoiceNavGoal.Base;
+        if (!DrawVoiceNavPath(baseTss, retryOnly: false, imuEva: null, label: "EVA→base"))
+            return true;
         return true;
     }
 
