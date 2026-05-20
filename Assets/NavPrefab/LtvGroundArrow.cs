@@ -20,7 +20,7 @@ public class LtvGroundArrow : MonoBehaviour
 
     [Header("Voice path")]
     [Tooltip("Meters along the TSS polyline ahead of EVA used to pick the segment bearing.")]
-    [SerializeField] private float lookAheadMeters = 2.5f;
+    [SerializeField] private float lookAheadMeters = 1.5f;
 
     [Header("LTV target (TSS metres) — used when no voice path is active")]
     [Tooltip("Default: LTV Task Board Alpha per NASA SUITS rock-yard coordinates.")]
