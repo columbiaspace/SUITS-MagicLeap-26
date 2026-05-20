@@ -60,6 +60,10 @@ MonoBehaviour:
     Value: go to ltv2
   - Id: 123
     Value: previous step
+  - Id: 128
+    Value: deactivate luna | de activate luna | disable luna | turn off luna | luna off | mute luna | stop luna
+  - Id: 129
+    Value: activate luna | act if ate luna | enable luna | turn on luna | luna on | resume luna | start luna
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []
