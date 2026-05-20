@@ -77,6 +77,7 @@ public class ARMinimapErica : MonoBehaviour
 
     // Voice-triggered EVA path
     private readonly List<Vector2>    _voiceNavPoints   = new List<Vector2>();
+    private readonly List<Vector2>    _voiceNavPathTss  = new List<Vector2>();
     private readonly List<GameObject> _voiceNavSegments = new List<GameObject>();
     private RectTransform _voiceNavContainer;
     private bool _voiceNavPathActive;
@@ -267,10 +268,17 @@ public class ARMinimapErica : MonoBehaviour
         return true;
     }
 
+    /// <summary>True while a voice-triggered path is drawn (yellow line on minimap).</summary>
+    public bool VoiceNavPathActive => _voiceNavPathActive;
+
+    /// <summary>TSS metre waypoints for the active voice path (for ground navigation arrow).</summary>
+    public IReadOnlyList<Vector2> VoiceNavPathTss => _voiceNavPathTss;
+
     /// <summary>Removes the yellow voice navigation path.</summary>
     public void ClearVoiceNavPath()
     {
         ClearVoiceNavSegments();
+        _voiceNavPathTss.Clear();
         _voiceNavPathActive = false;
         _voiceNavGoal = VoiceNavGoal.None;
         _voiceNavUsedTerrainAstar = false;
@@ -301,6 +309,7 @@ public class ARMinimapErica : MonoBehaviour
         if (tssDistance < 2f)
         {
             Debug.Log($"[ARMinimap] Voice nav ({label}): EVA already at destination (TSS distance {tssDistance:F1}m).");
+            _voiceNavPathTss.Clear();
             _voiceNavPathActive = false;
             _voiceNavGoal = VoiceNavGoal.None;
             _voiceNavUsedTerrainAstar = false;
@@ -308,7 +317,7 @@ public class ARMinimapErica : MonoBehaviour
         }
 
         bool usedTerrain = true;
-        List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, out _);
+        List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, out List<Vector2Int> gridCells);
         if (normPoints == null)
         {
             usedTerrain = false;
@@ -318,6 +327,8 @@ public class ARMinimapErica : MonoBehaviour
                 TssCoordsToNormalized(goalTss.x, goalTss.y)
             };
         }
+
+        CacheVoiceNavPathTss(evaTss, goalTss, gridCells);
 
         DrawNormPath(_voiceNavContainer, normPoints, voiceNavPathColor, voiceNavPathLineWidth,
                      _voiceNavPoints, _voiceNavSegments);
@@ -370,6 +381,22 @@ public class ARMinimapErica : MonoBehaviour
         foreach (GameObject seg in _voiceNavSegments) if (seg != null) Destroy(seg);
         _voiceNavSegments.Clear();
         _voiceNavPoints.Clear();
+    }
+
+    private void CacheVoiceNavPathTss(Vector2 evaTss, Vector2 goalTss, List<Vector2Int> gridCells)
+    {
+        _voiceNavPathTss.Clear();
+
+        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
+        if (gridCells != null && gridCells.Count >= 2 && terrain != null)
+        {
+            foreach (Vector2Int cell in gridCells)
+                _voiceNavPathTss.Add(terrain.GridToTssPos(cell));
+            return;
+        }
+
+        _voiceNavPathTss.Add(evaTss);
+        _voiceNavPathTss.Add(goalTss);
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.
