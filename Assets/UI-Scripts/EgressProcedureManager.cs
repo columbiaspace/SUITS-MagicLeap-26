@@ -44,6 +44,12 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private Sprite dcuBattLocalUmbSprite; // dcu-batt-local-umb.png — BATT LOCAL / UMB
     [SerializeField] private Sprite dcuBattSecPriSprite;  // dcu-batt-sec-pri.png — BATT SEC / PRI
 
+    [Header("Display")]
+    [Tooltip("Multiplier applied to displayImage scale when showing a DCU sprite (larger so the panel text is readable).")]
+    [SerializeField] private float dcuImageScale = 1.5f;
+
+    private Vector3 _baseImageScale = Vector3.one;
+
     // ── Internals ──────────────────────────────────────────────────────
     private enum CondType { Timed, UiaBool, DcuBool, DcuBattBool }
 
@@ -198,8 +204,11 @@ public class EgressProcedureManager : MonoBehaviour
             T("HMD: Wait until SUIT Pressure and O2 Pressure = 4"),
             U("UIA: DEPRESS PUMP PWR – OFF\n",
                 uiaDepressPumpSprite, "depress",            false),
+            // PRI/SEC selector lives on `dcu.eva1.batt.ps` (per ImageCarouselUI's
+            // EvaField.DcuEva1BattLocal mapping). Using `lu` here would inherit the
+            // already-true UMB state from Step 3 and silently skip this step.
             B("DCU: BATT – PRI\n",
-                dcuBattSecPriSprite, "lu",                 true),
+                dcuBattSecPriSprite, "ps",                 true),
             B("DCU: BATT – LOCAL\n",
                 dcuBattLocalUmbSprite, "lu",               false),
             U("UIA: EV-1 EMU PWR – OFF\n",
