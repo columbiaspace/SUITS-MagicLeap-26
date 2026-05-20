@@ -60,7 +60,7 @@ public class VoiceIntents : MonoBehaviour
     private const int MaxVisibleConversationTurns = 3;
     private const string DefaultResponsePlaceholder = "Luna response will appear here.";
     private const string RecordingPlaceholder = "Recording your question...";
-    private const string WaitingForResponsePlaceholder = "waiting for response...";
+    private const string WaitingForResponsePlaceholder = "Sent to Luna\nwaiting for response...";
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     public MLVoiceIntentsConfiguration VoiceIntentsConfiguration;
