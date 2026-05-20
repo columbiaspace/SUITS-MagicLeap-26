@@ -155,15 +155,15 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "O2 CONSUMPTION", path = "telemetry.eva1.oxy_consumption",
             unit = " psi/min", direction = AlertDirection.Range,
-            warningThreshold = 0.063f, criticalThreshold = 0.05f,
-            warningThresholdHigh = 0.138f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+            warningThreshold = 0.05f, criticalThreshold = 0.01f,
+            warningThresholdHigh = 0.15f, criticalThresholdHigh = 0.20f, valueFormat = "F3" },
 
         // --- CO2 Production (nominal 0.10, range 0.05–0.15 psi/min) ---
         new VitalRule {
             label = "CO2 PRODUCTION", path = "telemetry.eva1.co2_production",
             unit = " psi/min", direction = AlertDirection.Range,
-            warningThreshold = 0.063f, criticalThreshold = 0.05f,
-            warningThresholdHigh = 0.138f, criticalThresholdHigh = 0.15f, valueFormat = "F3" },
+            warningThreshold = 0.05f, criticalThreshold = 0.01f,
+            warningThresholdHigh = 0.15f, criticalThresholdHigh = 0.20f, valueFormat = "F3" },
 
         // --- Suit Pressure: O2 (nominal 4.0, range 3.5–4.1 psi) ---
         new VitalRule {
