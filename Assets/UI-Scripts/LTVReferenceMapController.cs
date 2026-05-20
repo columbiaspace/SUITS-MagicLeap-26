@@ -1,3 +1,4 @@
+using Unity.VectorGraphics;
 using UnityEngine;
 using UnityEngine.UI;
 using UnityEngine.XR.Interaction.Toolkit;
@@ -57,12 +58,12 @@ public class LTVReferenceMapController : MonoBehaviour
         rt.sizeDelta = new Vector2(1024f, 819f);
         rt.localScale = new Vector3(worldSize.x / rt.sizeDelta.x, worldSize.y / rt.sizeDelta.y, 1f);
 
-        var imageGo = new GameObject("Image", typeof(RectTransform), typeof(Image));
+        var imageGo = new GameObject("Image", typeof(RectTransform), typeof(SVGImage));
         var imageRt = (RectTransform)imageGo.transform;
         imageRt.SetParent(root.transform, false);
         imageRt.anchorMin = Vector2.zero; imageRt.anchorMax = Vector2.one;
         imageRt.offsetMin = imageRt.offsetMax = Vector2.zero;
-        var img = imageGo.GetComponent<Image>();
+        var img = imageGo.GetComponent<SVGImage>();
         img.sprite = mapSprite;
         img.preserveAspect = true;
 

@@ -60,6 +60,10 @@ MonoBehaviour:
     Value: go to ltv2
   - Id: 123
     Value: previous step
+  - Id: 124
+    Value: go to base
+  - Id: 125
+    Value: return home
   - Id: 128
     Value: deactivate luna | de activate luna | disable luna | turn off luna | luna off | mute luna | stop luna
   - Id: 129

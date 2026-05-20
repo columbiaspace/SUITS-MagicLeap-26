@@ -38,7 +38,7 @@ RenderSettings:
   m_ReflectionIntensity: 1
   m_CustomReflection: {fileID: 0}
   m_Sun: {fileID: 0}
-  m_IndirectSpecularColor: {r: 0.18028356, g: 0.2257137, b: 0.3069222, a: 1}
+  m_IndirectSpecularColor: {r: 0.18018535, g: 0.22559482, b: 0.30677685, a: 1}
   m_UseRadianceAmbientProbe: 0
 --- !u!157 &3
 LightmapSettings:
@@ -675,7 +675,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Target: {fileID: 1350499926}
-  m_TargetOffset: {x: 0, y: 0.34, z: 1.3}
+  m_TargetOffset: {x: 0, y: 0.34, z: 1.4}
   m_FollowInLocalSpace: 0
   m_ApplyTargetInLocalSpace: 0
   m_MovementSpeed: 12
@@ -707,9 +707,9 @@ MonoBehaviour:
   entryPaddingY: 6
   fontSize: 20
   fallbackContainerWidth: 300
-  runningLowColor: {r: 0.89, g: 0.55, b: 0.1, a: 0.49019608}
-  criticallyLowColor: {r: 0.85, g: 0.12, b: 0.12, a: 0.49019608}
-  sideOffset: {x: 500, y: 0}
+  runningLowColor: {r: 0.89, g: 0.55, b: 0.1, a: 0.19607843}
+  criticallyLowColor: {r: 0.85, g: 0.12, b: 0.12, a: 0.19607843}
+  sideOffset: {x: 450, y: 0}
   centerDuration: 10
   slideDuration: 0.5
 --- !u!114 &9200007
@@ -1556,7 +1556,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Target: {fileID: 1350499926}
-  m_TargetOffset: {x: 0.28, y: 0.08, z: 1.3}
+  m_TargetOffset: {x: -0.52, y: 0.08, z: 1.3}
   m_FollowInLocalSpace: 0
   m_ApplyTargetInLocalSpace: 0
   m_MovementSpeed: 10
@@ -3825,8 +3825,8 @@ RectTransform:
   m_LocalEulerAnglesHint: {x: 0, y: 0, z: 0}
   m_AnchorMin: {x: 0, y: 0}
   m_AnchorMax: {x: 0, y: 0}
-  m_AnchoredPosition: {x: 168, y: 0}
-  m_SizeDelta: {x: 336, y: 0}
+  m_AnchoredPosition: {x: 0, y: 0}
+  m_SizeDelta: {x: 0, y: 0}
   m_Pivot: {x: 0.5, y: 1}
 --- !u!222 &5000030042
 CanvasRenderer:
@@ -4263,6 +4263,10 @@ PrefabInstance:
       propertyPath: tssApi
       value: 
       objectReference: {fileID: 1138549943}
+    - target: {fileID: 8012345678901234571, guid: 9e2d4b6c8a0f1e3d5b7a9c1e3f5a7b9d, type: 3}
+      propertyPath: minimap
+      value: 
+      objectReference: {fileID: 224362100}
     - target: {fileID: 8012345678901234571, guid: 9e2d4b6c8a0f1e3d5b7a9c1e3f5a7b9d, type: 3}
       propertyPath: followTransform
       value: 

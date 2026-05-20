@@ -35,11 +35,15 @@ public class NavVoiceCoordinator : MonoBehaviour
         "return home",
         "return to the base",
         "go to base",
+        "go to hab",
+        "go to the hab",
         "go to start",
         "back to base",
+        "back to hab",
         "rth",
         "return",
         "base",
+        "hab",
     };
 
     [SerializeField] private string[] clearPathPhrases =
@@ -67,6 +71,9 @@ public class NavVoiceCoordinator : MonoBehaviour
                 return ExecuteClearPath($"MLVoice id={eventId}");
             case 122:
                 return ExecuteGoToLtv2($"MLVoice id={eventId}");
+            case 124:
+            case 125:
+                return ExecuteReturnToBase($"MLVoice id={eventId}");
         }
 
         if (!string.IsNullOrWhiteSpace(eventName))
