@@ -96,10 +96,13 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 7f3c8e2a1b9d4f6e8c0a2d5e7b1c3f4a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+  minimap: {fileID: 0}
   tssApi: {fileID: 0}
   evaId: eva1
+  lookAheadMeters: 2.5
   ltvTaskBoardTss: {x: -5635, y: -9960}
   useTssLastKnownLocation: 0
+  pointAtLtvWhenNoVoicePath: 0
   followTransform: {fileID: 0}
   forwardDistance: 0.75
   heightBelowFollow: 1.1

@@ -1,5 +1,3 @@
-using System.Collections;
-using System.Collections.Generic;
 using TssApi;
 using UnityEngine;
 
@@ -56,50 +54,9 @@ public class Compass_script : MonoBehaviour
 
     private float ReadTssHeading()
     {
-        // GetEva() → ["imu"] → [evaId] → ["heading"]
-        Dictionary<string, object> eva = tssApi.GetEva();
+        if (tssApi != null && tssApi.TryGetImuHeading(evaId, out float heading))
+            return heading;
 
-        Dictionary<string, object> imu = null;
-        if (eva != null && eva.TryGetValue("imu", out object imuObj))
-            imu = imuObj as Dictionary<string, object>;
-
-        Dictionary<string, object> imuEva = null;
-        if (imu != null && imu.TryGetValue(evaId, out object bucketObj))
-            imuEva = bucketObj as Dictionary<string, object>;
-
-        if (imuEva == null)
-        {
-            Debug.LogWarning($"[Compass] imu[\"{evaId}\"] not found — check evaId matches TSS. imu keys: {Keys(imu)}");
-            return _currentHeading; // hold last known value
-        }
-
-        if (!imuEva.TryGetValue("heading", out object raw) || raw == null)
-        {
-            Debug.LogWarning("[Compass] heading field missing from imu bucket.");
-            return _currentHeading;
-        }
-
-        return (float)ToDouble(raw);
-    }
-
-    private static string Keys(Dictionary<string, object> dict)
-    {
-        if (dict == null || dict.Count == 0) return "(empty)";
-        var k = new List<string>(dict.Keys);
-        k.Sort();
-        return "[" + string.Join(", ", k) + "]";
-    }
-
-    private static double ToDouble(object val)
-    {
-        if (val is double d)  return d;
-        if (val is float  f)  return f;
-        if (val is int    i)  return i;
-        if (val is long   l)  return l;
-        if (val is string s && double.TryParse(s,
-                System.Globalization.NumberStyles.Float,
-                System.Globalization.CultureInfo.InvariantCulture, out double p)) return p;
-        try   { return System.Convert.ToDouble(val, System.Globalization.CultureInfo.InvariantCulture); }
-        catch { return 0d; }
+        return _currentHeading;
     }
 }

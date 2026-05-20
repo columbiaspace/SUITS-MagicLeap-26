@@ -91,8 +91,11 @@ public class TestTSS : MonoBehaviour
             imuEva = bucketObj as Dictionary<string, object>;
 
         // ── STEP 5: Read the three pose fields ───────────────────────────────
-        double posX    = GetDouble(imuEva, "posx");
-        double posY    = GetDouble(imuEva, "posy");
+        double rawX    = GetDouble(imuEva, "posx");
+        double rawY    = GetDouble(imuEva, "posy");
+        Vector2 navPos = EvaTssCoordinateAdjust.Apply((float)rawX, (float)rawY);
+        double posX    = navPos.x;
+        double posY    = navPos.y;
         double heading = GetDouble(imuEva, "heading");
 
         // ── Diagnostic block ─────────────────────────────────────────────────
@@ -106,10 +109,10 @@ public class TestTSS : MonoBehaviour
                 $"  STEP 2 — GetEva() keys      : {Keys(eva)}\n" +
                 $"  STEP 3 — imu keys           : {Keys(imu)}\n" +
                 $"  STEP 4 — imu[\"{evaId}\"] keys : {Keys(imuEva)}\n" +
-                $"  STEP 5 — posx               : {Raw(imuEva, "posx")}\n" +
-                $"           posy               : {Raw(imuEva, "posy")}\n" +
+                $"  STEP 5 — posx (raw)         : {Raw(imuEva, "posx")}\n" +
+                $"           posy (raw)         : {Raw(imuEva, "posy")}\n" +
                 $"           heading            : {Raw(imuEva, "heading")}\n" +
-                $"  RESULT — posx={posX:F3}  posy={posY:F3}  heading={heading:F2}°"
+                $"  RESULT — {EvaTssCoordinateAdjust.FormatPositionLog((float)rawX, (float)rawY)}  heading={heading:F2}°"
             );
         }
 

@@ -4264,6 +4264,10 @@ PrefabInstance:
       value: 
       objectReference: {fileID: 1138549943}
     - target: {fileID: 8012345678901234571, guid: 9e2d4b6c8a0f1e3d5b7a9c1e3f5a7b9d, type: 3}
+      propertyPath: minimap
+      value: 
+      objectReference: {fileID: 224362100}
+    - target: {fileID: 8012345678901234571, guid: 9e2d4b6c8a0f1e3d5b7a9c1e3f5a7b9d, type: 3}
       propertyPath: followTransform
       value: 
       objectReference: {fileID: 1350499926}
