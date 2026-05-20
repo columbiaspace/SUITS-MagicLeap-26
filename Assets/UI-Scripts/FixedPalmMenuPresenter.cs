@@ -19,8 +19,11 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     [Header("Palm Gesture")]
     [SerializeField] private bool requireOpenHand = true;
-    [SerializeField] private float palmFacingCameraThreshold = 0.55f;
+    [SerializeField] private MenuTriggerHand menuTriggerHand = MenuTriggerHand.Right;
+    [SerializeField] private float palmShowFacingCameraThreshold = 0.6f;
+    [SerializeField] private float palmHideFacingCameraThreshold = 0.45f;
     [SerializeField] private float hideDelaySeconds = 0.2f;
+    [SerializeField] private float fingerExtensionSlack = 0.85f;
 
     [Header("XR UI Interaction")]
     [SerializeField] private bool assignMainCameraToCanvases = true;
@@ -36,11 +39,22 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     [SerializeField] private Color palmMenuVisibleColor = new Color(0.1f, 1f, 0.25f, 0.95f);
 
     [Header("Debug Logging")]
-    [SerializeField] private bool logHandState = true;
+    [SerializeField] private bool logHandState;
     [SerializeField] private float handStateLogIntervalSeconds = 1f;
+
+    [Header("Debug HUD")]
+    [SerializeField] private bool showDebugStatusText = true;
+    [SerializeField] private bool forceShowMenu;
+    [SerializeField] private bool debugBypassPalmFacingCheck;
+    [SerializeField] private bool debugBypassOpenHandCheck;
+    [SerializeField] private float debugTextDistanceFromCamera = 0.65f;
+    [SerializeField] private Vector2 debugTextOffsetFromCenter = new Vector2(-0.32f, -0.18f);
+    [SerializeField] private float debugTextCharacterSize = 0.012f;
+    [SerializeField] private Color debugTextColor = new Color(0.9f, 1f, 1f, 1f);
 
     [Header("Legacy Hand Menu")]
     [SerializeField] private bool disableLegacyPalmFollow = true;
+    [SerializeField] private MonoBehaviour legacyHandMenu;
 
     private Canvas[] canvases;
     private GraphicRaycaster[] graphicRaycasters;
@@ -48,9 +62,20 @@ public class FixedPalmMenuPresenter : MonoBehaviour
     private CanvasGroup canvasGroup;
     private float lastValidGestureTime = float.NegativeInfinity;
     private bool isVisible;
+    private bool currentShouldShow;
+    private bool canvasesConfiguredForXrUi;
+    private PalmGestureState currentGestureState = PalmGestureState.NoTrackedPalm;
     private GameObject palmDetectionIndicator;
     private Renderer palmDetectionIndicatorRenderer;
     private Material palmDetectionIndicatorMaterial;
+    private TextMesh debugStatusText;
+    private GameObject debugStatusTextObject;
+    private bool lastLeftTracked;
+    private bool lastRightTracked;
+    private bool lastLeftOpen;
+    private bool lastRightOpen;
+    private bool lastLeftPresenting;
+    private bool lastRightPresenting;
 
     private enum PalmGestureState
     {
@@ -59,8 +84,16 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         PalmPresentingMenu,
     }
 
+    private enum MenuTriggerHand
+    {
+        Left,
+        Right,
+        Either,
+    }
+
 #if XR_HANDS_1_1_OR_NEWER
     private XRHandSubsystem handSubsystem;
+    private bool subscribedToHandUpdates;
     private static readonly List<XRHandSubsystem> s_HandSubsystems = new List<XRHandSubsystem>();
 #endif
 
@@ -79,6 +112,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void Awake()
     {
+        Debug.Log("[FixedPalmMenuPresenter] Awake running.", this);
         CacheUiComponents();
 
         if (disableLegacyPalmFollow)
@@ -91,6 +125,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void Start()
     {
+        Debug.Log("[FixedPalmMenuPresenter] Start running.", this);
         if (handTrackingPermissionRequested)
             return;
 
@@ -101,10 +136,15 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void OnEnable()
     {
+        Debug.Log("[FixedPalmMenuPresenter] OnEnable running.", this);
         ResolveCamera();
         EnsureTrackedDeviceRaycasters();
         ConfigureCanvasesForXrUi();
         EnsurePalmDetectionIndicator();
+        EnsureDebugStatusText();
+#if XR_HANDS_1_1_OR_NEWER
+        TrySubscribeToHandUpdates();
+#endif
 #if !XR_HANDS_1_1_OR_NEWER
         Debug.LogWarning("[FixedPalmMenuPresenter] XR Hands package symbols are unavailable; palm gesture detection is disabled.", this);
 #endif
@@ -113,12 +153,21 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void OnDisable()
     {
+#if XR_HANDS_1_1_OR_NEWER
+        UnsubscribeFromHandUpdates();
+#endif
         if (palmDetectionIndicator != null)
             palmDetectionIndicator.SetActive(false);
+
+        if (debugStatusTextObject != null)
+            debugStatusTextObject.SetActive(false);
     }
 
     private void OnDestroy()
     {
+#if XR_HANDS_1_1_OR_NEWER
+        UnsubscribeFromHandUpdates();
+#endif
         permissionCallbacks.OnPermissionGranted -= OnHandTrackingPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnHandTrackingPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnHandTrackingPermissionDenied;
@@ -128,6 +177,9 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
         if (palmDetectionIndicator != null)
             Destroy(palmDetectionIndicator);
+
+        if (debugStatusTextObject != null)
+            Destroy(debugStatusTextObject);
     }
 
     private void OnHandTrackingPermissionGranted(string permission)
@@ -139,6 +191,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         Debug.Log($"[FixedPalmMenuPresenter] Permission granted: {permission}. Resolving XRHandSubsystem...", this);
 #if XR_HANDS_1_1_OR_NEWER
         ResolveHandSubsystem();
+        TrySubscribeToHandUpdates();
 #endif
     }
 
@@ -153,17 +206,13 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void Update()
     {
-        ResolveCamera();
-        ConfigureCanvasesForXrUi();
+        if (cameraTransform == null && ResolveCamera())
+            ConfigureCanvasesForXrUi();
 
-        PalmGestureState gestureState = GetPalmGestureState();
-        bool gestureIsValid = gestureState == PalmGestureState.PalmPresentingMenu;
-        if (gestureIsValid)
-            lastValidGestureTime = Time.time;
-
-        bool shouldShow = gestureIsValid || Time.time - lastValidGestureTime <= hideDelaySeconds;
+        bool shouldShow = forceShowMenu || currentShouldShow;
         SetMenuVisible(shouldShow);
-        UpdatePalmDetectionIndicator(gestureState);
+        UpdatePalmDetectionIndicator(currentGestureState);
+        UpdateDebugStatusText(currentGestureState, shouldShow);
 
         if (shouldShow)
             PositionInFrontOfCamera();
@@ -179,10 +228,16 @@ public class FixedPalmMenuPresenter : MonoBehaviour
             canvasGroup = gameObject.AddComponent<CanvasGroup>();
     }
 
-    private void ResolveCamera()
+    private bool ResolveCamera()
     {
-        if (cameraTransform == null && Camera.main != null)
-            cameraTransform = Camera.main.transform;
+        if (cameraTransform != null)
+            return true;
+
+        if (Camera.main == null)
+            return false;
+
+        cameraTransform = Camera.main.transform;
+        return true;
     }
 
     private void EnsureTrackedDeviceRaycasters()
@@ -203,7 +258,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void ConfigureCanvasesForXrUi()
     {
-        if (!assignMainCameraToCanvases || cameraTransform == null || canvases == null)
+        if (canvasesConfiguredForXrUi || !assignMainCameraToCanvases || cameraTransform == null || canvases == null)
             return;
 
         Camera eventCamera = cameraTransform.GetComponent<Camera>();
@@ -217,6 +272,8 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
             canvas.worldCamera = eventCamera;
         }
+
+        canvasesConfiguredForXrUi = true;
     }
 
     private void EnsurePalmDetectionIndicator()
@@ -226,6 +283,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
         palmDetectionIndicator = GameObject.CreatePrimitive(PrimitiveType.Sphere);
         palmDetectionIndicator.name = "Palm Menu Detection Indicator";
+        palmDetectionIndicator.transform.SetParent(transform, true);
 
         Collider indicatorCollider = palmDetectionIndicator.GetComponent<Collider>();
         if (indicatorCollider != null)
@@ -244,6 +302,75 @@ public class FixedPalmMenuPresenter : MonoBehaviour
                 palmDetectionIndicatorRenderer.material = palmDetectionIndicatorMaterial;
             }
         }
+    }
+
+    private void EnsureDebugStatusText()
+    {
+        if (!showDebugStatusText || debugStatusTextObject != null)
+            return;
+
+        debugStatusTextObject = new GameObject("Hand Menu Debug Status");
+        debugStatusTextObject.transform.SetParent(transform, true);
+        debugStatusText = debugStatusTextObject.AddComponent<TextMesh>();
+        debugStatusText.anchor = TextAnchor.UpperLeft;
+        debugStatusText.alignment = TextAlignment.Left;
+        debugStatusText.fontSize = 48;
+        debugStatusText.characterSize = debugTextCharacterSize;
+        debugStatusText.color = debugTextColor;
+    }
+
+    private void UpdateDebugStatusText(PalmGestureState gestureState, bool shouldShow)
+    {
+        if (!showDebugStatusText)
+        {
+            if (debugStatusTextObject != null)
+                debugStatusTextObject.SetActive(false);
+            return;
+        }
+
+        EnsureDebugStatusText();
+        if (debugStatusTextObject == null || debugStatusText == null || cameraTransform == null)
+            return;
+
+        debugStatusTextObject.SetActive(true);
+        debugStatusTextObject.transform.position =
+            cameraTransform.position +
+            cameraTransform.forward * debugTextDistanceFromCamera +
+            cameraTransform.right * debugTextOffsetFromCenter.x +
+            cameraTransform.up * debugTextOffsetFromCenter.y;
+        debugStatusTextObject.transform.rotation = Quaternion.LookRotation(cameraTransform.forward, cameraTransform.up);
+        debugStatusText.characterSize = debugTextCharacterSize;
+        debugStatusText.color = debugTextColor;
+        debugStatusText.text =
+            "Hand Menu Debug\n" +
+            $"Presenter: running\n" +
+            $"Permission: {GetPermissionStatus()}\n" +
+            $"XR Hands: {GetXrHandsStatus()}\n" +
+            $"Menu: {(shouldShow ? "shown" : "hidden")} force={forceShowMenu}\n" +
+            $"Bypass: palm={debugBypassPalmFacingCheck} open={debugBypassOpenHandCheck}\n" +
+            $"L: tracked={lastLeftTracked} open={lastLeftOpen} dot={Fmt(lastLeftPalmDot)} present={lastLeftPresenting}\n" +
+            $"R: tracked={lastRightTracked} open={lastRightOpen} dot={Fmt(lastRightPalmDot)} present={lastRightPresenting}\n" +
+            $"Threshold: show={palmShowFacingCameraThreshold:F2} hide={palmHideFacingCameraThreshold:F2}";
+    }
+
+    private string GetPermissionStatus()
+    {
+        if (handTrackingPermissionGranted)
+            return "granted";
+
+        return handTrackingPermissionRequested ? "requested/waiting" : "not requested";
+    }
+
+    private string GetXrHandsStatus()
+    {
+#if XR_HANDS_1_1_OR_NEWER
+        if (handSubsystem == null)
+            return "missing";
+
+        return handSubsystem.running ? "running" : "found but stopped";
+#else
+        return "XR_HANDS symbols unavailable";
+#endif
     }
 
     private void UpdatePalmDetectionIndicator(PalmGestureState gestureState)
@@ -287,6 +414,12 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private void DisableLegacyHandMenu()
     {
+        if (legacyHandMenu != null)
+        {
+            legacyHandMenu.enabled = false;
+            return;
+        }
+
         Transform searchRoot = transform.root;
         MonoBehaviour[] behaviours = searchRoot.GetComponentsInChildren<MonoBehaviour>(true);
         foreach (MonoBehaviour behaviour in behaviours)
@@ -361,11 +494,29 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         transform.localScale = fixedWorldScale;
     }
 
+    private void EvaluateGestureAndUpdateMenu()
+    {
+        currentGestureState = GetPalmGestureState();
+        bool gestureIsValid = currentGestureState == PalmGestureState.PalmPresentingMenu;
+        if (gestureIsValid)
+            lastValidGestureTime = Time.time;
+
+        currentShouldShow = gestureIsValid || Time.time - lastValidGestureTime <= hideDelaySeconds;
+        bool shouldShow = forceShowMenu || currentShouldShow;
+        SetMenuVisible(shouldShow);
+        UpdatePalmDetectionIndicator(currentGestureState);
+        UpdateDebugStatusText(currentGestureState, shouldShow);
+
+        if (shouldShow)
+            PositionInFrontOfCamera();
+    }
+
     private PalmGestureState GetPalmGestureState()
     {
 #if XR_HANDS_1_1_OR_NEWER
         if (!handTrackingPermissionGranted)
         {
+            ResetLastHandState();
             LogHandStateRateLimited(false, false, false, false);
             return PalmGestureState.NoTrackedPalm;
         }
@@ -375,20 +526,25 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
         if (handSubsystem == null)
         {
+            ResetLastHandState();
             LogHandStateRateLimited(false, false, false, false);
             return PalmGestureState.NoTrackedPalm;
         }
 
         bool leftTracked = IsPalmTracked(handSubsystem.leftHand);
         bool rightTracked = IsPalmTracked(handSubsystem.rightHand);
+        lastLeftTracked = leftTracked;
+        lastRightTracked = rightTracked;
+        lastLeftOpen = false;
+        lastRightOpen = false;
 
-        // Menu only opens for the right hand (per Phase 3 spec). Left hand still
-        // contributes to dot state so the user gets feedback either way.
         bool rightPresenting = IsPalmPresentingMenu(handSubsystem.rightHand, isRightHand: true);
         bool leftPresenting = IsPalmPresentingMenu(handSubsystem.leftHand, isRightHand: false);
+        lastLeftPresenting = leftPresenting;
+        lastRightPresenting = rightPresenting;
         LogHandStateRateLimited(leftTracked, rightTracked, leftPresenting, rightPresenting);
 
-        if (rightPresenting)
+        if (ShouldOpenFromHands(leftPresenting, rightPresenting))
             return PalmGestureState.PalmPresentingMenu;
 
         return leftTracked || rightTracked ? PalmGestureState.PalmTracked : PalmGestureState.NoTrackedPalm;
@@ -397,7 +553,73 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 #endif
     }
 
+    private void ResetLastHandState()
+    {
+        lastLeftTracked = false;
+        lastRightTracked = false;
+        lastLeftOpen = false;
+        lastRightOpen = false;
+        lastLeftPresenting = false;
+        lastRightPresenting = false;
+        lastLeftPalmDot = float.NaN;
+        lastRightPalmDot = float.NaN;
+    }
+
+    private static string Fmt(float value)
+    {
+        return float.IsNaN(value) ? "n/a" : value.ToString("F2");
+    }
+
+    private bool ShouldOpenFromHands(bool leftPresenting, bool rightPresenting)
+    {
+        switch (menuTriggerHand)
+        {
+            case MenuTriggerHand.Left:
+                return leftPresenting;
+            case MenuTriggerHand.Either:
+                return leftPresenting || rightPresenting;
+            default:
+                return rightPresenting;
+        }
+    }
+
 #if XR_HANDS_1_1_OR_NEWER
+    private void TrySubscribeToHandUpdates()
+    {
+        if (!handTrackingPermissionGranted || subscribedToHandUpdates)
+            return;
+
+        if (handSubsystem == null || !handSubsystem.running)
+            ResolveHandSubsystem();
+
+        if (handSubsystem == null || !handSubsystem.running)
+            return;
+
+        handSubsystem.updatedHands += OnUpdatedHands;
+        subscribedToHandUpdates = true;
+        Debug.Log("[FixedPalmMenuPresenter] Subscribed to XRHandSubsystem.updatedHands.", this);
+    }
+
+    private void UnsubscribeFromHandUpdates()
+    {
+        if (!subscribedToHandUpdates || handSubsystem == null)
+            return;
+
+        handSubsystem.updatedHands -= OnUpdatedHands;
+        subscribedToHandUpdates = false;
+    }
+
+    private void OnUpdatedHands(
+        XRHandSubsystem subsystem,
+        XRHandSubsystem.UpdateSuccessFlags updateSuccessFlags,
+        XRHandSubsystem.UpdateType updateType)
+    {
+        if (updateType != XRHandSubsystem.UpdateType.Dynamic)
+            return;
+
+        EvaluateGestureAndUpdateMenu();
+    }
+
     private void ResolveHandSubsystem()
     {
         if (handSubsystem != null && handSubsystem.running)
@@ -438,16 +660,13 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
     private static bool IsPalmTracked(XRHand hand)
     {
-        if (!hand.isTracked)
-            return false;
-
         XRHandJoint palm = hand.GetJoint(XRHandJointID.Palm);
         return palm.TryGetPose(out _);
     }
 
     private bool IsPalmPresentingMenu(XRHand hand, bool isRightHand)
     {
-        if (!hand.isTracked || cameraTransform == null)
+        if (cameraTransform == null)
             return false;
 
         XRHandJoint palm = hand.GetJoint(XRHandJointID.Palm);
@@ -455,15 +674,18 @@ public class FixedPalmMenuPresenter : MonoBehaviour
             return false;
 
         Vector3 directionToCamera = (cameraTransform.position - palmPose.position).normalized;
-        // Palm joint convention in OpenXR XR Hands: +Y of the palm-local frame points
-        // out of the palm regardless of handedness, so we don't flip for left vs right.
-        Vector3 palmNormal = palmPose.rotation * Vector3.up;
+        // In OpenXR XR Hands, -Z of the palm-local frame is the palm-face normal.
+        Vector3 palmNormal = palmPose.rotation * Vector3.back;
         float palmDot = Vector3.Dot(palmNormal, directionToCamera);
         if (isRightHand) lastRightPalmDot = palmDot; else lastLeftPalmDot = palmDot;
-        if (palmDot < palmFacingCameraThreshold)
+        float facingThreshold = isVisible ? palmHideFacingCameraThreshold : palmShowFacingCameraThreshold;
+        if (!debugBypassPalmFacingCheck && palmDot < facingThreshold)
             return false;
 
-        return !requireOpenHand || IsOpenHand(hand);
+        bool isOpen = IsOpenHand(hand);
+        if (isRightHand) lastRightOpen = isOpen; else lastLeftOpen = isOpen;
+
+        return debugBypassOpenHandCheck || !requireOpenHand || isOpen;
     }
 
     private void LogHandStateRateLimited(bool leftTracked, bool rightTracked, bool leftPresenting, bool rightPresenting)
@@ -474,16 +696,11 @@ public class FixedPalmMenuPresenter : MonoBehaviour
         Debug.Log(
             $"[FixedPalmMenuPresenter] L:tracked={leftTracked} dot={Fmt(lastLeftPalmDot)} present={leftPresenting} | " +
             $"R:tracked={rightTracked} dot={Fmt(lastRightPalmDot)} present={rightPresenting} | " +
-            $"threshold={palmFacingCameraThreshold:F2}",
+            $"thresholds=show:{palmShowFacingCameraThreshold:F2}/hide:{palmHideFacingCameraThreshold:F2}",
             this);
     }
 
-    private static string Fmt(float value)
-    {
-        return float.IsNaN(value) ? "n/a" : value.ToString("F2");
-    }
-
-    private static bool IsOpenHand(XRHand hand)
+    private bool IsOpenHand(XRHand hand)
     {
         return IsFingerExtended(hand, XRHandJointID.IndexTip, XRHandJointID.IndexIntermediate) &&
                IsFingerExtended(hand, XRHandJointID.MiddleTip, XRHandJointID.MiddleIntermediate) &&
@@ -491,7 +708,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
                IsFingerExtended(hand, XRHandJointID.LittleTip, XRHandJointID.LittleIntermediate);
     }
 
-    private static bool IsFingerExtended(XRHand hand, XRHandJointID tipId, XRHandJointID middleJointId)
+    private bool IsFingerExtended(XRHand hand, XRHandJointID tipId, XRHandJointID middleJointId)
     {
         if (!(hand.GetJoint(XRHandJointID.Wrist).TryGetPose(out Pose wristPose) &&
               hand.GetJoint(tipId).TryGetPose(out Pose tipPose) &&
@@ -502,7 +719,7 @@ public class FixedPalmMenuPresenter : MonoBehaviour
 
         float wristToTip = (tipPose.position - wristPose.position).sqrMagnitude;
         float wristToMiddle = (middlePose.position - wristPose.position).sqrMagnitude;
-        return wristToTip > wristToMiddle;
+        return wristToTip > wristToMiddle * fingerExtensionSlack;
     }
 #endif
 }
