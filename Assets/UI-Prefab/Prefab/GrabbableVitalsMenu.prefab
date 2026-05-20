@@ -3053,6 +3053,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   cameraTransform: {fileID: 0}
   smoothTime: 0.15
+  continuouslyFollowCamera: 1
 --- !u!1 &8869387029982448835
 GameObject:
   m_ObjectHideFlags: 0

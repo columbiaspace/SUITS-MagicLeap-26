@@ -44,21 +44,33 @@ public class AdjustableFollowUI : MonoBehaviour
             UpdateOffset();
     }
 
+    private void OnEnable()
+    {
+        // Ensure camera reference is ready (Start may not have run yet on first enable).
+        if (cameraTransform == null && Camera.main != null)
+            cameraTransform = Camera.main.transform;
+
+        // VitalsButton positions the panel before SetActive(true), so by the time
+        // OnEnable fires the transform is already at the correct front-of-camera
+        // position — recalculating the offset here locks it in from that new spot.
+        if (continuouslyFollowCamera)
+            UpdateOffset();
+    }
+
     private void Update()
     {
         if (!continuouslyFollowCamera) return;
         if (isGrabbed) return;
         if (cameraTransform == null) return;
 
-        Vector3 cameraEuler = cameraTransform.eulerAngles;
-        Quaternion yawRotation = Quaternion.Euler(0f, cameraEuler.y, 0f);
-
-        Vector3 targetPosition = cameraTransform.position + (yawRotation * targetOffset);
+        // Follow the camera's world position using a fixed world-space offset.
+        // Head rotation is intentionally ignored — the panel stays where it was
+        // placed in the world and only moves when the user physically moves.
+        Vector3 targetPosition = cameraTransform.position + targetOffset;
         transform.position = Vector3.SmoothDamp(transform.position, targetPosition, ref velocity, smoothTime);
 
-        Vector3 lookAtPos = cameraTransform.position;
-        lookAtPos.y = transform.position.y;
-        transform.LookAt(2f * transform.position - lookAtPos);
+        // Always face the user regardless of panel position.
+        transform.LookAt(2f * transform.position - cameraTransform.position);
     }
 
     private void OnGrab(SelectEnterEventArgs args)
@@ -77,8 +89,7 @@ public class AdjustableFollowUI : MonoBehaviour
     {
         if (cameraTransform == null) return;
 
-        Vector3 cameraEuler = cameraTransform.eulerAngles;
-        Quaternion inverseYaw = Quaternion.Inverse(Quaternion.Euler(0f, cameraEuler.y, 0f));
-        targetOffset = inverseYaw * (transform.position - cameraTransform.position);
+        // Store the offset in world space so head rotation doesn't affect panel position.
+        targetOffset = transform.position - cameraTransform.position;
     }
 }
