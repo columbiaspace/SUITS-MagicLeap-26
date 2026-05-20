@@ -397,6 +397,13 @@ public class ARMinimapErica : MonoBehaviour
 
         _voiceNavPathTss.Add(evaTss);
         _voiceNavPathTss.Add(goalTss);
+        if (verboseDebug)
+        {
+            Debug.Log(
+                $"[ARMinimap] Voice path TSS cache: {_voiceNavPathTss.Count} points " +
+                $"({(gridCells != null && gridCells.Count >= 2 ? "A* grid" : "straight 2-point")}) " +
+                $"for ground arrow.");
+        }
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.

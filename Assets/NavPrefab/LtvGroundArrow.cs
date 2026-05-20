@@ -60,6 +60,11 @@ public class LtvGroundArrow : MonoBehaviour
     private Transform _pivot;
     private MeshRenderer _meshRenderer;
     private ArrowMode _mode = ArrowMode.Hidden;
+    private ArrowMode _lastAnnouncedMode = (ArrowMode)(-1);
+    private bool _loggedMissingMinimap;
+    private bool _loggedMissingEvaPose;
+    private bool _loggedLookAheadFailure;
+    private bool _loggedEmptyVoicePath;
 
     private void Awake()
     {
@@ -76,6 +81,16 @@ public class LtvGroundArrow : MonoBehaviour
             _meshRenderer = GetComponent<MeshRenderer>();
 
         if (minimap == null) minimap = FindObjectOfType<ARMinimapErica>();
+        if (minimap == null && !_loggedMissingMinimap)
+        {
+            _loggedMissingMinimap = true;
+            Debug.LogWarning("[LtvGroundArrow] ARMinimapErica not assigned — voice-path mode needs it.", this);
+        }
+        else if (minimap != null)
+        {
+            Debug.Log($"[LtvGroundArrow] Minimap linked ({minimap.name}). Voice path arrow enabled when nav is active.", this);
+        }
+
         if (tssApi == null) tssApi = TssUnityApiService.Instance;
         if (tssApi == null) tssApi = FindObjectOfType<TssUnityApiService>();
 
@@ -95,6 +110,8 @@ public class LtvGroundArrow : MonoBehaviour
         }
 
         _mode = ResolveMode();
+        AnnounceModeIfChanged();
+
         if (_mode == ArrowMode.Hidden)
         {
             SetVisible(false);
@@ -106,6 +123,37 @@ public class LtvGroundArrow : MonoBehaviour
         UpdateRotation();
     }
 
+    private void AnnounceModeIfChanged()
+    {
+        if (_mode == _lastAnnouncedMode) return;
+        _lastAnnouncedMode = _mode;
+        _loggedLookAheadFailure = false;
+        _loggedMissingEvaPose = false;
+        _loggedEmptyVoicePath = false;
+
+        switch (_mode)
+        {
+            case ArrowMode.Hidden:
+                Debug.Log(
+                    "[LtvGroundArrow] Hidden — no active voice path. " +
+                    (pointAtLtvWhenNoVoicePath
+                        ? "(Would use PointAtLtv when enabled without voice path.)"
+                        : "Enable Point At Ltv When No Voice Path to show LTV compass when idle."),
+                    this);
+                break;
+            case ArrowMode.FollowVoicePath:
+                int n = minimap != null ? minimap.VoiceNavPathTss.Count : 0;
+                Debug.Log($"[LtvGroundArrow] FollowVoicePath — using cached TSS polyline ({n} points, look-ahead {lookAheadMeters:F1}m).", this);
+                break;
+            case ArrowMode.PointAtLtv:
+                Debug.Log(
+                    $"[LtvGroundArrow] PointAtLtv — bearing to LTV " +
+                    $"({(useTssLastKnownLocation ? "TSS last known" : $"task board {ltvTaskBoardTss}")}).",
+                    this);
+                break;
+        }
+    }
+
     private ArrowMode ResolveMode()
     {
         if (minimap != null && minimap.VoiceNavPathActive)
@@ -113,6 +161,14 @@ public class LtvGroundArrow : MonoBehaviour
             IReadOnlyList<Vector2> path = minimap.VoiceNavPathTss;
             if (path != null && path.Count >= 2)
                 return ArrowMode.FollowVoicePath;
+
+            if (!_loggedEmptyVoicePath)
+            {
+                _loggedEmptyVoicePath = true;
+                Debug.LogWarning(
+                    $"[LtvGroundArrow] VoiceNavPathActive but TSS path has {path?.Count ?? 0} points — cannot follow route.",
+                    this);
+            }
         }
 
         if (pointAtLtvWhenNoVoicePath)
@@ -141,28 +197,51 @@ public class LtvGroundArrow : MonoBehaviour
 
     private void UpdateRotation()
     {
-        float evaX, evaY, heading, ltvX, ltvY;
+        float evaX, evaY, heading;
         if (!TryReadEvaPose(out evaX, out evaY, out heading))
+        {
+            if (!_loggedMissingEvaPose)
+            {
+                _loggedMissingEvaPose = true;
+                Debug.LogWarning("[LtvGroundArrow] No EVA pose from TSS — arrow rotation paused.", this);
+            }
             return;
+        }
+
+        _loggedMissingEvaPose = false;
 
         if (!useTssHeading)
             heading = followTransform.eulerAngles.y;
 
         float bearing;
+        string bearingSource;
         if (_mode == ArrowMode.FollowVoicePath)
         {
             IReadOnlyList<Vector2> path = minimap.VoiceNavPathTss;
             if (!TryGetLookAheadSegment(path, evaX, evaY, lookAheadMeters, out Vector2 segA, out Vector2 segB))
+            {
+                if (!_loggedLookAheadFailure)
+                {
+                    _loggedLookAheadFailure = true;
+                    Debug.LogWarning(
+                        $"[LtvGroundArrow] Could not pick look-ahead segment on path ({path?.Count ?? 0} pts). " +
+                        "Arrow keeps last rotation.",
+                        this);
+                }
                 return;
+            }
 
+            _loggedLookAheadFailure = false;
             bearing = BearingDegrees(segA.x, segA.y, segB.x, segB.y);
+            bearingSource = $"path seg ({segA.x:F0},{segA.y:F0})→({segB.x:F0},{segB.y:F0})";
         }
         else
         {
-            if (!TryReadLtvCoords(out ltvX, out ltvY))
+            if (!TryReadLtvCoords(out float ltvX, out float ltvY))
                 return;
 
             bearing = BearingDegrees(evaX, evaY, ltvX, ltvY);
+            bearingSource = $"LTV ({ltvX:F0},{ltvY:F0})";
         }
 
         float relative = NormalizeAngle(bearing - heading);
@@ -182,9 +261,17 @@ public class LtvGroundArrow : MonoBehaviour
         {
             _logTimer = 0f;
             string modeLabel = _mode == ArrowMode.FollowVoicePath ? "voice path" : "LTV";
+            float distToGoal = 0f;
+            if (_mode == ArrowMode.FollowVoicePath && minimap != null && minimap.VoiceNavPathTss.Count > 0)
+            {
+                Vector2 goal = minimap.VoiceNavPathTss[minimap.VoiceNavPathTss.Count - 1];
+                distToGoal = Vector2.Distance(new Vector2(evaX, evaY), goal);
+            }
+
             Debug.Log(
                 $"[LtvGroundArrow] mode={modeLabel} eva=({evaX:F1},{evaY:F1}) heading={heading:F1}°  " +
-                $"bearing={bearing:F1}°  rel={relative:F1}°",
+                $"bearing={bearing:F1}° ({bearingSource}) rel={relative:F1}° yaw={yaw:F1}°  " +
+                (distToGoal > 0f ? $"distToGoal≈{distToGoal:F1}m" : ""),
                 this);
         }
     }
