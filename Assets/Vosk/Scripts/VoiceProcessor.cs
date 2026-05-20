@@ -97,11 +97,11 @@ public class VoiceProcessor : MonoBehaviour
     // Lowered from the upstream 0.05f default. Magic Leap 2's headset mic regularly
     // peaks around 0.02–0.04 for normal indoor speech, so the old threshold caused
     // Vosk to receive zero frames and return an empty transcript ("Vosk could not
-    // transcribe that recording"). 0.01 lets typical speech through while still
+    // transcribe that recording"). 0.009 lets typical speech through while still
     // rejecting room tone (which is usually well under 0.005).
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingSampleValue = 0.01f;
-    private const float MinimumSpeakingRmsValue = 0.003f;
+    private float _minimumSpeakingSampleValue = 0.009f;
+    private const float MinimumSpeakingRmsValue = 0.00225f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;

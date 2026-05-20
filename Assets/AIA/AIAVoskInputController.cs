@@ -158,13 +158,13 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
-    [SerializeField] private float silenceStopSeconds = 2f;
+    [SerializeField] private float silenceStopSeconds = 1.75f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
         "The Magic Leap 2 headset mic typically peaks around 0.02–0.04 for normal " +
         "indoor speech; the original Picovoice default of 0.05 was too high and " +
         "caused Vosk to receive zero audio frames.")]
-    private float voiceDetectionThreshold = 0.01f;
+    private float voiceDetectionThreshold = 0.009f;
     [SerializeField, Tooltip(
         "Hard cap on recording length (seconds). If the user starts a recording and " +
         "the VAD never trips (e.g. mic is muted), recording is force-stopped after this many seconds " +

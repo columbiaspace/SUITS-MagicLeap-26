@@ -334,7 +334,7 @@ MonoBehaviour:
   voskModelPath: vosk-model-en-us-0.22-lgraph.zip
   maxAlternatives: 1
   initializationTimeoutSeconds: 120
-  silenceStopSeconds: 2
+  silenceStopSeconds: 1.75
   logTranscripts: 1
 --- !u!1 &260001000
 GameObject:
