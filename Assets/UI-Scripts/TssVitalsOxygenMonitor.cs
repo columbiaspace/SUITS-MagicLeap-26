@@ -107,11 +107,13 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
         new VitalRule {
             label = "PRIMARY BATTERY", path = "telemetry.eva1.primary_battery_level",
             unit = "%", direction = AlertDirection.Low,
-            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0",
+            actionMessage = "Switch DCU BATT to SEC. If already on SEC, monitor and return to PR when able." },
         new VitalRule {
             label = "SECONDARY BATTERY", path = "telemetry.eva1.secondary_battery_level",
             unit = "%", direction = AlertDirection.Low,
-            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0" },
+            warningThreshold = 30f, criticalThreshold = 20f, valueFormat = "F0",
+            actionMessage = "Battery critically low. Return to PR immediately." },
 
         // --- Oxygen Storage (min 20%, drops throughout EVA) ---
         new VitalRule {
@@ -198,11 +200,12 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             label = "HELMET CO2", path = "telemetry.eva1.helmet_pressure_co2",
             unit = " psi", direction = AlertDirection.High,
             warningThreshold = 0.113f, criticalThreshold = 0.15f, valueFormat = "F3",
-            actionMessage = "Swap to secondary fan (DCU). Return to PR." },
+            actionMessage = "Set DCU FAN to SEC. Return to PR immediately." },
 
-        // --- Primary Fan only (nominal 30,000 rpm — alert if above or below 30,000) ---
+        // --- Fan (checks max of primary and secondary — alerts if neither is at 30,000 rpm) ---
         new VitalRule {
-            label = "PRIMARY FAN", path = "telemetry.eva1.fan_pri_rpm",
+            label = "FAN", path = "telemetry.eva1.fan_pri_rpm",
+            secondaryPath = "telemetry.eva1.fan_sec_rpm",
             unit = " rpm", direction = AlertDirection.Range,
             warningThreshold = 29999f, criticalThreshold = 20000f,
             warningThresholdHigh = 30001f, criticalThresholdHigh = 30001f, valueFormat = "F0",
