@@ -767,6 +767,18 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.00125
+      objectReference: {fileID: 0}
+    - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.00125
+      objectReference: {fileID: 0}
+    - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.00125
+      objectReference: {fileID: 0}
+    - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_AnchoredPosition.x
       value: 0
       objectReference: {fileID: 0}
@@ -807,7 +819,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Target: {fileID: 189396468}
-  m_TargetOffset: {x: -0.18, y: -0.32, z: 1.4}
+  m_TargetOffset: {x: -0.18, y: -0.12, z: 1.4}
   m_FollowInLocalSpace: 0
   m_ApplyTargetInLocalSpace: 0
   m_MovementSpeed: 10
@@ -950,7 +962,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 3177212473821427495, guid: d4ffbdc4a993a44cda05f2eab6317851, type: 3}
       propertyPath: tssHost
-      value: 192.168.22.145
+      value: 192.168.50.110
       objectReference: {fileID: 0}
     m_RemovedComponents: []
     m_RemovedGameObjects: []

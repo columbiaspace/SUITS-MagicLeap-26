@@ -44,6 +44,12 @@ public class EgressProcedureManager : MonoBehaviour
     [SerializeField] private Sprite dcuBattLocalUmbSprite; // dcu-batt-local-umb.png — BATT LOCAL / UMB
     [SerializeField] private Sprite dcuBattSecPriSprite;  // dcu-batt-sec-pri.png — BATT SEC / PRI
 
+    [Header("Display")]
+    [Tooltip("Multiplier applied to displayImage scale when showing a DCU sprite (larger so the panel text is readable).")]
+    [SerializeField] private float dcuImageScale = 1.3f;
+
+    private Vector3 _baseImageScale = Vector3.one;
+
     // ── Internals ──────────────────────────────────────────────────────
     private enum CondType { Timed, UiaBool, DcuBool, DcuBattBool, HmdWait }
 
@@ -72,6 +78,10 @@ public class EgressProcedureManager : MonoBehaviour
     private void Awake()
     {
         Resolve();
+        if (displayImage != null)
+        {
+            _baseImageScale = displayImage.rectTransform.localScale;
+        }
     }
 
     private void OnEnable()
@@ -80,6 +90,8 @@ public class EgressProcedureManager : MonoBehaviour
         BuildSteps();
         _current    = 0;
         _latestData = null;
+
+        ProcedureVoiceAnnouncements.Announce(ProcedureVoiceAnnouncements.EgressStart, stepSpeaker);
 
         RegisterTssEva();
         EnterStep(0);
@@ -236,8 +248,7 @@ public class EgressProcedureManager : MonoBehaviour
         if (stepText != null)
             stepText.text = $"Step {index + 1} of {_steps.Count}\n{step.Label}";
 
-        if (displayImage != null)
-            displayImage.sprite = step.Image != null ? step.Image : uiaPanelSprite;
+        ApplyStepImage(step.Image);
 
         AnnounceStep(index, step);
 
@@ -249,10 +260,27 @@ public class EgressProcedureManager : MonoBehaviour
 
     private void AnnounceStep(int index, Step step)
     {
-        if (stepSpeaker == null) stepSpeaker = FindObjectOfType<ProcedureStepSpeaker>();
-        if (stepSpeaker == null || step == null || string.IsNullOrWhiteSpace(step.Label)) return;
+        if (step == null || string.IsNullOrWhiteSpace(step.Label)) return;
+        ProcedureVoiceAnnouncements.Announce(
+            $"Step {index + 1} of {_steps.Count}. {step.Label}", stepSpeaker);
+    }
 
-        stepSpeaker.Announce($"Step {index + 1} of {_steps.Count}. {step.Label}");
+    private void ApplyStepImage(Sprite sprite)
+    {
+        if (displayImage == null) return;
+
+        Sprite shown = sprite != null ? sprite : uiaPanelSprite;
+        displayImage.sprite = shown;
+
+        float multiplier = IsDcuSprite(shown) ? Mathf.Max(0.01f, dcuImageScale) : 1f;
+        displayImage.rectTransform.localScale = _baseImageScale * multiplier;
+    }
+
+    private bool IsDcuSprite(Sprite sprite)
+    {
+        return sprite == dcuPanelSprite || sprite == dcuOxySprite || sprite == dcuFanSprite
+            || sprite == dcuPumpSprite || sprite == dcuCo2Sprite
+            || sprite == dcuBattLocalUmbSprite || sprite == dcuBattSecPriSprite;
     }
 
     private IEnumerator TimedAdvance(float secs)

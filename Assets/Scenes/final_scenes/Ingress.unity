@@ -684,7 +684,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 192.168.22.145
+  tssHost: 192.168.50.110
   tssPort: 14141
   pollIntervalSeconds: 1
   udpTimeoutMs: 500
@@ -802,6 +802,18 @@ PrefabInstance:
       value: 0
       objectReference: {fileID: 0}
     - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_LocalScale.x
+      value: 0.00125
+      objectReference: {fileID: 0}
+    - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_LocalScale.y
+      value: 0.00125
+      objectReference: {fileID: 0}
+    - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
+      propertyPath: m_LocalScale.z
+      value: 0.00125
+      objectReference: {fileID: 0}
+    - target: {fileID: 8825100611093449677, guid: f520c6b2f608a43c2864a7b861579e59, type: 3}
       propertyPath: m_AnchoredPosition.x
       value: 0
       objectReference: {fileID: 0}
@@ -842,7 +854,7 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: 
   m_Target: {fileID: 189396468}
-  m_TargetOffset: {x: -0.18, y: -0.32, z: 1.4}
+  m_TargetOffset: {x: -0.18, y: -0.12, z: 1.4}
   m_FollowInLocalSpace: 0
   m_ApplyTargetInLocalSpace: 0
   m_MovementSpeed: 10

@@ -1209,7 +1209,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: e763e881eb0df45e1a1978531d3091c7, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  tssHost: 192.168.22.145
+  tssHost: 192.168.50.110
   tssPort: 14141
   pollIntervalSeconds: 1
   udpTimeoutMs: 500
