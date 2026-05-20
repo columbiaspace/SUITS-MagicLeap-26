@@ -99,7 +99,7 @@ MonoBehaviour:
   minimap: {fileID: 0}
   tssApi: {fileID: 0}
   evaId: eva1
-  lookAheadMeters: 2.5
+  lookAheadMeters: 1.5
   ltvTaskBoardTss: {x: -5635, y: -9960}
   useTssLastKnownLocation: 0
   pointAtLtvWhenNoVoicePath: 0
