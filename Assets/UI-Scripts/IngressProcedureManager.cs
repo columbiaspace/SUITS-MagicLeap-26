@@ -69,6 +69,10 @@ public class IngressProcedureManager : MonoBehaviour
     private int                         _current;
     private Dictionary<string, object>  _latestData;
     private Coroutine                   _timerCo;
+    // True while we are still speaking a step announcement. Gates TryAdvance so a
+    // condition that's already met (or arrives mid-sentence) cannot skip ahead of
+    // the headset's voice.
+    private bool                        _waitingForSpeech;
 
     private void Awake()
     {
@@ -85,6 +89,7 @@ public class IngressProcedureManager : MonoBehaviour
         BuildSteps();
         _current    = 0;
         _latestData = null;
+        _waitingForSpeech = false;
 
         ProcedureVoiceAnnouncements.Announce(ProcedureVoiceAnnouncements.IngressStart, stepSpeaker);
 
@@ -202,19 +207,42 @@ public class IngressProcedureManager : MonoBehaviour
 
         ApplyStepImage(step.Image);
 
+        _waitingForSpeech = true;
+        _timerCo = StartCoroutine(RunStep(index, step));
+    }
+
+    /// <summary>
+    /// Waits for any in-flight announcement (e.g. the IngressStart line on the first
+    /// step) to finish, speaks this step, then waits for *that* to finish before
+    /// arming the timer or checking the TSS condition. Keeps speech and advancement
+    /// strictly sequential.
+    /// </summary>
+    private IEnumerator RunStep(int index, Step step)
+    {
+        yield return ProcedureVoiceAnnouncements.WaitUntilFinished();
         AnnounceStep(index, step);
+        yield return ProcedureVoiceAnnouncements.WaitUntilFinished();
+        _waitingForSpeech = false;
 
         if (step.Cond == CondType.Timed)
-            _timerCo = StartCoroutine(TimedAdvance(step.Secs));
+        {
+            yield return new WaitForSeconds(step.Secs);
+            Advance();
+        }
         else
+        {
             TryAdvance();
+        }
+
+        _timerCo = null;
     }
 
     private void AnnounceStep(int index, Step step)
     {
         if (step == null || string.IsNullOrWhiteSpace(step.Label)) return;
+        string spoken = ProcedureVoiceAnnouncements.FormatStepForSpeech(step.Label);
         ProcedureVoiceAnnouncements.Announce(
-            $"Step {index + 1} of {_steps.Count}. {step.Label}", stepSpeaker);
+            $"Step {index + 1} of {_steps.Count}. {spoken}", stepSpeaker);
     }
 
     private void ApplyStepImage(Sprite sprite)
@@ -258,12 +286,6 @@ public class IngressProcedureManager : MonoBehaviour
         _timerCo = null;
     }
 
-    private IEnumerator TimedAdvance(float secs)
-    {
-        yield return new WaitForSeconds(secs);
-        Advance();
-    }
-
     private void Advance()
     {
         _current++;
@@ -283,6 +305,7 @@ public class IngressProcedureManager : MonoBehaviour
 
     private void TryAdvance()
     {
+        if (_waitingForSpeech) return;
         if (_current >= _steps.Count) return;
         var step = _steps[_current];
         if (step.Cond == CondType.Timed) return;
