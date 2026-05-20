@@ -86,6 +86,11 @@ public class VoskSpeechToText : MonoBehaviour
 	private bool _running;
 	private int _recordingSessionId;
 	private readonly object _recognizerLock = new object();
+	// Task handle for the most recently dispatched final-result worker.
+	// The next ThreadedWork awaits this before touching the recognizer
+	// so that session N+1 audio cannot be mixed into session N's
+	// decoder state (or wiped by its Reset()).
+	private Task _lastFinalizeTask;
 
 	//Thread safe queue of microphone data.
 	private readonly ConcurrentQueue<short[]> _threadedBufferQueue = new ConcurrentQueue<short[]>();
@@ -518,17 +523,63 @@ public class VoskSpeechToText : MonoBehaviour
 			return;
 		}
 
+		// Snapshot every pending audio frame on the main thread *before*
+		// scheduling the finalize worker. As soon as the next recording
+		// session starts, VoiceProcessor will begin enqueueing fresh
+		// frames into _threadedBufferQueue, and we MUST NOT let those
+		// frames be drained into the previous session's decoder (which
+		// would corrupt the new session's leading audio and then get
+		// wiped by Reset()). Frames captured up to this instant belong
+		// to the session being closed; everything after this belongs to
+		// whatever session starts next.
+		var pendingAudio = new List<short[]>();
+		while (_threadedBufferQueue.TryDequeue(out short[] frame))
+		{
+			pendingAudio.Add(frame);
+		}
+
+		int stoppedSessionId = _recordingSessionId;
+
 		// FinalResult() performs the full Viterbi back-trace and was
 		// blocking the Unity main thread on the ML2, which is what caused
 		// the "flash / black-out" the user reported every time a recording
 		// ended. _recognizerLock serializes the background decode against
 		// ThreadedWork (and against OnDestroy disposal), so this is safe.
-		Task.Run(EmitFinalResult);
+		// The task handle is stashed so the next ThreadedWork can await
+		// it before touching the recognizer; combined with the snapshot
+		// above, that guarantees session N+1 frames cannot leak into
+		// session N's decode and session N's transcript cannot leak
+		// into session N+1's UI.
+		_lastFinalizeTask = Task.Run(() => EmitFinalResult(stoppedSessionId, pendingAudio));
 	}
 
 	//Feeds the autio logic into the vosk recorgnizer
 	private async Task ThreadedWork(int sessionId)
 	{
+		// If the previous recording's finalize task is still running,
+		// wait for it before feeding the recognizer. EmitFinalResult
+		// drains the previous session's audio snapshot, runs
+		// FinalResult(), and calls Reset() — all under _recognizerLock.
+		// Without this await, the lock alone serializes individual
+		// AcceptWaveform calls but does not stop us from mixing session
+		// N+1 audio into session N's decoder state (with session N+1's
+		// leading frames then being wiped by Reset).
+		Task priorFinalize = _lastFinalizeTask;
+		if (priorFinalize != null && !priorFinalize.IsCompleted)
+		{
+			try
+			{
+				await priorFinalize.ConfigureAwait(false);
+			}
+			catch (Exception priorException)
+			{
+				// Prior finalize already logged its own failure; we
+				// only need to make sure that failure doesn't kill
+				// the new worker.
+				Debug.LogWarning($"[Vosk] Previous finalize task ended with exception: {priorException.Message}");
+			}
+		}
+
 		voskRecognizerReadMarker.Begin();
 
 		try
@@ -591,11 +642,10 @@ public class VoskSpeechToText : MonoBehaviour
 		}
 	}
 
-	private void EmitFinalResult()
+	private void EmitFinalResult(int sessionId, List<short[]> pendingAudio)
 	{
 		try
 		{
-			DrainPendingAudio();
 			string finalResult;
 			string endpointResult;
 			lock (_recognizerLock)
@@ -609,6 +659,31 @@ public class VoskSpeechToText : MonoBehaviour
 					return;
 				}
 
+				// Drain the audio that was captured up to the Stop moment.
+				// Iterating the local snapshot (instead of the shared
+				// _threadedBufferQueue) means session N+1 frames cannot
+				// sneak into session N's decode.
+				if (pendingAudio != null)
+				{
+					for (int i = 0; i < pendingAudio.Count; i++)
+					{
+						short[] frame = pendingAudio[i];
+						if (frame == null || frame.Length == 0)
+						{
+							continue;
+						}
+
+						if (_recognizer.AcceptWaveform(frame, frame.Length))
+						{
+							string drainEndpoint = _recognizer.Result();
+							if (HasRecognitionText(drainEndpoint))
+							{
+								_lastEndpointResult = drainEndpoint;
+							}
+						}
+					}
+				}
+
 				finalResult = _recognizer.FinalResult();
 				endpointResult = _lastEndpointResult;
 				_lastEndpointResult = "";
@@ -618,7 +693,9 @@ public class VoskSpeechToText : MonoBehaviour
 				// free and avoids the expensive vosk_recognizer_new_grm
 				// call (which rebuilds the decoding FST) on every Start.
 				// This was a major contributor to the per-transcription
-				// main-thread stall on ML2.
+				// main-thread stall on ML2. Reset must always run so
+				// the recognizer is clean for whatever session ThreadedWork
+				// processes next.
 				_recognizer.Reset();
 				_lastPartialResult = "";
 			}
@@ -626,6 +703,20 @@ public class VoskSpeechToText : MonoBehaviour
 			if (!HasRecognitionText(finalResult) && HasRecognitionText(endpointResult))
 			{
 				finalResult = endpointResult;
+			}
+
+			// Belt + suspenders against late finalization. If the user
+			// already started a new recording session while we were
+			// finalizing, dropping this transcript prevents an old
+			// utterance from being submitted to Luna against the new
+			// session's intent. The await in ThreadedWork already
+			// prevents recognizer-state corruption in this case; the
+			// session-id check here also prevents the stale text from
+			// surfacing in the UI.
+			if (sessionId != _recordingSessionId)
+			{
+				Debug.Log("[Vosk] Dropping stale final result from previous recording session.");
+				return;
 			}
 
 			Debug.Log($"[Vosk] Final result: {finalResult}");
@@ -638,29 +729,6 @@ public class VoskSpeechToText : MonoBehaviour
 			// EmitFinalResult now runs on a worker thread and OnStatusUpdated
 			// subscribers touch UI objects.
 			_threadedStatusQueue.Enqueue("Vosk failed to process recording.");
-		}
-	}
-
-	private void DrainPendingAudio()
-	{
-		while (_threadedBufferQueue.TryDequeue(out short[] voiceResult))
-		{
-			lock (_recognizerLock)
-			{
-				if (!_recognizerReady || _recognizer == null)
-				{
-					return;
-				}
-
-				if (_recognizer.AcceptWaveform(voiceResult, voiceResult.Length))
-				{
-					string endpointResult = _recognizer.Result();
-					if (HasRecognitionText(endpointResult))
-					{
-						_lastEndpointResult = endpointResult;
-					}
-				}
-			}
 		}
 	}
 
