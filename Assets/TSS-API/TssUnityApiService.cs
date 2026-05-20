@@ -19,7 +19,7 @@ namespace TssApi
         private const string TssPortEnvironmentVariable = "TSS_PORT";
 
         [Header("TSS UDP Source")]
-        [SerializeField] private string tssHost = "192.168.22.145";
+        [SerializeField] private string tssHost = "192.168.50.110";
         [SerializeField] private int tssPort = 14141;
         [SerializeField] private float pollIntervalSeconds = 1f;
         [SerializeField] private int udpTimeoutMs = 500;
