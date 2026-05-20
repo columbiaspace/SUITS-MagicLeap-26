@@ -44,6 +44,19 @@ public class AdjustableFollowUI : MonoBehaviour
             UpdateOffset();
     }
 
+    private void OnEnable()
+    {
+        // Ensure camera reference is ready (Start may not have run yet on first enable).
+        if (cameraTransform == null && Camera.main != null)
+            cameraTransform = Camera.main.transform;
+
+        // VitalsButton positions the panel before SetActive(true), so by the time
+        // OnEnable fires the transform is already at the correct front-of-camera
+        // position — recalculating the offset here locks it in from that new spot.
+        if (continuouslyFollowCamera)
+            UpdateOffset();
+    }
+
     private void Update()
     {
         if (!continuouslyFollowCamera) return;
