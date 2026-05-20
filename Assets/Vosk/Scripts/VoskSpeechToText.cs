@@ -84,6 +84,7 @@ public class VoskSpeechToText : MonoBehaviour
 
 	// Flag to signal we are ending
 	private bool _running;
+	private int _recordingSessionId;
 	private readonly object _recognizerLock = new object();
 
 	//Thread safe queue of microphone data.
@@ -93,6 +94,7 @@ public class VoskSpeechToText : MonoBehaviour
 	private readonly ConcurrentQueue<string> _threadedResultQueue = new ConcurrentQueue<string>();
 	private readonly ConcurrentQueue<string> _threadedPartialResultQueue = new ConcurrentQueue<string>();
 	private string _lastPartialResult = "";
+	private string _lastEndpointResult = "";
 
 
 
@@ -177,6 +179,10 @@ public class VoskSpeechToText : MonoBehaviour
 
 		if (startMicrophone)
 		{
+			_lastPartialResult = "";
+			_lastEndpointResult = "";
+			ClearQueuedRecognitionData();
+			int sessionId = Interlocked.Increment(ref _recordingSessionId);
 			_running = true;
 			ConfigureVoiceProcessorSilenceDetection();
 			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
@@ -189,7 +195,7 @@ public class VoskSpeechToText : MonoBehaviour
 				yield break;
 			}
 
-			Task.Run(ThreadedWork).ConfigureAwait(false);
+			Task.Run(() => ThreadedWork(sessionId)).ConfigureAwait(false);
 		}
 
 		_isInitializing = false;
@@ -391,11 +397,21 @@ public class VoskSpeechToText : MonoBehaviour
 				return;
 			}
 
-			_running = true;
 			_lastPartialResult = "";
+			_lastEndpointResult = "";
+			ClearQueuedRecognitionData();
+			int sessionId = Interlocked.Increment(ref _recordingSessionId);
+			_running = true;
 			ConfigureVoiceProcessorSilenceDetection();
 			VoiceProcessor.StartRecording(autoDetect: AutoStopRecordingOnSilence);
-			Task.Run(ThreadedWork).ConfigureAwait(false);
+			if (!VoiceProcessor.IsRecording)
+			{
+				Debug.LogError("[Vosk] Failed to start microphone recording.");
+				OnStatusUpdated?.Invoke("Vosk could not start microphone recording.");
+				_running = false;
+				return;
+			}
+			Task.Run(() => ThreadedWork(sessionId)).ConfigureAwait(false);
 		}
 		else
 		{
@@ -440,13 +456,13 @@ public class VoskSpeechToText : MonoBehaviour
 	}
 
 	//Feeds the autio logic into the vosk recorgnizer
-	private async Task ThreadedWork()
+	private async Task ThreadedWork(int sessionId)
 	{
 		voskRecognizerReadMarker.Begin();
 
 		try
 		{
-			while (_running)
+			while (_running && sessionId == _recordingSessionId)
 			{
 				if (_threadedBufferQueue.TryDequeue(out short[] voiceResult))
 				{
@@ -455,9 +471,13 @@ public class VoskSpeechToText : MonoBehaviour
 					lock (_recognizerLock)
 					{
 						hasResult = _recognizer.AcceptWaveform(voiceResult, voiceResult.Length);
-						if (hasResult && !EmitResultsOnlyOnStop)
+						if (hasResult)
 						{
 							result = _recognizer.Result();
+							if (EmitResultsOnlyOnStop && HasRecognitionText(result))
+							{
+								_lastEndpointResult = result;
+							}
 						}
 						else if (!hasResult)
 						{
@@ -465,7 +485,7 @@ public class VoskSpeechToText : MonoBehaviour
 						}
 					}
 
-					if (hasResult && !string.IsNullOrWhiteSpace(result))
+					if (hasResult && !EmitResultsOnlyOnStop && !string.IsNullOrWhiteSpace(result))
 					{
 						_threadedResultQueue.Enqueue(result);
 					}
@@ -502,14 +522,23 @@ public class VoskSpeechToText : MonoBehaviour
 
 		try
 		{
+			DrainPendingAudio();
 			string finalResult;
+			string endpointResult;
 			lock (_recognizerLock)
 			{
 				finalResult = _recognizer.FinalResult();
+				endpointResult = _lastEndpointResult;
+				_lastEndpointResult = "";
 				_recognizer.Dispose();
 				_recognizer = null;
 				_recognizerReady = false;
 				_lastPartialResult = "";
+			}
+
+			if (!HasRecognitionText(finalResult) && HasRecognitionText(endpointResult))
+			{
+				finalResult = endpointResult;
 			}
 
 			Debug.Log($"[Vosk] Final result: {finalResult}");
@@ -520,6 +549,49 @@ public class VoskSpeechToText : MonoBehaviour
 			Debug.LogError($"[Vosk] Failed to emit final result: {exception}");
 			OnStatusUpdated?.Invoke("Vosk failed to process recording.");
 		}
+	}
+
+	private void DrainPendingAudio()
+	{
+		while (_threadedBufferQueue.TryDequeue(out short[] voiceResult))
+		{
+			lock (_recognizerLock)
+			{
+				if (!_recognizerReady || _recognizer == null)
+				{
+					return;
+				}
+
+				if (_recognizer.AcceptWaveform(voiceResult, voiceResult.Length))
+				{
+					string endpointResult = _recognizer.Result();
+					if (HasRecognitionText(endpointResult))
+					{
+						_lastEndpointResult = endpointResult;
+					}
+				}
+			}
+		}
+	}
+
+	private void ClearQueuedRecognitionData()
+	{
+		while (_threadedBufferQueue.TryDequeue(out _)) { }
+		while (_threadedResultQueue.TryDequeue(out _)) { }
+		while (_threadedPartialResultQueue.TryDequeue(out _)) { }
+	}
+
+	private static bool HasRecognitionText(string json)
+	{
+		if (string.IsNullOrWhiteSpace(json))
+		{
+			return false;
+		}
+
+		var result = new RecognitionResult(json);
+		return result.Phrases != null &&
+		       result.Phrases.Length > 0 &&
+		       !string.IsNullOrWhiteSpace(result.Phrases[0]?.Text);
 	}
 
 
