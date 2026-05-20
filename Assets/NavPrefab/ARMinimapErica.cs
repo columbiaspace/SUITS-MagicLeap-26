@@ -1,6 +1,7 @@
 using System.Collections.Generic;
 using TssApi;
 using UnityEngine;
+using UnityEngine.Serialization;
 using UnityEngine.UI;
 
 // Minimap pin placement:
@@ -43,16 +44,20 @@ public class ARMinimapErica : MonoBehaviour
     [Tooltip("Maximum trail points kept; oldest are pruned when exceeded.")]
     public int maxTrailPoints = 500;
 
-    [Header("A* Planned Path")]
-    [Tooltip("Compute and draw an A* path from the blue to green waypoint at Start.")]
-    [SerializeField] private bool showPlannedPath = true;
-    [Tooltip("Color of the A* path line.")]
-    public Color plannedPathColor = new Color(0.2f, 1f, 0.8f, 1f);
-    public float plannedPathLineWidth = 2.5f;
-    [Tooltip("TSS position used as the A* path start (blue waypoint).")]
-    public Vector2 pathStart = new Vector2(-5670f, -10060f);
-    [Tooltip("TSS position used as the A* path goal (green waypoint).")]
-    public Vector2 pathGoal  = new Vector2(-5635f, -9960f);
+    [Header("Nav waypoints (TSS metres)")]
+    [Tooltip("Blue waypoint — EVA base / return target.")]
+    [FormerlySerializedAs("pathStart")]
+    public Vector2 baseTss = new Vector2(-5670f, -10060f);
+    [Tooltip("Green waypoint — LTV1.")]
+    [FormerlySerializedAs("pathGoal")]
+    public Vector2 ltv1Tss = new Vector2(-5635f, -9960f);
+    [Tooltip("Purple waypoint — LTV2.")]
+    public Vector2 ltv2Tss = new Vector2(-5615f, -9995f);
+
+    [Header("EVA voice nav path")]
+    [Tooltip("A* path from current EVA position; drawn by NavVoiceCoordinator voice commands.")]
+    public Color voiceNavPathColor = Color.yellow;
+    [SerializeField] private float voiceNavPathLineWidth = 3.5f;
 
     [Header("Waypoints")]
     [SerializeField] private bool showWaypoints = true;
@@ -60,13 +65,6 @@ public class ARMinimapErica : MonoBehaviour
     [Header("Debug")]
     [SerializeField] private bool verboseDebug = true;
     [SerializeField] private float logIntervalSeconds = 1f;
-
-    [Header("Weight Debug Overlay")]
-    [Tooltip("Paints a green→red heatmap of terrain weights directly on the minimap. " +
-             "Teal squares = path cells. Disable in production.")]
-    [SerializeField] private bool showTerrainOverlay = false;
-    [Tooltip("Opacity of the heatmap layer (0=invisible, 1=opaque).")]
-    [SerializeField] [Range(0f, 1f)] private float overlayAlpha = 0.55f;
 
     // -------------------------------------------------------------------------
     // Runtime state
@@ -77,18 +75,20 @@ public class ARMinimapErica : MonoBehaviour
     private readonly List<GameObject> _trailLines    = new List<GameObject>();
     private RectTransform _trailContainer;
 
-    // Planned A* path
-    private readonly List<Vector2>    _pathPoints    = new List<Vector2>();
-    private readonly List<GameObject> _pathSegments  = new List<GameObject>();
-    private RectTransform _pathContainer;
+    // Voice-triggered EVA path
+    private readonly List<Vector2>    _voiceNavPoints   = new List<Vector2>();
+    private readonly List<GameObject> _voiceNavSegments = new List<GameObject>();
+    private RectTransform _voiceNavContainer;
+    private bool _voiceNavPathActive;
+    private VoiceNavGoal _voiceNavGoal = VoiceNavGoal.None;
+    private bool _voiceNavUsedTerrainAstar;
+
+    private enum VoiceNavGoal { None, Ltv1, Ltv2, Base }
 
     private Vector2 _lastMinimapSize;
     private Vector2 _lastRecordedTssPos;
     private bool    _trailInitialized;
-    private bool    _terrainPathSucceeded;   // true once A* found a terrain-based path
-    private bool    _terrainPathGaveUp;      // true once terrain was ready but found no path (stop retrying)
     private float   _logTimer;
-    private GameObject _overlayGO;          // weight heatmap Image on the minimap
 
     // -------------------------------------------------------------------------
     // Unity lifecycle
@@ -110,18 +110,11 @@ public class ARMinimapErica : MonoBehaviour
     private void Start()
     {
         _trailContainer = CreateSegmentContainer("TrailContainer");
-        _pathContainer  = CreateSegmentContainer("PathContainer");
+        _voiceNavContainer = CreateSegmentContainer("VoiceNavPathContainer");
 
         if (showWaypoints) SpawnWaypoints();
 
-        // Render order (bottom → top): waypoints → trail → planned path → player icon
-        if (playerIcon != null)
-        {
-            _trailContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
-            _pathContainer.SetSiblingIndex(playerIcon.GetSiblingIndex());
-        }
-
-        if (showPlannedPath) ComputeAndDrawAStarPath();
+        EnsureMinimapLayerOrder();
 
         _lastMinimapSize = minimapRect != null ? minimapRect.rect.size : Vector2.zero;
     }
@@ -134,31 +127,27 @@ public class ARMinimapErica : MonoBehaviour
         RefreshSegmentsIfResized();
         LogDebug(imuEva);
 
-        // If terrain A* hasn't succeeded yet (TerrainAnalyzer may have been loading),
-        // keep trying every frame until it does.
-        if (showPlannedPath && !_terrainPathSucceeded)
-            TryUpgradeToTerrainPath();
+        // Voice path may have been drawn with a straight-line fallback before TerrainAnalyzer was ready.
+        if (_voiceNavPathActive && !_voiceNavUsedTerrainAstar
+            && TerrainAnalyzer.Instance != null && TerrainAnalyzer.Instance.IsReady)
+        {
+            RetryActiveVoiceNavPath(imuEva);
+        }
     }
 
-    // Called every frame until TerrainAnalyzer is ready and produces a valid path.
-    private void TryUpgradeToTerrainPath()
+    private void RetryActiveVoiceNavPath(Dictionary<string, object> imuEva)
     {
-        if (_terrainPathGaveUp) return;
-
-        TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
-        if (terrain == null || !terrain.IsReady) return;
-
-        // Terrain just became ready — replace the straight-line fallback.
-        ClearPlannedPath();
-        ComputeAndDrawAStarPath();
-
-        // If terrain was available but A* still found no path, stop retrying every frame.
-        if (!_terrainPathSucceeded)
+        switch (_voiceNavGoal)
         {
-            _terrainPathGaveUp = true;
-            Debug.LogWarning("[ARMinimap] TerrainAnalyzer was ready but A* found no path — " +
-                             "keeping straight-line fallback. Check that the keepout image is " +
-                             "assigned and that start/goal TSS positions fall within the map bounds.");
+            case VoiceNavGoal.Ltv1:
+                DrawVoiceNavPath(ltv1Tss, retryOnly: true, imuEva, "EVA→LTV1");
+                break;
+            case VoiceNavGoal.Ltv2:
+                DrawVoiceNavPath(ltv2Tss, retryOnly: true, imuEva, "EVA→LTV2");
+                break;
+            case VoiceNavGoal.Base:
+                DrawVoiceNavPath(baseTss, retryOnly: true, imuEva, "EVA→base");
+                break;
         }
     }
 
@@ -208,11 +197,7 @@ public class ARMinimapErica : MonoBehaviour
 
     private void RecordTrail(Dictionary<string, object> imuEva)
     {
-        Vector2 tssPos = imuEva != null
-            ? new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"))
-            : Vector2.zero;
-
-        if (tssPos == Vector2.zero) return;
+        if (!TryGetEvaTss(imuEva, out Vector2 tssPos)) return;
 
         if (!_trailInitialized)
         {
@@ -252,82 +237,167 @@ public class ARMinimapErica : MonoBehaviour
     }
 
     // -------------------------------------------------------------------------
-    // A* planned path
+    // Voice-triggered EVA path
     // -------------------------------------------------------------------------
 
-    private void ComputeAndDrawAStarPath()
+    /// <summary>A* path from current EVA position to LTV1 (green waypoint).</summary>
+    public bool VoiceGoToLtv1()
     {
-        if (_pathContainer == null || minimapRect == null) return;
+        if (!DrawVoiceNavPath(ltv1Tss, retryOnly: false, imuEva: null, label: "EVA→LTV1"))
+            return false;
+        _voiceNavGoal = VoiceNavGoal.Ltv1;
+        return true;
+    }
 
-        // Try terrain-aware A* first; fall back to a straight line if unavailable.
-        List<Vector2> normPoints = TryTerrainAStarPath();
+    /// <summary>A* path from current EVA position to LTV2 (yellow waypoint).</summary>
+    public bool VoiceGoToLtv2()
+    {
+        if (!DrawVoiceNavPath(ltv2Tss, retryOnly: false, imuEva: null, label: "EVA→LTV2"))
+            return false;
+        _voiceNavGoal = VoiceNavGoal.Ltv2;
+        return true;
+    }
 
+    /// <summary>A* path from current EVA position to base (blue waypoint).</summary>
+    public bool VoiceReturnToBase()
+    {
+        if (!DrawVoiceNavPath(baseTss, retryOnly: false, imuEva: null, label: "EVA→base"))
+            return false;
+        _voiceNavGoal = VoiceNavGoal.Base;
+        return true;
+    }
+
+    /// <summary>Removes the yellow voice navigation path.</summary>
+    public void ClearVoiceNavPath()
+    {
+        ClearVoiceNavSegments();
+        _voiceNavPathActive = false;
+        _voiceNavGoal = VoiceNavGoal.None;
+        _voiceNavUsedTerrainAstar = false;
+        Debug.Log("[ARMinimap] Voice nav path cleared.");
+    }
+
+    private bool DrawVoiceNavPath(Vector2 goalTss, bool retryOnly, Dictionary<string, object> imuEva, string label)
+    {
+        if (_voiceNavContainer == null || minimapRect == null)
+        {
+            Debug.LogWarning("[ARMinimap] Voice nav path container not ready.");
+            return false;
+        }
+
+        if (!TryGetEvaTss(imuEva, out Vector2 evaTss))
+        {
+            if (!retryOnly)
+            {
+                Debug.Log("[ARMinimap] Voice nav path: waiting for TSS position inside map bounds.");
+            }
+
+            return false;
+        }
+
+        ClearVoiceNavSegments();
+
+        float tssDistance = Vector2.Distance(evaTss, goalTss);
+        if (tssDistance < 2f)
+        {
+            Debug.Log($"[ARMinimap] Voice nav ({label}): EVA already at destination (TSS distance {tssDistance:F1}m).");
+            _voiceNavPathActive = false;
+            _voiceNavGoal = VoiceNavGoal.None;
+            _voiceNavUsedTerrainAstar = false;
+            return true;
+        }
+
+        bool usedTerrain = true;
+        List<Vector2> normPoints = ComputeNormPath(evaTss, goalTss, label, out _);
         if (normPoints == null)
         {
-            // Straight line is the optimal A* result with no obstacles — valid fallback.
+            usedTerrain = false;
             normPoints = new List<Vector2>
             {
-                TssCoordsToNormalized(pathStart.x, pathStart.y),
-                TssCoordsToNormalized(pathGoal.x,  pathGoal.y)
+                TssCoordsToNormalized(evaTss.x, evaTss.y),
+                TssCoordsToNormalized(goalTss.x, goalTss.y)
             };
-            Debug.Log("[ARMinimap] A* path: drawing straight-line fallback " +
-                      "(TerrainAnalyzer unavailable or found no path — " +
-                      "check Inspector calibration on TerrainAnalyzer).");
         }
 
-        for (int i = 0; i < normPoints.Count - 1; i++)
+        DrawNormPath(_voiceNavContainer, normPoints, voiceNavPathColor, voiceNavPathLineWidth,
+                     _voiceNavPoints, _voiceNavSegments);
+        EnsureMinimapLayerOrder();
+
+        _voiceNavPathActive = true;
+        _voiceNavUsedTerrainAstar = usedTerrain;
+
+        Debug.Log($"[ARMinimap] Voice nav path drawn ({normPoints.Count - 1} segments, " +
+                  $"{(usedTerrain ? "terrain A*" : "straight-line fallback")}): " +
+                  $"TSS ({evaTss.x:F1}, {evaTss.y:F1}) → {GetWaypointLabel(goalTss)} ({goalTss.x:F1}, {goalTss.y:F1}).");
+        return true;
+    }
+
+    private string GetWaypointLabel(Vector2 goalTss)
+    {
+        if (goalTss == ltv1Tss) return "LTV1";
+        if (goalTss == ltv2Tss) return "LTV2";
+        if (goalTss == baseTss) return "base";
+        return "waypoint";
+    }
+
+    // Voice path renders above trail but below the player icon.
+    private void EnsureMinimapLayerOrder()
+    {
+        if (minimapRect == null) return;
+        if (_voiceNavContainer != null) _voiceNavContainer.SetAsLastSibling();
+        if (playerIcon != null) playerIcon.SetAsLastSibling();
+    }
+
+    // True when the IMU bucket has coordinates inside (or near) the configured map bounds.
+    private bool TryGetEvaTss(Dictionary<string, object> imuEva, out Vector2 tssPos)
+    {
+        if (imuEva != null)
         {
-            _pathPoints.Add(normPoints[i]);
-            _pathSegments.Add(CreateSegment(_pathContainer, normPoints[i], normPoints[i + 1],
-                                            plannedPathColor, plannedPathLineWidth));
+            tssPos = new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
         }
-        _pathPoints.Add(normPoints[normPoints.Count - 1]);
+        else
+        {
+            tssPos = GetEvaTssPosition();
+        }
+
+        const float margin = 100f;
+        return tssPos.x >= mapMinX - margin && tssPos.x <= mapMaxX + margin
+            && tssPos.y >= mapMinY - margin && tssPos.y <= mapMaxY + margin;
+    }
+
+    private void ClearVoiceNavSegments()
+    {
+        foreach (GameObject seg in _voiceNavSegments) if (seg != null) Destroy(seg);
+        _voiceNavSegments.Clear();
+        _voiceNavPoints.Clear();
     }
 
     // Returns terrain-following A* path as normalized minimap positions, or null on failure.
-    // Each failure branch logs an actionable warning so the console explains what to fix.
-    private List<Vector2> TryTerrainAStarPath()
+    private List<Vector2> ComputeNormPath(Vector2 startTss, Vector2 goalTss, string label,
+                                          out List<Vector2Int> gridCells)
     {
+        gridCells = null;
         TerrainAnalyzer terrain = TerrainAnalyzer.Instance;
-        if (terrain == null)
-        {
-            Debug.LogWarning("[ARMinimap] TerrainAnalyzer.Instance is null. " +
-                             "Add a TerrainAnalyzer component to a GameObject in this scene.");
-            return null;
-        }
-        if (!terrain.IsReady)
-        {
-            // Logged at most once per cycle — silently skip until ready
-            return null;
-        }
+        if (terrain == null || !terrain.IsReady) return null;
 
         HashSet<Vector2Int> walkable = terrain.WalkableSet;
-        if (walkable.Count == 0)
-        {
-            Debug.LogWarning("[ARMinimap] TerrainAnalyzer.WalkableSet is empty — " +
-                             "the keepout image may not be assigned, or every cell contains red pixels. " +
-                             "Call TerrainAnalyzer.LogDiagnostics() for details.");
-            return null;
-        }
+        if (walkable.Count == 0) return null;
 
-        Vector2Int rawStart = terrain.PosToGrid(pathStart.x, pathStart.y);
-        Vector2Int rawGoal  = terrain.PosToGrid(pathGoal.x,  pathGoal.y);
+        Vector2Int rawStart = terrain.PosToGrid(startTss.x, startTss.y);
+        Vector2Int rawGoal  = terrain.PosToGrid(goalTss.x,  goalTss.y);
         Vector2Int startCell = NavGridUtilities.SnapToWalkable(rawStart, walkable);
         Vector2Int goalCell  = NavGridUtilities.SnapToWalkable(rawGoal,  walkable);
 
-        Debug.Log($"[ARMinimap] A* solving: TSS({pathStart}) → grid{rawStart} → snapped{startCell}" +
-                  $"  |  TSS({pathGoal}) → grid{rawGoal} → snapped{goalCell}" +
-                  $"  |  walkable cells: {walkable.Count}");
+        if (verboseDebug)
+        {
+            Debug.Log($"[ARMinimap] A* ({label}): TSS({startTss}) → snapped{startCell}  |  " +
+                      $"TSS({goalTss}) → snapped{goalCell}");
+        }
 
         List<Vector2Int> path = NavPathfinder.FindPath(walkable, terrain, startCell, goalCell);
+        if (path == null || path.Count < 2) return null;
 
-        if (path == null || path.Count < 2)
-        {
-            Debug.LogWarning($"[ARMinimap] A* returned no path from {startCell} to {goalCell}. " +
-                             "Possible causes: start and goal snapped to the same cell, or the walkable " +
-                             "region is disconnected. Check the keepout image and map bounds.");
-            return null;
-        }
+        gridCells = path;
 
         var normPoints = new List<Vector2>(path.Count);
         foreach (Vector2Int cell in path)
@@ -336,136 +406,23 @@ public class ARMinimapErica : MonoBehaviour
             normPoints.Add(TssCoordsToNormalized(tss.x, tss.y));
         }
 
-        Debug.Log($"[ARMinimap] A* path (terrain): {path.Count} waypoints, {path.Count - 1} segments drawn.");
-        if (verboseDebug) LogPathWeights(path, terrain);
-        if (showTerrainOverlay) BuildWeightOverlay(path, terrain);
+        if (verboseDebug)
+            Debug.Log($"[ARMinimap] A* ({label}): {path.Count} cells, {path.Count - 1} segments.");
 
-        _terrainPathSucceeded = true;
         return normPoints;
     }
 
-    // Logs each path cell's terrain weight and highlights the heaviest detour points.
-    private void LogPathWeights(List<Vector2Int> path, TerrainAnalyzer terrain)
+    private void DrawNormPath(RectTransform container, List<Vector2> normPoints, Color color,
+                                     float lineWidth, List<Vector2> pointStore, List<GameObject> segStore)
     {
-        float totalExtraCost = 0f;
-        float maxWeight = 0f;
-        int   maxWeightIdx = 0;
+        if (container == null || normPoints == null || normPoints.Count < 2) return;
 
-        var sb = new System.Text.StringBuilder(
-            $"[ARMinimap] Path weight breakdown ({path.Count} cells) ─────────────────\n");
-
-        for (int i = 0; i < path.Count; i++)
+        for (int i = 0; i < normPoints.Count - 1; i++)
         {
-            float w = Mathf.Max(0f, terrain.GetWeight(path[i]));
-            totalExtraCost += w;
-            if (w > maxWeight) { maxWeight = w; maxWeightIdx = i; }
-
-            // Only print cells with non-trivial weight to keep the log readable.
-            if (w > 0.05f)
-            {
-                Vector2 tss = terrain.GridToTssPos(path[i]);
-                string bar = new string('█', Mathf.RoundToInt(w * 20));
-                sb.Append($"  [{i:D3}] cell{path[i],12}  w={w:F3}  {bar}  TSS({tss.x:F0},{tss.y:F0})\n");
-            }
+            pointStore.Add(normPoints[i]);
+            segStore.Add(CreateSegment(container, normPoints[i], normPoints[i + 1], color, lineWidth));
         }
-
-        Vector2 heaviest = terrain.GridToTssPos(path[maxWeightIdx]);
-        sb.Append($"  ── Heaviest cell: [{maxWeightIdx:D3}] w={maxWeight:F3}  TSS({heaviest.x:F0},{heaviest.y:F0})\n");
-        sb.Append($"  ── Total extra terrain cost vs. straight line: {totalExtraCost:F2}");
-        Debug.Log(sb.ToString());
-    }
-
-    // Builds a Texture2D weight heatmap and displays it as a semi-transparent Image
-    // stretched over the entire minimap rect. Each pixel = one grid cell.
-    // Green = easy (weight≈0), yellow = moderate, red/orange = high, bright-red = blocked.
-    // Teal pixels = the computed A* path cells.
-    private void BuildWeightOverlay(List<Vector2Int> pathCells, TerrainAnalyzer terrain)
-    {
-        if (minimapRect == null) return;
-
-        terrain.GetGridBounds(out Vector2Int minCell, out Vector2Int maxCell);
-        int texW = maxCell.x - minCell.x + 1;
-        int texH = maxCell.y - minCell.y + 1;
-        if (texW <= 0 || texH <= 0) return;
-
-        float threshold = terrain.ImpassableThreshold;
-        var tex = new Texture2D(texW, texH, TextureFormat.RGBA32, false)
-        {
-            filterMode = FilterMode.Point,
-            wrapMode   = TextureWrapMode.Clamp
-        };
-
-        // Fill transparent by default (cells outside the image stay clear).
-        Color[] pixels = new Color[texW * texH];
-
-        // Walkable cells: green (cost≈0) → orange (cost near threshold).
-        foreach (Vector2Int cell in terrain.AllCells)
-        {
-            float w  = Mathf.Max(0f, terrain.GetWeight(cell));
-            int   px = cell.x - minCell.x;
-            int   py = cell.y - minCell.y;
-            if (px < 0 || px >= texW || py < 0 || py >= texH) continue;
-
-            float t = Mathf.Clamp01(w / threshold);
-            pixels[py * texW + px] = Color.Lerp(
-                new Color(0.1f, 0.85f, 0.1f, overlayAlpha * 0.5f),   // green  = cheap
-                new Color(1f,   0.55f, 0f,   overlayAlpha),           // orange = expensive
-                t);
-        }
-
-        // Blocked cells (red keepout pixels): always solid red.
-        foreach (Vector2Int cell in terrain.BlockedCells)
-        {
-            int px = cell.x - minCell.x;
-            int py = cell.y - minCell.y;
-            if (px >= 0 && px < texW && py >= 0 && py < texH)
-                pixels[py * texW + px] = new Color(1f, 0.1f, 0.1f, overlayAlpha);
-        }
-
-        // Overlay the A* path cells in teal.
-        HashSet<Vector2Int> pathSet = new HashSet<Vector2Int>(pathCells);
-        foreach (Vector2Int cell in pathSet)
-        {
-            int px = cell.x - minCell.x;
-            int py = cell.y - minCell.y;
-            if (px >= 0 && px < texW && py >= 0 && py < texH)
-                pixels[py * texW + px] = new Color(0.2f, 1f, 0.85f, Mathf.Min(1f, overlayAlpha + 0.3f));
-        }
-
-        tex.SetPixels(pixels);
-        tex.Apply();
-
-        // Destroy any previous overlay.
-        if (_overlayGO != null) Destroy(_overlayGO);
-
-        _overlayGO = new GameObject("WeightOverlay", typeof(RectTransform), typeof(CanvasRenderer), typeof(Image));
-        _overlayGO.transform.SetParent(minimapRect, false);
-
-        // Place it just above the background but below everything else.
-        _overlayGO.transform.SetSiblingIndex(0);
-
-        RectTransform rt = _overlayGO.GetComponent<RectTransform>();
-        rt.anchorMin = Vector2.zero;
-        rt.anchorMax = Vector2.one;
-        rt.offsetMin = Vector2.zero;
-        rt.offsetMax = Vector2.zero;
-
-        Image img = _overlayGO.GetComponent<Image>();
-        img.sprite = Sprite.Create(tex,
-            new Rect(0, 0, texW, texH),
-            new Vector2(0.5f, 0.5f));
-        img.type = Image.Type.Simple;
-        img.preserveAspect = false;
-
-        Debug.Log($"[ARMinimap] Weight overlay built: {texW}×{texH} px, " +
-                  $"{pathCells.Count} path cells teal, blocked shown in red.");
-    }
-
-    public void ClearPlannedPath()
-    {
-        foreach (GameObject seg in _pathSegments) if (seg != null) Destroy(seg);
-        _pathSegments.Clear();
-        _pathPoints.Clear();
+        pointStore.Add(normPoints[normPoints.Count - 1]);
     }
 
     // -------------------------------------------------------------------------
@@ -527,8 +484,8 @@ public class ARMinimapErica : MonoBehaviour
         Vector2 curSize = minimapRect.rect.size;
         if (Vector2.Distance(curSize, _lastMinimapSize) <= 0.5f) return;
 
-        RefreshSegmentList(_trailContainer,  _trailLines,    _trailPoints,  trailLineWidth);
-        RefreshSegmentList(_pathContainer,   _pathSegments,  _pathPoints,   plannedPathLineWidth);
+        RefreshSegmentList(_trailContainer,    _trailLines,       _trailPoints,    trailLineWidth);
+        RefreshSegmentList(_voiceNavContainer, _voiceNavSegments, _voiceNavPoints, voiceNavPathLineWidth);
         _lastMinimapSize = curSize;
     }
 
@@ -552,9 +509,9 @@ public class ARMinimapErica : MonoBehaviour
     private void SpawnWaypoints()
     {
         if (minimapRect == null) return;
-        SpawnWaypointDot(new Vector2(-5670f, -10060f), Color.blue,   "WP_Blue");
-        SpawnWaypointDot(new Vector2(-5635f, -9960f),  Color.green,  "WP_Green");
-        SpawnWaypointDot(new Vector2(-5515f, -9995f),  Color.yellow, "WP_Yellow");
+        SpawnWaypointDot(baseTss, Color.blue,   "WP_Base");
+        SpawnWaypointDot(ltv1Tss, Color.green,  "WP_LTV1");
+        SpawnWaypointDot(ltv2Tss, new Color(0.6f, 0.2f, 0.9f, 1f), "WP_LTV2");
     }
 
     private void SpawnWaypointDot(Vector2 tssPos, Color color, string dotName)
@@ -612,13 +569,23 @@ public class ARMinimapErica : MonoBehaviour
             $"[ARMinimap] imu[\"{evaId}\"]: {bucket}\n" +
             $"  TSS ({x:F1}, {y:F1})  heading {heading:F1}°\n" +
             $"  normalized ({n.x:F3}, {n.y:F3})  anchoredPos ({px.x:F1}, {px.y:F1})\n" +
-            $"  trail pts:{_trailPoints.Count}  path segs:{_pathSegments.Count}"
+            $"  trail pts:{_trailPoints.Count}  voice nav segs:{_voiceNavSegments.Count}"
         );
     }
 
     // -------------------------------------------------------------------------
     // TSS data helpers
     // -------------------------------------------------------------------------
+
+    /// <summary>
+    /// Current TSS (posx, posy) for the configured EVA ID, or Vector2.zero when unavailable.
+    /// </summary>
+    public Vector2 GetEvaTssPosition()
+    {
+        Dictionary<string, object> imuEva = GetImuBucket();
+        if (imuEva == null) return Vector2.zero;
+        return new Vector2((float)ToDouble(imuEva, "posx"), (float)ToDouble(imuEva, "posy"));
+    }
 
     private Dictionary<string, object> GetImuBucket()
     {

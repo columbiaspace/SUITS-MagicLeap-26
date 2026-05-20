@@ -30,6 +30,11 @@ public class VoiceIntents : MonoBehaviour
     // MLVoice intent IDs for the LTV reference map (LTV scene only).
     private const uint LtvReferenceMapShowEventId = 117;
     private const uint LtvReferenceMapHideEventId = 118;
+    // MLVoice intent IDs for minimap navigation (NavVoiceCoordinator).
+    // Configured in Assets/AIA/MLVoiceIntentsConfiguration.asset.
+    private const uint NavVoiceEventIdMin = 119;
+    private const uint NavVoiceEventIdMax = 122;
+    private const uint LtvPreviousStepEventId = 123;
 
     /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
     public static event Action HudClearDisplayRequested;
@@ -37,6 +42,8 @@ public class VoiceIntents : MonoBehaviour
     public static event Action HudShowDisplayRequested;
     /// <summary>Fires when the MLVoice "next step" phrase is detected. Consumed by LTV scene only.</summary>
     public static event Action LtvNextStepRequested;
+    /// <summary>Fires when the MLVoice "previous step" phrase is detected. Consumed by LTV scene only.</summary>
+    public static event Action LtvPreviousStepRequested;
     /// <summary>Fires when the MLVoice "show reference map" phrase is detected. Consumed by LTV scene only.</summary>
     public static event Action LtvReferenceMapShowRequested;
     /// <summary>Fires when the MLVoice "hide reference map" phrase is detected. Consumed by LTV scene only.</summary>
@@ -53,7 +60,7 @@ public class VoiceIntents : MonoBehaviour
     private const int MaxVisibleConversationTurns = 3;
     private const string DefaultResponsePlaceholder = "Luna response will appear here.";
     private const string RecordingPlaceholder = "Recording your question...";
-    private const string WaitingForResponsePlaceholder = "waiting for response...";
+    private const string WaitingForResponsePlaceholder = "Sent to Luna\nwaiting for response...";
 
     private readonly MLPermissions.Callbacks permissionCallbacks = new MLPermissions.Callbacks();
     public MLVoiceIntentsConfiguration VoiceIntentsConfiguration;
@@ -80,6 +87,9 @@ public class VoiceIntents : MonoBehaviour
              "Handles all voice transitions other than the Mission→LTV entry, which stays " +
              "on LtvVoiceCoordinator so LtvSceneBootstrapper still sees PendingVoiceTrigger.")]
     [SerializeField] private SceneVoiceCoordinator sceneVoiceCoordinator;
+
+    [Tooltip("Optional Mission minimap nav voice coordinator (LTV1 / LTV2 / return to base / clear path).")]
+    [SerializeField] private NavVoiceCoordinator navVoiceCoordinator;
 
     [Header("Debugging")]
     [SerializeField] private bool verboseVoiceLogging = true;
@@ -371,6 +381,11 @@ public class VoiceIntents : MonoBehaviour
                 LtvNextStepRequested?.Invoke();
                 break;
 
+            case LtvPreviousStepEventId:
+                Debug.Log("[LTV] 'previous step' phrase detected");
+                LtvPreviousStepRequested?.Invoke();
+                break;
+
             case LtvReferenceMapShowEventId:
                 Debug.Log("[LTVMap] 'show reference map' phrase detected");
                 LtvReferenceMapShowRequested?.Invoke();
@@ -402,6 +417,14 @@ public class VoiceIntents : MonoBehaviour
                     if (!TryRouteSceneVoiceCommand(spokenPhrase))
                     {
                         Debug.LogWarning($"[Luna] Scene-transition MLVoice intent '{voiceEvent.EventName}' did not match any configured transition in the current scene.");
+                    }
+                }
+                else if (voiceEvent.EventID >= NavVoiceEventIdMin && voiceEvent.EventID <= NavVoiceEventIdMax)
+                {
+                    Debug.Log($"[Luna] Nav MLVoice intent fired (id={voiceEvent.EventID}, name='{voiceEvent.EventName}')");
+                    if (!TryRouteNavVoiceCommand(voiceEvent.EventName, voiceEvent.EventID))
+                    {
+                        Debug.LogWarning($"[Luna] Nav MLVoice intent '{voiceEvent.EventName}' (id={voiceEvent.EventID}) did not match any configured nav command.");
                     }
                 }
                 else
@@ -468,23 +491,18 @@ public class VoiceIntents : MonoBehaviour
     }
 
     /// <summary>
-    /// Public so AIAVoskInputController can fire scene-transition routing on partial
-    /// Vosk transcripts (without waiting for the recording to stop and a final result
-    /// to emit). Tries the generic <see cref="SceneVoiceCoordinator"/> first (any
-    /// scene-to-scene transition), then falls back to <see cref="LtvVoiceCoordinator"/>
-    /// (kept for the Mission→LTV entry because LtvSceneBootstrapper consumes its
-    /// PendingVoiceTrigger flag). Returns true when a transition fired.
+    /// Public so AIAVoskInputController can fire voice routing on partial Vosk transcripts.
+    /// Order: scene transitions → minimap nav → LTV repair entry.
+    /// Returns true when a coordinator consumed the prompt.
     /// </summary>
     public bool TryRouteSceneVoiceCommand(string trimmedPrompt)
     {
-        if (sceneVoiceCoordinator == null)
+        if (TryRouteSceneTransitionVoiceCommand(trimmedPrompt))
         {
-            sceneVoiceCoordinator = SceneVoiceCoordinator.Instance != null
-                ? SceneVoiceCoordinator.Instance
-                : FindObjectOfType<SceneVoiceCoordinator>();
+            return true;
         }
 
-        if (sceneVoiceCoordinator != null && sceneVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt))
+        if (TryRouteNavVoiceCommand(trimmedPrompt))
         {
             return true;
         }
@@ -495,6 +513,43 @@ public class VoiceIntents : MonoBehaviour
         }
 
         return ltvVoiceCoordinator != null && ltvVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+    }
+
+    private bool TryRouteSceneTransitionVoiceCommand(string trimmedPrompt)
+    {
+        if (sceneVoiceCoordinator == null)
+        {
+            sceneVoiceCoordinator = SceneVoiceCoordinator.Instance != null
+                ? SceneVoiceCoordinator.Instance
+                : FindObjectOfType<SceneVoiceCoordinator>();
+        }
+
+        return sceneVoiceCoordinator != null && sceneVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
+    }
+
+    /// <summary>
+    /// Routes minimap navigation voice commands via <see cref="NavVoiceCoordinator"/>.
+    /// </summary>
+    public bool TryRouteNavVoiceCommand(string trimmedPrompt, uint mlVoiceEventId = 0)
+    {
+        if (navVoiceCoordinator == null)
+        {
+            navVoiceCoordinator = FindObjectOfType<NavVoiceCoordinator>();
+        }
+
+        if (navVoiceCoordinator == null)
+        {
+            return false;
+        }
+
+        if (mlVoiceEventId >= NavVoiceEventIdMin && mlVoiceEventId <= NavVoiceEventIdMax
+            && navVoiceCoordinator.TryHandleNavVoiceEvent(mlVoiceEventId, trimmedPrompt))
+        {
+            return true;
+        }
+
+        return !string.IsNullOrWhiteSpace(trimmedPrompt)
+            && navVoiceCoordinator.TryHandleVoiceCommand(trimmedPrompt);
     }
 
     private void UpdateResponseTextBox(string text)

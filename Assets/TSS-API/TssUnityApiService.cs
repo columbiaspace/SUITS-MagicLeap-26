@@ -19,7 +19,7 @@ namespace TssApi
         private const string TssPortEnvironmentVariable = "TSS_PORT";
 
         [Header("TSS UDP Source")]
-        [SerializeField] private string tssHost = "192.0.0.2";
+        [SerializeField] private string tssHost = "192.168.50.110";
         [SerializeField] private int tssPort = 14141;
         [SerializeField] private float pollIntervalSeconds = 1f;
         [SerializeField] private int udpTimeoutMs = 500;
@@ -35,7 +35,12 @@ namespace TssApi
 
         public event Action<Dictionary<string, object>> EvaUpdated;
 
+        /// <summary>Fires when UDP polling reaches or loses both EVA and LTV feeds.</summary>
+        public event Action<bool> SourceOnlineChanged;
+
         public static TssUnityApiService Instance { get; private set; }
+
+        public bool IsSourceOnline => _sourceOnline;
 
         private TssUdpClient _udp;
         private Coroutine _pollCoroutine;
@@ -47,8 +52,14 @@ namespace TssApi
         // Diagnostics for "server is running but client sees nothing" issues — logs every
         // online/offline transition and warns once per OfflineWarnIntervalSeconds while down.
         private const float OfflineWarnIntervalSeconds = 5f;
+        // Indefinite reconnect: one cheap probe (allocate a UdpClient + 3 small UDP
+        // requests bounded by udpTimeoutMs × udpRetries) every ReconnectIntervalSeconds.
+        // While the burst is active, the normal 1s PollLoop yields to it, so the
+        // headset's offline load is one probe per interval rather than continuous polling.
+        private const float ReconnectIntervalSeconds = 15f;
         private float _offlineWarnTimer;
         private bool _firstPollLogged;
+        private bool _reconnectBurstDoneWhileOffline;
 
         private void Awake()
         {
@@ -567,7 +578,7 @@ namespace TssApi
         {
             if (data == null) return;
             MergeIntoLtv(data);
-            _sourceOnline = true;
+            SetSourceOnline(true);
             _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
         }
 
@@ -582,32 +593,10 @@ namespace TssApi
                     continue;
                 }
 
-                Dictionary<string, object> evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
-                Dictionary<string, object> ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
-                Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
-
-                if (evaRaw != null)
-                {
-                    _eva = evaRaw;
-                    EvaUpdated?.Invoke(GetEva());
-                }
-
-                // Merge each feed in place. Wholesale-replacing _ltv with ltvRaw would
-                // erase error_procedures (which only ships in the LtvErrors feed) any
-                // time UdpGetLtvErrors times out on a poll while UdpGetLtv succeeds.
-                if (ltvRaw != null)
-                {
-                    MergeIntoLtv(ltvRaw);
-                }
-
-                if (ltvErrorsRaw != null)
-                {
-                    MergeIntoLtv(ltvErrorsRaw);
-                }
-
-                bool newOnline = evaRaw != null && ltvRaw != null;
+                bool newOnline = PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw);
                 if (newOnline)
                 {
+                    _reconnectBurstDoneWhileOffline = false;
                     _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
                     if (!_sourceOnline || !_firstPollLogged)
                     {
@@ -630,11 +619,93 @@ namespace TssApi
                         Debug.LogWarning($"[TSS] Still offline — verify the server is reachable at {tssHost}:{tssPort} from this device. " +
                                          "On Android, set TSS_HOST in the scene; on macOS Editor, set TSS_HOST=... before launching Unity.");
                     }
+
+                    if (!_reconnectBurstDoneWhileOffline)
+                    {
+                        _reconnectBurstDoneWhileOffline = true;
+                        yield return ReconnectBurst();
+                        newOnline = _sourceOnline;
+                    }
                 }
 
-                _sourceOnline = newOnline;
+                SetSourceOnline(newOnline);
                 yield return wait;
             }
+        }
+
+        private bool PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw)
+        {
+            evaRaw = _udp != null ? _udp.RequestJson(UdpGetEva) : null;
+            ltvRaw = _udp != null ? _udp.RequestJson(UdpGetLtv) : null;
+            Dictionary<string, object> ltvErrorsRaw = _udp != null ? _udp.RequestJson(UdpGetLtvErrors) : null;
+
+            if (evaRaw != null)
+            {
+                _eva = evaRaw;
+                EvaUpdated?.Invoke(GetEva());
+            }
+
+            if (ltvRaw != null)
+            {
+                MergeIntoLtv(ltvRaw);
+            }
+
+            if (ltvErrorsRaw != null)
+            {
+                MergeIntoLtv(ltvErrorsRaw);
+            }
+
+            return evaRaw != null && ltvRaw != null;
+        }
+
+        private IEnumerator ReconnectBurst()
+        {
+            Debug.LogWarning($"[TSS] Connection failed. Retrying every {ReconnectIntervalSeconds:F1}s until reconnected.");
+
+            int attempt = 0;
+            while (true)
+            {
+                attempt++;
+                ReinitializeUdp();
+
+                if (PollFeedsOnce(out Dictionary<string, object> evaRaw, out Dictionary<string, object> ltvRaw))
+                {
+                    _lastUpdatedUnix = DateTimeOffset.UtcNow.ToUnixTimeSeconds();
+                    if (!_firstPollLogged)
+                    {
+                        Debug.Log($"[TSS] ONLINE — connected on reconnect attempt {attempt} from {tssHost}:{tssPort}. EVA keys: {DescribeKeys(evaRaw)}; LTV keys: {DescribeKeys(ltvRaw)}.");
+                        _firstPollLogged = true;
+                    }
+                    else
+                    {
+                        Debug.Log($"[TSS] Reconnected on attempt {attempt}.");
+                    }
+
+                    _offlineWarnTimer = 0f;
+                    SetSourceOnline(true);
+                    yield break;
+                }
+
+                // Throttle the per-attempt log so an extended outage doesn't spam the
+                // headset console: first three attempts, then every 10th.
+                if (attempt <= 3 || attempt % 10 == 0)
+                {
+                    Debug.LogWarning($"[TSS] Reconnect attempt {attempt} failed; retrying in {ReconnectIntervalSeconds:F1}s.");
+                }
+
+                yield return new WaitForSeconds(ReconnectIntervalSeconds);
+            }
+        }
+
+        private void SetSourceOnline(bool online)
+        {
+            if (_sourceOnline == online)
+            {
+                return;
+            }
+
+            _sourceOnline = online;
+            SourceOnlineChanged?.Invoke(_sourceOnline);
         }
 
         private static string DescribeKeys(Dictionary<string, object> dict)
@@ -654,6 +725,17 @@ namespace TssApi
             if (_udp != null)
             {
                 return;
+            }
+
+            ReinitializeUdp();
+        }
+
+        private void ReinitializeUdp()
+        {
+            if (_udp != null)
+            {
+                _udp.Dispose();
+                _udp = null;
             }
 
             try

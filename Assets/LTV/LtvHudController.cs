@@ -12,7 +12,8 @@ public class LtvHudController : MonoBehaviour
     [Header("UI Elements")]
     public TextMeshProUGUI errorCodeText;   // The left box (formerly "AG NAV")
     public TextMeshProUGUI instructionText; // The middle instructional text
-    public Button checkmarkButton;          // The right side button
+    public Button checkmarkButton;          // The right side button (advance step)
+    public Button previousButton;           // The left of the checkmark (retreat step)
     public Image leftPanelImage;            // Background image of the left box (colored by danger level)
 
     [Header("Danger-level colors")]
@@ -98,6 +99,15 @@ public class LtvHudController : MonoBehaviour
         checkmarkButton.onClick.Invoke();
     }
 
+    /// Programmatic equivalent of clicking the previous-step button. Routed through
+    /// Button.onClick so voice / keyboard / UI press all share one code path.
+    public void InvokePrevious(string source)
+    {
+        if (previousButton == null || !previousButton.interactable) return;
+        if (enableDebugLogs) Debug.Log($"[LtvHud] InvokePrevious source={source}", this);
+        previousButton.onClick.Invoke();
+    }
+
     // Called by the Button's OnClick UnityEvent (wired in the scene)
     public void OnCheckmarkClicked()
     {
@@ -110,6 +120,16 @@ public class LtvHudController : MonoBehaviour
         if (queueService != null && queueService.IsDiagnosisActive && !queueService.IsVerifying)
         {
             queueService.AdvanceStep();
+        }
+    }
+
+    // Called by the previous-step Button's OnClick UnityEvent (wired in the scene)
+    public void OnPreviousClicked()
+    {
+        if (enableDebugLogs) Debug.Log("[LtvHud] >>> OnPreviousClicked fired!", this);
+        if (queueService != null && queueService.IsDiagnosisActive && !queueService.IsVerifying)
+        {
+            queueService.RetreatStep();
         }
     }
 
@@ -138,6 +158,10 @@ public class LtvHudController : MonoBehaviour
         {
             checkmarkButton.interactable = !queueService.IsVerifying;
         }
+        if (previousButton != null)
+        {
+            previousButton.interactable = !queueService.IsVerifying && stepIndex > 0;
+        }
     }
 
     private void OnAllResolved()
@@ -145,6 +169,7 @@ public class LtvHudController : MonoBehaviour
         if (errorCodeText != null) errorCodeText.text = "DONE";
         if (instructionText != null) instructionText.text = "All LTV errors resolved. Systems nominal.";
         if (checkmarkButton != null) checkmarkButton.interactable = false;
+        if (previousButton != null) previousButton.interactable = false;
         if (leftPanelImage != null) leftPanelImage.color = idleColor;
     }
 

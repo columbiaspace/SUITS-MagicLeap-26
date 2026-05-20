@@ -97,10 +97,11 @@ public class VoiceProcessor : MonoBehaviour
     // Lowered from the upstream 0.05f default. Magic Leap 2's headset mic regularly
     // peaks around 0.02–0.04 for normal indoor speech, so the old threshold caused
     // Vosk to receive zero frames and return an empty transcript ("Vosk could not
-    // transcribe that recording"). 0.01 lets typical speech through while still
+    // transcribe that recording"). 0.009 lets typical speech through while still
     // rejecting room tone (which is usually well under 0.005).
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
-    private float _minimumSpeakingSampleValue = 0.01f;
+    private float _minimumSpeakingSampleValue = 0.009f;
+    private const float MinimumSpeakingRmsValue = 0.00225f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;
@@ -323,6 +324,7 @@ public class VoiceProcessor : MonoBehaviour
                 // Absolute value: speech waveforms swing both positive and negative,
                 // so checking sampleBuffer[i] > maxVolume alone misses every trough.
                 float maxVolume = 0.0f;
+                float sumSquares = 0.0f;
                 for (int i = 0; i < sampleBuffer.Length; i++)
                 {
                     float abs = sampleBuffer[i] < 0 ? -sampleBuffer[i] : sampleBuffer[i];
@@ -330,10 +332,12 @@ public class VoiceProcessor : MonoBehaviour
                     {
                         maxVolume = abs;
                     }
+                    sumSquares += sampleBuffer[i] * sampleBuffer[i];
                 }
+                float rmsVolume = Mathf.Sqrt(sumSquares / sampleBuffer.Length);
                 LastFrameMaxAmplitude = maxVolume;
 
-                if (maxVolume >= _minimumSpeakingSampleValue)
+                if (maxVolume >= _minimumSpeakingSampleValue && rmsVolume >= MinimumSpeakingRmsValue)
                 {
                     _transmit= _audioDetected = true;
                     _timeAtSilenceBegan = Time.time;
@@ -360,7 +364,7 @@ public class VoiceProcessor : MonoBehaviour
                 }
 
                 // raise buffer event
-                if (OnFrameCaptured != null && _transmit)
+                if (OnFrameCaptured != null)
                     OnFrameCaptured.Invoke(pcmBuffer);
             }
             else
