@@ -394,6 +394,10 @@ public class ARMinimapErica : MonoBehaviour
         {
             foreach (Vector2Int cell in gridCells)
                 _voiceNavPathTss.Add(terrain.GridToTssPos(cell));
+
+            // A* starts at a snapped grid cell; prepend EVA so the ground arrow projects onto the route.
+            if (_voiceNavPathTss.Count > 0 && Vector2.Distance(_voiceNavPathTss[0], evaTss) > 3f)
+                _voiceNavPathTss.Insert(0, evaTss);
             return;
         }
 

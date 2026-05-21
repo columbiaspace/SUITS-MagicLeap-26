@@ -43,6 +43,8 @@ public class LtvGroundArrow : MonoBehaviour
     [SerializeField] private Transform arrowVisual;
     [Tooltip("When true, EVA IMU heading from TSS. When false, yaw of followTransform.")]
     [SerializeField] private bool useTssHeading = true;
+    [Tooltip("When true, arrow points in world path direction (TSS bearing). When false, subtracts body heading (compass-style).")]
+    [SerializeField] private bool useWorldSpaceBearing = true;
     [Tooltip("Extra Y rotation if the quad mesh / texture forward axis needs tuning.")]
     [SerializeField] private float meshYawOffsetDegrees = 0f;
 
@@ -220,22 +222,32 @@ public class LtvGroundArrow : MonoBehaviour
         if (_mode == ArrowMode.FollowVoicePath)
         {
             IReadOnlyList<Vector2> path = minimap.VoiceNavPathTss;
-            if (!TryGetLookAheadSegment(path, evaX, evaY, lookAheadMeters, out Vector2 segA, out Vector2 segB))
+            if (!TryGetLookAheadPoint(path, evaX, evaY, lookAheadMeters, out Vector2 lookAhead, out float distToPath))
             {
-                if (!_loggedLookAheadFailure)
+                if (path != null && path.Count > 0)
                 {
-                    _loggedLookAheadFailure = true;
-                    Debug.LogWarning(
-                        $"[LtvGroundArrow] Could not pick look-ahead segment on path ({path?.Count ?? 0} pts). " +
-                        "Arrow keeps last rotation.",
-                        this);
+                    Vector2 goal = path[path.Count - 1];
+                    bearing = BearingDegrees(evaX, evaY, goal.x, goal.y);
+                    bearingSource = $"fallback → goal ({goal.x:F0},{goal.y:F0})";
                 }
-                return;
+                else
+                {
+                    if (!_loggedLookAheadFailure)
+                    {
+                        _loggedLookAheadFailure = true;
+                        Debug.LogWarning(
+                            $"[LtvGroundArrow] Could not pick look-ahead on path ({path?.Count ?? 0} pts).",
+                            this);
+                    }
+                    return;
+                }
             }
-
-            _loggedLookAheadFailure = false;
-            bearing = BearingDegrees(segA.x, segA.y, segB.x, segB.y);
-            bearingSource = $"path seg ({segA.x:F0},{segA.y:F0})→({segB.x:F0},{segB.y:F0})";
+            else
+            {
+                _loggedLookAheadFailure = false;
+                bearing = BearingDegrees(evaX, evaY, lookAhead.x, lookAhead.y);
+                bearingSource = $"EVA→lookahead ({lookAhead.x:F0},{lookAhead.y:F0}) distToPath={distToPath:F1}m";
+            }
         }
         else
         {
@@ -246,17 +258,11 @@ public class LtvGroundArrow : MonoBehaviour
             bearingSource = $"LTV ({ltvX:F0},{ltvY:F0})";
         }
 
-        float relative = NormalizeAngle(bearing - heading);
-        float yaw = relative + meshYawOffsetDegrees;
+        float yaw = useWorldSpaceBearing
+            ? bearing + meshYawOffsetDegrees
+            : NormalizeAngle(bearing - heading) + meshYawOffsetDegrees;
 
-        Quaternion arrowRot = Quaternion.Euler(90f, yaw, 0f);
-        if (arrowVisual == _pivot)
-            _pivot.rotation = arrowRot;
-        else
-        {
-            _pivot.rotation = Quaternion.identity;
-            arrowVisual.rotation = arrowRot;
-        }
+        ApplyArrowYaw(yaw);
 
         _logTimer += Time.deltaTime;
         if (logIntervalSeconds > 0f && _logTimer >= logIntervalSeconds)
@@ -276,7 +282,7 @@ public class LtvGroundArrow : MonoBehaviour
 
             Debug.Log(
                 $"[LtvGroundArrow] mode={modeLabel} {coordLog}  heading={heading:F1}°  " +
-                $"bearing={bearing:F1}° ({bearingSource}) rel={relative:F1}° yaw={yaw:F1}°  " +
+                $"bearing={bearing:F1}° ({bearingSource}) worldBearing={useWorldSpaceBearing} yaw={yaw:F1}°  " +
                 (distToGoal > 0f ? $"distToGoal≈{distToGoal:F1}m" : ""),
                 this);
         }
@@ -294,6 +300,22 @@ public class LtvGroundArrow : MonoBehaviour
             return true;
         }
 
+        if (minimap != null && tssApi != null)
+        {
+            Dictionary<string, object> imuForLog = GetImuEvaBucket();
+            if (imuForLog != null)
+            {
+                _lastRawEvaX = (float)ToDouble(imuForLog, "posx");
+                _lastRawEvaY = (float)ToDouble(imuForLog, "posy");
+                Vector2 pos = minimap.GetEvaTssPosition();
+                evaX = pos.x;
+                evaY = pos.y;
+                if (!tssApi.TryGetImuHeading(evaId, out heading))
+                    heading = 0f;
+                return true;
+            }
+        }
+
         if (tssApi == null) return false;
 
         Dictionary<string, object> imuEva = GetImuEvaBucket();
@@ -301,12 +323,24 @@ public class LtvGroundArrow : MonoBehaviour
 
         _lastRawEvaX = (float)ToDouble(imuEva, "posx");
         _lastRawEvaY = (float)ToDouble(imuEva, "posy");
-        Vector2 pos = EvaTssCoordinateAdjust.Apply(_lastRawEvaX, _lastRawEvaY);
-        evaX = pos.x;
-        evaY = pos.y;
+        Vector2 adjusted = EvaTssCoordinateAdjust.Apply(_lastRawEvaX, _lastRawEvaY);
+        evaX = adjusted.x;
+        evaY = adjusted.y;
         if (!tssApi.TryGetImuHeading(evaId, out heading))
             heading = 0f;
         return true;
+    }
+
+    private void ApplyArrowYaw(float yawDegrees)
+    {
+        Quaternion arrowRot = Quaternion.Euler(90f, yawDegrees, 0f);
+        if (arrowVisual == _pivot)
+            _pivot.rotation = arrowRot;
+        else
+        {
+            _pivot.rotation = Quaternion.identity;
+            arrowVisual.rotation = arrowRot;
+        }
     }
 
     private Dictionary<string, object> GetImuEvaBucket()
@@ -357,13 +391,14 @@ public class LtvGroundArrow : MonoBehaviour
     }
 
     /// <summary>
-    /// Picks a path segment lookAheadMeters ahead of EVA along the TSS polyline.
+    /// Projects EVA onto the path, walks lookAheadMeters forward along the polyline, returns that point.
     /// </summary>
-    private static bool TryGetLookAheadSegment(
+    private static bool TryGetLookAheadPoint(
         IReadOnlyList<Vector2> path, float evaX, float evaY, float lookAheadMeters,
-        out Vector2 segStart, out Vector2 segEnd)
+        out Vector2 lookAheadPoint, out float distEvaToPath)
     {
-        segStart = segEnd = default;
+        lookAheadPoint = default;
+        distEvaToPath = float.MaxValue;
         int count = path.Count;
         if (count < 2) return false;
 
@@ -389,31 +424,38 @@ public class LtvGroundArrow : MonoBehaviour
             }
         }
 
-        Vector2 cur = new Vector2(
+        distEvaToPath = Mathf.Sqrt(closestDistSq);
+
+        Vector2 walker = new Vector2(
             Mathf.Lerp(path[closestSeg].x, path[closestSeg + 1].x, closestT),
             Mathf.Lerp(path[closestSeg].y, path[closestSeg + 1].y, closestT));
 
-        float remain = Mathf.Max(lookAheadMeters, 0f);
+        float remain = Mathf.Max(lookAheadMeters, 0.01f);
         int seg = closestSeg;
 
         while (seg < count - 1)
         {
             Vector2 end = path[seg + 1];
-            float legLen = Vector2.Distance(cur, end);
+            float legLen = Vector2.Distance(walker, end);
+            if (legLen < 1e-4f)
+            {
+                seg++;
+                continue;
+            }
+
             if (remain <= legLen || seg == count - 2)
             {
-                segStart = cur;
-                segEnd = end;
-                return legLen > 0.01f || seg < count - 1;
+                float t = Mathf.Clamp01(remain / legLen);
+                lookAheadPoint = Vector2.Lerp(walker, end, t);
+                return true;
             }
 
             remain -= legLen;
-            cur = end;
+            walker = end;
             seg++;
         }
 
-        segStart = path[count - 2];
-        segEnd = path[count - 1];
+        lookAheadPoint = path[count - 1];
         return true;
     }
 

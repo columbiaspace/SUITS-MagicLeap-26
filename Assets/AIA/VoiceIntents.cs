@@ -37,6 +37,8 @@ public class VoiceIntents : MonoBehaviour
     private const uint LtvPreviousStepEventId = 123;
     private const uint NavGoToBaseEventId = 124;
     private const uint NavReturnHomeEventId = 125;
+    private const uint DeactivateLunaEventId = 128;
+    private const uint ActivateLunaEventId = 129;
 
     /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
     public static event Action HudClearDisplayRequested;
@@ -100,13 +102,17 @@ public class VoiceIntents : MonoBehaviour
     // resulting transcript is sent to Gemma through SubmitPromptFromText.
 
     private Coroutine aiRequestCoroutine;
+    private UnityWebRequest activeAiRequest;
     private AndroidJavaObject textToSpeech;
     private AndroidJavaObject unityActivity;
     private volatile bool textToSpeechReady;
     private bool isVoiceEventSubscribed;
+    private bool lunaActive = true;
     private readonly List<ConversationTurn> completedConversationTurns = new List<ConversationTurn>();
     private ConversationTurn activeConversationTurn;
     private string transientStatus = DefaultResponsePlaceholder;
+
+    public bool IsLunaActive => lunaActive;
 
     [Serializable]
     private class AiChatMessage
@@ -364,8 +370,21 @@ public class VoiceIntents : MonoBehaviour
                 break;
 
             case AskLunaEventId:
+                if (!lunaActive)
+                {
+                    Debug.Log("[Luna] Hey Luna ignored because Luna is deactivated.");
+                    break;
+                }
                 Debug.Log("Hey Luna wake phrase detected");
                 StartAiaRecordingFromWakePhrase();
+                break;
+
+            case DeactivateLunaEventId:
+                DeactivateLuna();
+                break;
+
+            case ActivateLunaEventId:
+                ActivateLuna();
                 break;
 
             case HudClearDisplayEventId:
@@ -439,6 +458,12 @@ public class VoiceIntents : MonoBehaviour
 
     private void StartAiaRecordingFromWakePhrase()
     {
+        if (!lunaActive)
+        {
+            Debug.Log("[Luna] Hey Luna ignored because Luna is deactivated.");
+            return;
+        }
+
         TryResolveAiaInputController();
         if (aiaInputController == null)
         {
@@ -490,6 +515,63 @@ public class VoiceIntents : MonoBehaviour
         }
 
         aiaInputController = FindObjectOfType<AIAVoskInputController>();
+    }
+
+    private void DeactivateLuna()
+    {
+        if (!lunaActive)
+        {
+            return;
+        }
+
+        lunaActive = false;
+        activeAiRequest?.Abort();
+        activeAiRequest = null;
+        if (aiRequestCoroutine != null)
+        {
+            StopCoroutine(aiRequestCoroutine);
+            aiRequestCoroutine = null;
+        }
+
+        TryResolveAiaInputController();
+        aiaInputController?.CancelRecordingWithoutSubmit();
+        activeConversationTurn = null;
+        transientStatus = DefaultResponsePlaceholder;
+        SetLunaChatVisible(false);
+        Debug.Log("[Luna] Luna deactivated. Other Magic Leap voice intents remain active.");
+    }
+
+    private void ActivateLuna()
+    {
+        if (lunaActive)
+        {
+            SetLunaChatVisible(true);
+            return;
+        }
+
+        lunaActive = true;
+        SetLunaChatVisible(true);
+        if (activeConversationTurn == null && completedConversationTurns.Count == 0)
+        {
+            SetResponseStatus(DefaultResponsePlaceholder);
+        }
+        Debug.Log("[Luna] Luna activated.");
+    }
+
+    private void SetLunaChatVisible(bool visible)
+    {
+        TryResolveResponseScrollRect();
+        TryResolveResponseTextBox();
+
+        if (responseScrollRect != null)
+        {
+            responseScrollRect.gameObject.SetActive(visible);
+        }
+
+        if (responseTextBox != null)
+        {
+            responseTextBox.gameObject.SetActive(visible);
+        }
     }
 
     /// <summary>
@@ -636,6 +718,13 @@ public class VoiceIntents : MonoBehaviour
 
     public void SubmitPromptFromText(string prompt)
     {
+        if (!lunaActive)
+        {
+            Debug.Log("[Luna] Ignoring text prompt because Luna is deactivated.");
+            activeConversationTurn = null;
+            return;
+        }
+
         if (!sendVoicePromptToAi)
         {
             Debug.LogWarning("Text prompt received but AI forwarding is disabled.");
@@ -701,6 +790,8 @@ public class VoiceIntents : MonoBehaviour
         if (aiRequestCoroutine != null)
         {
             Debug.Log("[Gemma] Cancelling previous in-flight AI request.");
+            activeAiRequest?.Abort();
+            activeAiRequest = null;
             StopCoroutine(aiRequestCoroutine);
         }
 
@@ -730,6 +821,7 @@ public class VoiceIntents : MonoBehaviour
         }
         using (var request = new UnityWebRequest(aiGenerateUrl, UnityWebRequest.kHttpVerbPOST))
         {
+            activeAiRequest = request;
             request.uploadHandler = new UploadHandlerRaw(Encoding.UTF8.GetBytes(json));
             request.downloadHandler = new DownloadHandlerBuffer();
             request.SetRequestHeader("Content-Type", "application/json");
@@ -737,6 +829,16 @@ public class VoiceIntents : MonoBehaviour
 
             SetActiveConversationWaitingState();
             yield return request.SendWebRequest();
+
+            if (!lunaActive)
+            {
+                if (activeAiRequest == request)
+                {
+                    activeAiRequest = null;
+                }
+                aiRequestCoroutine = null;
+                yield break;
+            }
 
             if (request.result != UnityWebRequest.Result.Success)
             {
@@ -784,6 +886,11 @@ public class VoiceIntents : MonoBehaviour
                 }
 
                 SpeakText(responseText);
+            }
+
+            if (activeAiRequest == request)
+            {
+                activeAiRequest = null;
             }
         }
 

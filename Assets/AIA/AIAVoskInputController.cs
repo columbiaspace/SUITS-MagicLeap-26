@@ -12,7 +12,44 @@ public class AIAVoskInputController : MonoBehaviour
     private const string RecordingButtonLabel = "Stop Recording";
     private const string BusyButtonLabel = "Loading Vosk...";
     private const string DefaultVoskModelPath = "vosk-model-en-us-0.22-lgraph.zip";
-    private const string SendRecordingCommand = "send recording";
+    private static readonly string[] SendRecordingCommands =
+    {
+        "send recording",
+        "sent recording",
+        "said recording",
+        "sed recording",
+        "sod recording",
+        "set recording",
+        "sand recording",
+        "send record",
+        "sent record",
+        "said record",
+        "send a recording",
+        "send the recording",
+        "send my recording",
+        "submit recording",
+        "submit record",
+        "end recording"
+    };
+    private static readonly string[] PurgeRecordingCommands =
+    {
+        "purge recording",
+        "purge the recording",
+        "clear recording",
+        "cancel recording",
+        "discard recording",
+        "delete recording",
+        "flush recording",
+        "erase recording",
+        "purge record",
+        "perch recording",
+        "urge recording",
+        "clear record",
+        "cancel record",
+        "discard record",
+        "delete record",
+        "flush record"
+    };
     private static readonly string[] NasaMissionKeyPhrases =
     {
         "ingress",
@@ -158,6 +195,13 @@ public class AIAVoskInputController : MonoBehaviour
     [SerializeField] private string voskModelPath = DefaultVoskModelPath;
     [SerializeField] private int maxAlternatives = 1;
     [SerializeField] private float initializationTimeoutSeconds = 120f;
+    [SerializeField, Tooltip(
+        "Decompress the Vosk zip and load the model as soon as the scene starts, " +
+        "before the user ever presses Record. This eliminates the multi-hundred-ms " +
+        "main-thread stall that otherwise causes a black-frame / flicker on the ML2 " +
+        "the first time a recording is started. Has no effect in the Editor / on " +
+        "non-Android builds because libvosk is Android-only.")]
+    private bool preloadVoskOnStart = true;
     [SerializeField] private float silenceStopSeconds = 1.75f;
     [SerializeField, Range(0f, 1f), Tooltip(
         "Volume threshold (0–1) above which a sample is treated as speech. " +
@@ -187,7 +231,15 @@ public class AIAVoskInputController : MonoBehaviour
     // Set true once a partial transcript routes a scene-transition command this session,
     // so subsequent partials don't double-trigger before recording stops.
     private bool _routedSceneVoiceThisSession;
+    private bool discardNextTranscriptionResult;
     private Coroutine initializationTimeoutCoroutine;
+    // Set true while we are preloading Vosk in the background. Causes
+    // HandleVoskStatusUpdated to swallow progress text ("Loading Model
+    // from: ...", "Decompressing model...") so we don't overwrite the
+    // AIA panel's idle copy. Failure statuses are NOT suppressed.
+    private bool suppressVoskStatusUpdates;
+    // Pending start triggered while a preload is still in flight.
+    private Coroutine pendingStartAfterPreloadCoroutine;
 
     private void Awake()
     {
@@ -203,12 +255,27 @@ public class AIAVoskInputController : MonoBehaviour
         ConfigureVosk();
 
         hasRecordPermission = MLPermissions.CheckPermission(MLPermission.RecordAudio).IsOk;
+
+        // Kick off the Vosk model decompress + load now, while the AIA
+        // panel is still showing its idle UI. The decompressed model
+        // lives under persistentDataPath and is reused across launches,
+        // so on warm starts this is just the (off-main-thread) Model
+        // mmap. Without preloading, the first record-press blocks the
+        // main thread long enough to blank the ML2 compositor.
+        TryPreloadVosk();
+
         RefreshButtonVisuals();
     }
 
     private void OnDestroy()
     {
         StopInitializationTimeout();
+
+        if (pendingStartAfterPreloadCoroutine != null)
+        {
+            StopCoroutine(pendingStartAfterPreloadCoroutine);
+            pendingStartAfterPreloadCoroutine = null;
+        }
 
         permissionCallbacks.OnPermissionGranted -= OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnPermissionDenied;
@@ -242,14 +309,30 @@ public class AIAVoskInputController : MonoBehaviour
     /// </summary>
     public void ToggleRecording()
     {
+        if (voiceIntents != null && !voiceIntents.IsLunaActive)
+        {
+            Debug.Log("[Luna] Recording button ignored because Luna is deactivated.");
+            return;
+        }
+
         if (!EnsureMicrophonePermission())
         {
             return;
         }
 
+        // Already recording — stop and submit. Same as before.
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            StopRecording();
+            return;
+        }
+
         if (isVoskInitializing)
         {
-            UpdateStatus("Vosk is still initializing...");
+            // A preload is in flight. Queue the start so the user doesn't
+            // have to press the button a second time once init completes.
+            UpdateStatus("Vosk is still loading — recording will start in a moment...");
+            QueueStartAfterPreload();
             return;
         }
 
@@ -259,14 +342,7 @@ public class AIAVoskInputController : MonoBehaviour
             return;
         }
 
-        if (voiceProcessor != null && voiceProcessor.IsRecording)
-        {
-            StopRecording();
-        }
-        else
-        {
-            StartRecording();
-        }
+        StartRecording();
     }
 
     /// <summary>
@@ -276,14 +352,14 @@ public class AIAVoskInputController : MonoBehaviour
     /// </summary>
     public void StartRecordingFromVoiceIntent()
     {
-        if (!EnsureMicrophonePermission())
+        if (voiceIntents != null && !voiceIntents.IsLunaActive)
         {
+            Debug.Log("[Luna] Hey Luna ignored because Luna is deactivated.");
             return;
         }
 
-        if (isVoskInitializing)
+        if (!EnsureMicrophonePermission())
         {
-            UpdateStatus("Vosk is still initializing...");
             return;
         }
 
@@ -291,6 +367,14 @@ public class AIAVoskInputController : MonoBehaviour
         {
             StopRecording();
             StartCoroutine(RestartRecordingNextFrame());
+            return;
+        }
+
+        if (isVoskInitializing)
+        {
+            // Preload still running — wait for it instead of bouncing
+            // the wake phrase. Matches the previous Codex preload fix.
+            QueueStartAfterPreload();
             return;
         }
 
@@ -310,6 +394,48 @@ public class AIAVoskInputController : MonoBehaviour
         {
             StartRecording();
         }
+    }
+
+    private void QueueStartAfterPreload()
+    {
+        if (pendingStartAfterPreloadCoroutine != null)
+        {
+            // Already waiting — don't stack multiple coroutines.
+            return;
+        }
+        pendingStartAfterPreloadCoroutine = StartCoroutine(StartRecordingWhenInitialized());
+    }
+
+    private IEnumerator StartRecordingWhenInitialized()
+    {
+        // Wait for preload to finish (or fail). isVoskInitializing flips
+        // false in HandleVoskStatusUpdated when we receive "Initialized"
+        // or any failure status.
+        while (isVoskInitializing)
+        {
+            yield return null;
+        }
+
+        pendingStartAfterPreloadCoroutine = null;
+
+        if (!isVoskInitialized)
+        {
+            // Preload failed — nothing more to do, the status text already
+            // shows the failure.
+            yield break;
+        }
+
+        if (voiceIntents != null && !voiceIntents.IsLunaActive)
+        {
+            yield break;
+        }
+
+        if (voiceProcessor != null && voiceProcessor.IsRecording)
+        {
+            yield break;
+        }
+
+        StartRecording();
     }
 
     private void TryResolveReferences()
@@ -429,6 +555,15 @@ public class AIAVoskInputController : MonoBehaviour
 
         hasRecordPermission = true;
 
+        // We may have preloaded Vosk before the mic permission was
+        // granted, in which case Microphone.devices was empty and
+        // VoiceProcessor's device list is stale. Refresh it now so the
+        // first StartRecording picks up the real headset mic.
+        if (voiceProcessor != null)
+        {
+            voiceProcessor.UpdateDevices();
+        }
+
         if (!pendingStartAfterPermission)
         {
             return;
@@ -450,22 +585,61 @@ public class AIAVoskInputController : MonoBehaviour
         RefreshButtonVisuals();
     }
 
-    private void InitializeVosk(bool startRecordingWhenReady)
+    private void TryPreloadVosk()
+    {
+        if (!preloadVoskOnStart)
+        {
+            return;
+        }
+
+        if (isVoskInitialized || isVoskInitializing)
+        {
+            return;
+        }
+
+        if (voskSpeechToText == null)
+        {
+            return;
+        }
+
+        // libvosk is Android-only — see VoskSpeechToText.IsVoskNativeAvailable.
+        // Calling StartVoskStt on the Mac Editor would still bail out
+        // safely via the gate inside VoskSpeechToText, but we avoid even
+        // logging a warning on author machines.
+        if (!VoskSpeechToText.IsVoskNativeAvailable)
+        {
+            return;
+        }
+
+        InitializeVosk(startRecordingWhenReady: false, showStatus: false);
+    }
+
+    private void InitializeVosk(bool startRecordingWhenReady, bool showStatus = true)
     {
         if (voskSpeechToText == null)
         {
-            UpdateStatus("Vosk speech recognizer is missing.");
+            if (showStatus)
+            {
+                UpdateStatus("Vosk speech recognizer is missing.");
+            }
             return;
         }
 
         try
         {
             isVoskInitializing = true;
-            UpdateStatus("Loading Vosk model...");
+            // Only suppress when caller asked AND we're not also starting
+            // the mic — once recording is starting, the user needs to see
+            // progress text.
+            suppressVoskStatusUpdates = !showStatus && !startRecordingWhenReady;
+            if (showStatus)
+            {
+                UpdateStatus("Loading Vosk model...");
+            }
             RefreshButtonVisuals();
 
             string safeModelPath = GetSafeVoskModelPath();
-            Debug.Log($"[Vosk] AIA initializing model path: {safeModelPath}");
+            Debug.Log($"[Vosk] AIA initializing model path: {safeModelPath} (preload={!startRecordingWhenReady})");
             StartInitializationTimeout();
 
             voskSpeechToText.StartVoskStt(
@@ -478,14 +652,24 @@ public class AIAVoskInputController : MonoBehaviour
         {
             Debug.LogError($"[Vosk] Failed to initialize: {exception}");
             isVoskInitializing = false;
+            suppressVoskStatusUpdates = false;
             StopInitializationTimeout();
-            UpdateStatus("Vosk initialization failed.");
+            if (showStatus)
+            {
+                UpdateStatus("Vosk initialization failed.");
+            }
             RefreshButtonVisuals();
         }
     }
 
     private void StartRecording()
     {
+        if (voiceIntents != null && !voiceIntents.IsLunaActive)
+        {
+            Debug.Log("[Luna] Vosk recording start ignored because Luna is deactivated.");
+            return;
+        }
+
         if (voskSpeechToText == null)
         {
             UpdateStatus("Vosk speech recognizer is missing.");
@@ -495,6 +679,7 @@ public class AIAVoskInputController : MonoBehaviour
         try
         {
             _routedSceneVoiceThisSession = false;
+            discardNextTranscriptionResult = false;
             peakAmplitudeThisSession = 0f;
 
             if (voiceIntents != null)
@@ -503,7 +688,7 @@ public class AIAVoskInputController : MonoBehaviour
             }
             else
             {
-                UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
+                UpdateStatus("Recording your question... Pause briefly or tap Stop.");
             }
 
             voskSpeechToText.ToggleRecording();
@@ -535,6 +720,32 @@ public class AIAVoskInputController : MonoBehaviour
         isRecording = false;
         CancelRecordingTimeouts();
         RefreshButtonVisuals();
+    }
+
+    public void CancelRecordingWithoutSubmit(string statusMessage = null)
+    {
+        if (voskSpeechToText == null || voiceProcessor == null || !voiceProcessor.IsRecording)
+        {
+            isRecording = false;
+            CancelRecordingTimeouts();
+            RefreshButtonVisuals();
+            if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                voiceIntents?.FailActiveRecording(statusMessage);
+            }
+            return;
+        }
+
+        discardNextTranscriptionResult = true;
+        voskSpeechToText.ToggleRecording();
+        isRecording = false;
+        CancelRecordingTimeouts();
+        RefreshButtonVisuals();
+
+        if (!string.IsNullOrWhiteSpace(statusMessage))
+        {
+            voiceIntents?.FailActiveRecording(statusMessage);
+        }
     }
 
     private void BeginRecordingTimeouts()
@@ -602,6 +813,7 @@ public class AIAVoskInputController : MonoBehaviour
         {
             isVoskInitializing = false;
             isVoskInitialized = true;
+            suppressVoskStatusUpdates = false;
             isRecording = voiceProcessor != null && voiceProcessor.IsRecording;
             if (isRecording)
             {
@@ -611,17 +823,39 @@ public class AIAVoskInputController : MonoBehaviour
                 }
                 else
                 {
-                    UpdateStatus("Recording your question... Pause for 2 seconds or tap Stop.");
+                    UpdateStatus("Recording your question... Pause briefly or tap Stop.");
                 }
             }
             StopInitializationTimeout();
         }
-        else if (!string.IsNullOrWhiteSpace(status))
+        else if (IsVoskFailureStatus(status))
+        {
+            // Failures should always surface, even if we asked to
+            // suppress the chatter during a preload.
+            isVoskInitializing = false;
+            suppressVoskStatusUpdates = false;
+            StopInitializationTimeout();
+            UpdateStatus(status);
+        }
+        else if (!string.IsNullOrWhiteSpace(status) && !suppressVoskStatusUpdates)
         {
             UpdateStatus(status);
         }
 
         RefreshButtonVisuals();
+    }
+
+    private static bool IsVoskFailureStatus(string status)
+    {
+        if (string.IsNullOrWhiteSpace(status))
+        {
+            return false;
+        }
+
+        return status.IndexOf("failed", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               status.IndexOf("could not", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               status.IndexOf("timed out", StringComparison.OrdinalIgnoreCase) >= 0 ||
+               status.IndexOf("not available", StringComparison.OrdinalIgnoreCase) >= 0;
     }
 
     private void HandleVoiceRecordingStop()
@@ -633,6 +867,19 @@ public class AIAVoskInputController : MonoBehaviour
 
     private void HandleTranscriptionResult(string rawJson)
     {
+        if (discardNextTranscriptionResult)
+        {
+            discardNextTranscriptionResult = false;
+            Debug.Log("[Vosk] Discarding final transcript because the recording was purged or Luna was deactivated.");
+            return;
+        }
+
+        if (voiceIntents != null && !voiceIntents.IsLunaActive)
+        {
+            Debug.Log("[Luna] Ignoring Vosk transcript because Luna is deactivated.");
+            return;
+        }
+
         try
         {
             var result = new RecognitionResult(rawJson);
@@ -714,7 +961,14 @@ public class AIAVoskInputController : MonoBehaviour
             }
 
             partialTranscript = NormalizeDomainTranscript(partialTranscript);
-            if (partialTranscript.IndexOf(SendRecordingCommand, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (ContainsCommandAlias(partialTranscript, PurgeRecordingCommands))
+            {
+                Debug.Log($"[Vosk] Purge-recording command detected in partial transcript: '{partialTranscript}'. Discarding recording.");
+                CancelRecordingWithoutSubmit("Recording purged.");
+                return;
+            }
+
+            if (ContainsCommandAlias(partialTranscript, SendRecordingCommands))
             {
                 Debug.Log($"[Vosk] Send-recording command detected in partial transcript: '{partialTranscript}'. Stopping recording.");
                 StopRecording();
@@ -746,6 +1000,24 @@ public class AIAVoskInputController : MonoBehaviour
         {
             Debug.LogWarning($"[Vosk] Failed to parse partial transcription result '{rawJson}': {exception}");
         }
+    }
+
+    private static bool ContainsCommandAlias(string transcript, string[] aliases)
+    {
+        if (string.IsNullOrWhiteSpace(transcript) || aliases == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < aliases.Length; i++)
+        {
+            if (transcript.IndexOf(aliases[i], StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static string NormalizeDomainTranscript(string transcript)
