@@ -147,7 +147,7 @@ public class TssVitalsOxygenMonitor : MonoBehaviour
             label = "HEART RATE", path = "telemetry.eva1.heart_rate",
             unit = " bpm", direction = AlertDirection.Range,
             warningThreshold = 60f, criticalThreshold = 50f,
-            warningThresholdHigh = 160f, criticalThresholdHigh = 160f, valueFormat = "F0",
+            warningThresholdHigh = 180f, criticalThresholdHigh = 180f, valueFormat = "F0",
             actionMessage = "Heart rate too high. Astronaut must slow down.",
             actionMessageLow = "Heart rate too low. Check astronaut condition." },
 
