@@ -241,6 +241,13 @@ public class VoiceIntents : MonoBehaviour
             Instance = null;
         }
 
+        // Tear down any in-flight Luna request so the native curl handle,
+        // SSL state, and socket fd are released. Without this, an app quit
+        // during an active Gemma call (or a singleton-replacement scenario)
+        // leaks those native resources — same crash vector as the
+        // QueueAiRequest cancel path, just at a different lifecycle moment.
+        TerminateActiveAiRequest("VoiceIntents.OnDestroy");
+
         permissionCallbacks.OnPermissionGranted -= OnPermissionGranted;
         permissionCallbacks.OnPermissionDenied -= OnPermissionDenied;
         permissionCallbacks.OnPermissionDeniedAndDontAskAgain -= OnPermissionDenied;
@@ -250,6 +257,43 @@ public class VoiceIntents : MonoBehaviour
             isVoiceEventSubscribed = false;
         }
         DisposeTextToSpeech();
+    }
+
+    private void OnApplicationQuit()
+    {
+        // Belt + suspenders for app shutdown. If the user quits the app
+        // mid-request, OnDestroy may not run before the native heap is
+        // torn down on some platforms. Releasing the curl handle here
+        // makes the shutdown path predictable on the ML2.
+        TerminateActiveAiRequest("VoiceIntents.OnApplicationQuit");
+    }
+
+    private void TerminateActiveAiRequest(string reasonTag)
+    {
+        if (activeAiRequest != null)
+        {
+            try { activeAiRequest.Abort(); }
+            catch (Exception abortException)
+            {
+                Debug.LogWarning($"[Luna] Aborting active AI request from {reasonTag} threw: {abortException.Message}");
+            }
+            try { activeAiRequest.Dispose(); }
+            catch (Exception disposeException)
+            {
+                Debug.LogWarning($"[Luna] Disposing active AI request from {reasonTag} threw: {disposeException.Message}");
+            }
+            activeAiRequest = null;
+        }
+
+        if (aiRequestCoroutine != null)
+        {
+            try { StopCoroutine(aiRequestCoroutine); }
+            catch (Exception stopException)
+            {
+                Debug.LogWarning($"[Luna] Stopping AI request coroutine from {reasonTag} threw: {stopException.Message}");
+            }
+            aiRequestCoroutine = null;
+        }
     }
 
     private void OnPermissionDenied(string permission)
@@ -525,13 +569,11 @@ public class VoiceIntents : MonoBehaviour
         }
 
         lunaActive = false;
-        activeAiRequest?.Abort();
-        activeAiRequest = null;
-        if (aiRequestCoroutine != null)
-        {
-            StopCoroutine(aiRequestCoroutine);
-            aiRequestCoroutine = null;
-        }
+        // StopCoroutine bypasses the SendPromptToAi `using` block, so we must
+        // dispose the native curl/SSL/socket resources ourselves. Centralized
+        // in TerminateActiveAiRequest so QueueAiRequest, DeactivateLuna, and
+        // OnDestroy stay consistent.
+        TerminateActiveAiRequest("DeactivateLuna");
 
         TryResolveAiaInputController();
         aiaInputController?.CancelRecordingWithoutSubmit();
@@ -720,14 +762,20 @@ public class VoiceIntents : MonoBehaviour
     {
         if (!lunaActive)
         {
-            Debug.Log("[Luna] Ignoring text prompt because Luna is deactivated.");
+            Debug.LogWarning(
+                "[Luna][Submit] SILENT-DROP: ignoring text prompt because Luna is deactivated. " +
+                $"Prompt: '{prompt}'");
+            // Surface a status so the user understands why Luna didn't reply.
             activeConversationTurn = null;
+            SetResponseStatus("Luna is deactivated. Say 'Activate Luna' to reactivate.");
             return;
         }
 
         if (!sendVoicePromptToAi)
         {
-            Debug.LogWarning("Text prompt received but AI forwarding is disabled.");
+            Debug.LogWarning(
+                "[Luna][Submit] Text prompt received but AI forwarding is disabled (sendVoicePromptToAi=false). " +
+                $"Prompt: '{prompt}'");
             CompleteActiveConversation("Luna AI forwarding is disabled.");
             return;
         }
@@ -735,7 +783,8 @@ public class VoiceIntents : MonoBehaviour
         string trimmedPrompt = prompt?.Trim();
         if (string.IsNullOrWhiteSpace(trimmedPrompt))
         {
-            Debug.LogWarning("[Luna] Ignoring empty text prompt.");
+            Debug.LogWarning(
+                $"[Luna][Submit] Ignoring empty text prompt (raw='{prompt}'). Surfacing failure to user.");
             FailActiveRecording("Luna could not hear a question.");
             return;
         }
@@ -744,6 +793,7 @@ public class VoiceIntents : MonoBehaviour
         {
             // A scene-transition coordinator consumed the prompt and queued a LoadScene.
             // We intentionally do NOT forward this transcript to Gemma.
+            Debug.Log($"[Luna][Submit] Scene-voice coordinator consumed prompt: '{trimmedPrompt}'.");
             CompleteActiveConversation("Loading next scene.");
             return;
         }
@@ -760,6 +810,7 @@ public class VoiceIntents : MonoBehaviour
         activeConversationTurn.lunaText = WaitingForResponsePlaceholder;
         transientStatus = DefaultResponsePlaceholder;
         RenderConversation();
+        Debug.Log($"[Luna][Submit] Rendered 'Sent to Luna / waiting for response' for prompt: '{trimmedPrompt}'.");
         QueueAiRequest(trimmedPrompt);
     }
 
@@ -789,10 +840,16 @@ public class VoiceIntents : MonoBehaviour
     {
         if (aiRequestCoroutine != null)
         {
+            // Critical: StopCoroutine kills the coroutine that owns the
+            // UnityWebRequest's `using` scope, so its Dispose() never runs
+            // and the native curl handle leaks. Centralized Abort+Dispose
+            // here so repeated cancellations during wind / flaky-network
+            // tests don't accumulate native handles (a candidate cause of
+            // the pre-send crash reported on ML2 when the orchestrator is
+            // online — long-lived requests have more state to leak per
+            // cancellation than the milliseconds-fast offline failures).
             Debug.Log("[Gemma] Cancelling previous in-flight AI request.");
-            activeAiRequest?.Abort();
-            activeAiRequest = null;
-            StopCoroutine(aiRequestCoroutine);
+            TerminateActiveAiRequest("QueueAiRequest");
         }
 
         aiRequestCoroutine = StartCoroutine(SendPromptToAi(prompt));
@@ -1288,6 +1345,14 @@ public class VoiceIntents : MonoBehaviour
             turnsToRender.Add(activeConversationTurn);
         }
 
+        // Status (e.g. "Vosk did not recognize that audio.", "Recording purged.",
+        // "Luna timed out after 30s.") is meaningful only when it differs from the
+        // idle placeholder. Anything else MUST be surfaced even when there are
+        // completed turns on screen — otherwise the user sees a frozen previous
+        // conversation and assumes their new utterance just stalled.
+        bool hasVisibleStatus = !string.IsNullOrWhiteSpace(transientStatus)
+                                && !string.Equals(transientStatus, DefaultResponsePlaceholder, StringComparison.Ordinal);
+
         if (turnsToRender.Count == 0)
         {
             UpdateResponseTextBox(string.IsNullOrWhiteSpace(transientStatus) ? DefaultResponsePlaceholder : transientStatus);
@@ -1319,6 +1384,15 @@ public class VoiceIntents : MonoBehaviour
                 builder.AppendLine();
                 builder.AppendLine();
             }
+        }
+
+        if (hasVisibleStatus)
+        {
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.AppendLine();
+            builder.Append("[Status] ");
+            builder.Append(transientStatus);
         }
 
         UpdateResponseTextBox(builder.ToString());

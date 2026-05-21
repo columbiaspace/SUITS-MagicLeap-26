@@ -232,6 +232,11 @@ public class AIAVoskInputController : MonoBehaviour
     // so subsequent partials don't double-trigger before recording stops.
     private bool _routedSceneVoiceThisSession;
     private bool discardNextTranscriptionResult;
+    // Snapshot of the last non-empty partial transcript surfaced to the user
+    // (i.e. what they're actually seeing on screen). Used as a fallback when
+    // Vosk's FinalResult() comes back empty on a noisy/wind-affected utterance
+    // so the prompt that DID render still gets submitted to Luna.
+    private string _lastLivePartialTranscript = string.Empty;
     private Coroutine initializationTimeoutCoroutine;
     // Set true while we are preloading Vosk in the background. Causes
     // HandleVoskStatusUpdated to swallow progress text ("Loading Model
@@ -681,6 +686,7 @@ public class AIAVoskInputController : MonoBehaviour
             _routedSceneVoiceThisSession = false;
             discardNextTranscriptionResult = false;
             peakAmplitudeThisSession = 0f;
+            _lastLivePartialTranscript = string.Empty;
 
             if (voiceIntents != null)
             {
@@ -870,13 +876,17 @@ public class AIAVoskInputController : MonoBehaviour
         if (discardNextTranscriptionResult)
         {
             discardNextTranscriptionResult = false;
-            Debug.Log("[Vosk] Discarding final transcript because the recording was purged or Luna was deactivated.");
+            Debug.LogWarning(
+                "[Vosk][Submit] SILENT-DROP: discarding final transcript because the recording was purged or Luna was deactivated. " +
+                $"Raw JSON: {rawJson}");
             return;
         }
 
         if (voiceIntents != null && !voiceIntents.IsLunaActive)
         {
-            Debug.Log("[Luna] Ignoring Vosk transcript because Luna is deactivated.");
+            Debug.LogWarning(
+                "[Luna][Submit] SILENT-DROP: ignoring Vosk transcript because Luna is deactivated. " +
+                $"Raw JSON: {rawJson}");
             return;
         }
 
@@ -885,6 +895,11 @@ public class AIAVoskInputController : MonoBehaviour
             var result = new RecognitionResult(rawJson);
             if (result.Partial || result.Phrases == null || result.Phrases.Length == 0)
             {
+                Debug.LogWarning(
+                    $"[Vosk][Submit] SILENT-DROP: malformed final transcript " +
+                    $"(partial={result.Partial}, phrasesNull={result.Phrases == null}, " +
+                    $"phrasesLen={(result.Phrases == null ? 0 : result.Phrases.Length)}). Raw JSON: {rawJson}");
+                AttemptLivePartialFallback("Vosk returned no phrases.");
                 return;
             }
 
@@ -900,6 +915,16 @@ public class AIAVoskInputController : MonoBehaviour
                         ? "Mic was audible but Vosk did not recognize any words — try speaking closer to the headset or check the model is loaded."
                         : "Mic NEVER crossed the VAD threshold — check that the headset microphone is enabled, unmuted, and that no other process (e.g. MLVoice/Luna) is holding it. " +
                           "If peak stays near 0.0000, the mic is not capturing at all."));
+
+                // Wind / outdoor scenarios often produce an empty FinalResult()
+                // even though the partials we showed the user had real text.
+                // Treat the last live partial as authoritative — the user
+                // already saw it on screen, so failing to submit it leaves
+                // them looking at their own words with nothing happening.
+                if (TrySubmitFromLivePartial(reason: "FinalResult was empty"))
+                {
+                    return;
+                }
 
                 string userMessage = micWasHeard
                     ? "Vosk did not recognize that audio. Try speaking a bit closer or louder."
@@ -917,6 +942,28 @@ public class AIAVoskInputController : MonoBehaviour
             }
 
             transcript = NormalizeDomainTranscript(transcript);
+            // Strip trailing send/purge commands so "what is the procedure send recording"
+            // submits as "what is the procedure" instead of leaking the trigger phrase
+            // into the prompt.
+            transcript = StripTrailingControlCommand(transcript);
+            if (string.IsNullOrWhiteSpace(transcript))
+            {
+                Debug.LogWarning("[Vosk][Submit] Final transcript was nothing but a trailing control command; falling back to live partial.");
+                if (TrySubmitFromLivePartial(reason: "Final transcript was a control command only"))
+                {
+                    return;
+                }
+
+                if (voiceIntents != null)
+                {
+                    voiceIntents.FailActiveRecording("Luna heard the send command but no actual question.");
+                }
+                else
+                {
+                    UpdateStatus("Luna heard the send command but no actual question.");
+                }
+                return;
+            }
 
             if (logTranscripts)
             {
@@ -926,16 +973,59 @@ public class AIAVoskInputController : MonoBehaviour
             if (voiceIntents == null)
             {
                 UpdateStatus(transcript);
-                Debug.LogWarning("[Vosk] VoiceIntents reference is missing, so transcript was not forwarded to Luna.");
+                Debug.LogWarning("[Vosk][Submit] SILENT-DROP: VoiceIntents reference is missing, so transcript was not forwarded to Luna.");
                 return;
             }
 
+            Debug.Log($"[Vosk][Submit] Forwarding transcript to Luna: '{transcript}'");
             voiceIntents.SubmitPromptFromText(transcript);
         }
         catch (Exception exception)
         {
             Debug.LogError($"[Vosk] Failed to parse transcription result '{rawJson}': {exception}");
             UpdateStatus("Vosk transcription failed.");
+        }
+    }
+
+    private bool TrySubmitFromLivePartial(string reason)
+    {
+        string fallback = _lastLivePartialTranscript?.Trim();
+        if (string.IsNullOrWhiteSpace(fallback))
+        {
+            return false;
+        }
+
+        fallback = NormalizeDomainTranscript(fallback);
+        fallback = StripTrailingControlCommand(fallback);
+        if (string.IsNullOrWhiteSpace(fallback))
+        {
+            return false;
+        }
+
+        if (voiceIntents == null)
+        {
+            UpdateStatus(fallback);
+            Debug.LogWarning(
+                $"[Vosk][Submit] Live-partial fallback ('{reason}') succeeded but VoiceIntents is null; " +
+                "displaying transcript without forwarding to Luna.");
+            return true;
+        }
+
+        Debug.Log($"[Vosk][Submit] Live-partial fallback ('{reason}'): forwarding to Luna: '{fallback}'");
+        voiceIntents.SubmitPromptFromText(fallback);
+        return true;
+    }
+
+    private void AttemptLivePartialFallback(string reason)
+    {
+        if (TrySubmitFromLivePartial(reason))
+        {
+            return;
+        }
+
+        if (voiceIntents != null)
+        {
+            voiceIntents.FailActiveRecording("Vosk did not return a transcript.");
         }
     }
 
@@ -961,14 +1051,22 @@ public class AIAVoskInputController : MonoBehaviour
             }
 
             partialTranscript = NormalizeDomainTranscript(partialTranscript);
-            if (ContainsCommandAlias(partialTranscript, PurgeRecordingCommands))
+            // Cache the last partial we believe the user is actually seeing,
+            // so HandleTranscriptionResult can fall back to it if Vosk's
+            // FinalResult() comes back empty (common in wind / outdoor noise).
+            _lastLivePartialTranscript = partialTranscript;
+
+            // End-of-utterance match only. Substring-IndexOf was matching
+            // Vosk's wind hallucinations like "verge recording" against the
+            // "urge recording" purge alias and silently nuking the prompt.
+            if (EndsWithCommandAlias(partialTranscript, PurgeRecordingCommands))
             {
                 Debug.Log($"[Vosk] Purge-recording command detected in partial transcript: '{partialTranscript}'. Discarding recording.");
                 CancelRecordingWithoutSubmit("Recording purged.");
                 return;
             }
 
-            if (ContainsCommandAlias(partialTranscript, SendRecordingCommands))
+            if (EndsWithCommandAlias(partialTranscript, SendRecordingCommands))
             {
                 Debug.Log($"[Vosk] Send-recording command detected in partial transcript: '{partialTranscript}'. Stopping recording.");
                 StopRecording();
@@ -1002,22 +1100,183 @@ public class AIAVoskInputController : MonoBehaviour
         }
     }
 
-    private static bool ContainsCommandAlias(string transcript, string[] aliases)
+    private static readonly char[] CommandTokenSeparators = new[] { ' ', '\t', '\n', '\r' };
+
+    private static string[] TokenizeForMatch(string text)
     {
-        if (string.IsNullOrWhiteSpace(transcript) || aliases == null)
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            return Array.Empty<string>();
+        }
+
+        // Normalize: lowercase + collapse non-alphanumerics to spaces. This
+        // matches what NormalizeForMatch elsewhere in the codebase does and
+        // means "send-recording," / "send recording!" all tokenize the same.
+        string normalized = Regex.Replace(text.ToLowerInvariant(), "[^a-z0-9]+", " ").Trim();
+        if (string.IsNullOrEmpty(normalized))
+        {
+            return Array.Empty<string>();
+        }
+
+        return normalized.Split(CommandTokenSeparators, StringSplitOptions.RemoveEmptyEntries);
+    }
+
+    private static bool EndsWithCommandAlias(string transcript, string[] aliases)
+    {
+        if (string.IsNullOrWhiteSpace(transcript) || aliases == null || aliases.Length == 0)
+        {
+            return false;
+        }
+
+        string[] transcriptTokens = TokenizeForMatch(transcript);
+        if (transcriptTokens.Length == 0)
         {
             return false;
         }
 
         for (int i = 0; i < aliases.Length; i++)
         {
-            if (transcript.IndexOf(aliases[i], StringComparison.OrdinalIgnoreCase) >= 0)
+            string[] aliasTokens = TokenizeForMatch(aliases[i]);
+            if (aliasTokens.Length == 0 || aliasTokens.Length > transcriptTokens.Length)
+            {
+                continue;
+            }
+
+            int offset = transcriptTokens.Length - aliasTokens.Length;
+            bool match = true;
+            for (int j = 0; j < aliasTokens.Length; j++)
+            {
+                if (!string.Equals(transcriptTokens[offset + j], aliasTokens[j], StringComparison.Ordinal))
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match)
             {
                 return true;
             }
         }
 
         return false;
+    }
+
+    /// <summary>
+    /// If <paramref name="transcript"/> ends with one of the send/purge command
+    /// aliases (word-boundary, end-of-utterance), removes those trailing tokens.
+    /// Used to clean Vosk's final transcript before sending to Luna so the
+    /// trigger phrase doesn't pollute the prompt.
+    /// </summary>
+    private static string StripTrailingControlCommand(string transcript)
+    {
+        if (string.IsNullOrWhiteSpace(transcript))
+        {
+            return transcript;
+        }
+
+        // Try send aliases then purge aliases. We strip the LONGEST alias that
+        // matches at the end so "send the recording" beats "send recording".
+        string[] allAliases = new string[SendRecordingCommands.Length + PurgeRecordingCommands.Length];
+        Array.Copy(SendRecordingCommands, 0, allAliases, 0, SendRecordingCommands.Length);
+        Array.Copy(PurgeRecordingCommands, 0, allAliases, SendRecordingCommands.Length, PurgeRecordingCommands.Length);
+
+        string[] transcriptTokens = TokenizeForMatch(transcript);
+        if (transcriptTokens.Length == 0)
+        {
+            return transcript;
+        }
+
+        int bestStripCount = 0;
+        for (int i = 0; i < allAliases.Length; i++)
+        {
+            string[] aliasTokens = TokenizeForMatch(allAliases[i]);
+            if (aliasTokens.Length == 0 || aliasTokens.Length > transcriptTokens.Length)
+            {
+                continue;
+            }
+
+            int offset = transcriptTokens.Length - aliasTokens.Length;
+            bool match = true;
+            for (int j = 0; j < aliasTokens.Length; j++)
+            {
+                if (!string.Equals(transcriptTokens[offset + j], aliasTokens[j], StringComparison.Ordinal))
+                {
+                    match = false;
+                    break;
+                }
+            }
+
+            if (match && aliasTokens.Length > bestStripCount)
+            {
+                bestStripCount = aliasTokens.Length;
+            }
+        }
+
+        if (bestStripCount == 0)
+        {
+            return transcript;
+        }
+
+        // We can't simply join transcriptTokens because that loses the original
+        // casing / punctuation that NormalizeDomainTranscript applied. Instead,
+        // walk the original transcript backwards and snip off whitespace +
+        // word groups equal to bestStripCount.
+        return TrimTrailingWords(transcript, bestStripCount);
+    }
+
+    private static string TrimTrailingWords(string transcript, int wordsToTrim)
+    {
+        if (string.IsNullOrEmpty(transcript) || wordsToTrim <= 0)
+        {
+            return transcript;
+        }
+
+        int endIndex = transcript.Length;
+        int trimmedWords = 0;
+        bool insideWord = false;
+
+        for (int i = transcript.Length - 1; i >= 0; i--)
+        {
+            char c = transcript[i];
+            bool isWordChar = char.IsLetterOrDigit(c);
+
+            if (isWordChar)
+            {
+                if (!insideWord)
+                {
+                    insideWord = true;
+                }
+                endIndex = i;
+            }
+            else
+            {
+                if (insideWord)
+                {
+                    trimmedWords++;
+                    insideWord = false;
+                    if (trimmedWords >= wordsToTrim)
+                    {
+                        // endIndex currently points at the start of the
+                        // most-recently-trimmed word. Anything before the
+                        // current non-word character is what we keep.
+                        return transcript.Substring(0, endIndex).TrimEnd();
+                    }
+                }
+            }
+        }
+
+        if (insideWord)
+        {
+            trimmedWords++;
+        }
+
+        if (trimmedWords <= wordsToTrim)
+        {
+            return string.Empty;
+        }
+
+        return transcript.Substring(0, endIndex).TrimEnd();
     }
 
     private static string NormalizeDomainTranscript(string transcript)
