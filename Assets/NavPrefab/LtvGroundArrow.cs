@@ -21,6 +21,8 @@ public class LtvGroundArrow : MonoBehaviour
     [Header("Voice path")]
     [Tooltip("Meters along the TSS polyline ahead of EVA used to pick the segment bearing.")]
     [SerializeField] private float lookAheadMeters = 1.5f;
+    [Tooltip("Max distance from route (m) to use look-ahead tangent; otherwise bearing points at path goal.")]
+    [SerializeField] private float onPathMaxDistanceMeters = 12f;
 
     [Header("LTV target (TSS metres) — used when no voice path is active")]
     [Tooltip("Default: LTV Task Board Alpha per NASA SUITS rock-yard coordinates.")]
@@ -41,15 +43,12 @@ public class LtvGroundArrow : MonoBehaviour
     [Header("Orientation")]
     [Tooltip("Mesh that spins toward the path / LTV. Defaults to this object, or the first child MeshRenderer.")]
     [SerializeField] private Transform arrowVisual;
-    [Tooltip("When true, EVA IMU heading from TSS. When false, yaw of followTransform.")]
-    [SerializeField] private bool useTssHeading = true;
-    [Tooltip("When true, arrow points in world path direction (TSS bearing). When false, subtracts body heading (compass-style).")]
-    [SerializeField] private bool useWorldSpaceBearing = true;
     [Tooltip("Extra Y rotation if the quad mesh / texture forward axis needs tuning.")]
     [SerializeField] private float meshYawOffsetDegrees = 0f;
 
     [Header("Debug")]
-    [SerializeField] private bool useTssData = true;
+    [Tooltip("When true, live TSS IMU heading and position. When false, uses the debug overrides below.")]
+    [SerializeField] private bool useTssHeading = true;
     [SerializeField] private float debugEvaX;
     [SerializeField] private float debugEvaY;
     [SerializeField] private float debugHeading;
@@ -67,8 +66,10 @@ public class LtvGroundArrow : MonoBehaviour
     private bool _loggedMissingEvaPose;
     private bool _loggedLookAheadFailure;
     private bool _loggedEmptyVoicePath;
+    private float _currentHeading;
     private float _lastRawEvaX;
     private float _lastRawEvaY;
+    private Transform _cameraParent;
 
     private void Awake()
     {
@@ -95,7 +96,8 @@ public class LtvGroundArrow : MonoBehaviour
             Debug.Log($"[LtvGroundArrow] Minimap linked ({minimap.name}). Voice path arrow enabled when nav is active.", this);
         }
 
-        if (tssApi == null) tssApi = TssUnityApiService.Instance;
+        // Always prefer the persistent singleton — see ARMinimapErica / Compass_script.
+        if (TssUnityApiService.Instance != null) tssApi = TssUnityApiService.Instance;
         if (tssApi == null) tssApi = FindObjectOfType<TssUnityApiService>();
 
         if (tssApi == null)
@@ -187,16 +189,20 @@ public class LtvGroundArrow : MonoBehaviour
             _meshRenderer.enabled = visible;
     }
 
+    private void EnsureParentedToCamera()
+    {
+        if (followTransform == null || _pivot == null) return;
+        if (_cameraParent == followTransform) return;
+
+        _pivot.SetParent(followTransform, false);
+        _cameraParent = followTransform;
+    }
+
     private void UpdatePlacement()
     {
-        Vector3 forward = Vector3.ProjectOnPlane(followTransform.forward, Vector3.up);
-        if (forward.sqrMagnitude < 1e-4f)
-            forward = followTransform.forward;
-
-        forward.Normalize();
-        Vector3 pos = followTransform.position + forward * forwardDistance;
-        pos.y = followTransform.position.y - heightBelowFollow;
-        _pivot.position = pos;
+        EnsureParentedToCamera();
+        // Local to headset: forward = +Z, down = -Y (matches prior world-space offset intent).
+        _pivot.localPosition = new Vector3(0f, -heightBelowFollow, forwardDistance);
     }
 
     private void UpdateRotation()
@@ -214,40 +220,24 @@ public class LtvGroundArrow : MonoBehaviour
 
         _loggedMissingEvaPose = false;
 
-        if (!useTssHeading)
-            heading = followTransform.eulerAngles.y;
-
         float bearing;
         string bearingSource;
         if (_mode == ArrowMode.FollowVoicePath)
         {
             IReadOnlyList<Vector2> path = minimap.VoiceNavPathTss;
-            if (!TryGetLookAheadPoint(path, evaX, evaY, lookAheadMeters, out Vector2 lookAhead, out float distToPath))
+            if (!TryComputePathBearing(path, evaX, evaY, lookAheadMeters, out bearing, out bearingSource))
             {
-                if (path != null && path.Count > 0)
+                if (!_loggedLookAheadFailure)
                 {
-                    Vector2 goal = path[path.Count - 1];
-                    bearing = BearingDegrees(evaX, evaY, goal.x, goal.y);
-                    bearingSource = $"fallback → goal ({goal.x:F0},{goal.y:F0})";
+                    _loggedLookAheadFailure = true;
+                    Debug.LogWarning(
+                        $"[LtvGroundArrow] Could not compute path bearing ({path?.Count ?? 0} pts).",
+                        this);
                 }
-                else
-                {
-                    if (!_loggedLookAheadFailure)
-                    {
-                        _loggedLookAheadFailure = true;
-                        Debug.LogWarning(
-                            $"[LtvGroundArrow] Could not pick look-ahead on path ({path?.Count ?? 0} pts).",
-                            this);
-                    }
-                    return;
-                }
+                return;
             }
-            else
-            {
-                _loggedLookAheadFailure = false;
-                bearing = BearingDegrees(evaX, evaY, lookAhead.x, lookAhead.y);
-                bearingSource = $"EVA→lookahead ({lookAhead.x:F0},{lookAhead.y:F0}) distToPath={distToPath:F1}m";
-            }
+
+            _loggedLookAheadFailure = false;
         }
         else
         {
@@ -258,10 +248,9 @@ public class LtvGroundArrow : MonoBehaviour
             bearingSource = $"LTV ({ltvX:F0},{ltvY:F0})";
         }
 
-        float yaw = useWorldSpaceBearing
-            ? bearing + meshYawOffsetDegrees
-            : NormalizeAngle(bearing - heading) + meshYawOffsetDegrees;
-
+        // Body-relative: turn from TSS heading to route bearing (same convention as minimap icon).
+        float relative = NormalizeAngle(bearing - heading);
+        float yaw = relative + meshYawOffsetDegrees;
         ApplyArrowYaw(yaw);
 
         _logTimer += Time.deltaTime;
@@ -276,23 +265,33 @@ public class LtvGroundArrow : MonoBehaviour
                 distToGoal = Vector2.Distance(new Vector2(evaX, evaY), goal);
             }
 
-            string coordLog = useTssData
+            string coordLog = useTssHeading
                 ? EvaTssCoordinateAdjust.FormatPositionLog(_lastRawEvaX, _lastRawEvaY)
                 : $"debug eva ({evaX:F1}, {evaY:F1})";
 
             Debug.Log(
                 $"[LtvGroundArrow] mode={modeLabel} {coordLog}  heading={heading:F1}°  " +
-                $"bearing={bearing:F1}° ({bearingSource}) worldBearing={useWorldSpaceBearing} yaw={yaw:F1}°  " +
+                $"bearing={bearing:F1}° ({bearingSource}) rel={relative:F1}° localYaw={yaw:F1}°  " +
+                $"source={(useTssHeading ? "TSS" : "debug")}  " +
                 (distToGoal > 0f ? $"distToGoal≈{distToGoal:F1}m" : ""),
                 this);
         }
+    }
+
+    /// <summary>Same heading read as <see cref="Compass_script"/>.</summary>
+    private float ReadTssHeading()
+    {
+        if (tssApi != null && tssApi.TryGetImuHeading(evaId, out float heading))
+            return heading;
+
+        return _currentHeading;
     }
 
     private bool TryReadEvaPose(out float evaX, out float evaY, out float heading)
     {
         evaX = evaY = heading = 0f;
 
-        if (!useTssData)
+        if (!useTssHeading)
         {
             evaX = debugEvaX;
             evaY = debugEvaY;
@@ -300,23 +299,10 @@ public class LtvGroundArrow : MonoBehaviour
             return true;
         }
 
-        if (minimap != null && tssApi != null)
-        {
-            Dictionary<string, object> imuForLog = GetImuEvaBucket();
-            if (imuForLog != null)
-            {
-                _lastRawEvaX = (float)ToDouble(imuForLog, "posx");
-                _lastRawEvaY = (float)ToDouble(imuForLog, "posy");
-                Vector2 pos = minimap.GetEvaTssPosition();
-                evaX = pos.x;
-                evaY = pos.y;
-                if (!tssApi.TryGetImuHeading(evaId, out heading))
-                    heading = 0f;
-                return true;
-            }
-        }
-
         if (tssApi == null) return false;
+
+        heading = ReadTssHeading();
+        _currentHeading = heading;
 
         Dictionary<string, object> imuEva = GetImuEvaBucket();
         if (imuEva == null) return false;
@@ -326,8 +312,6 @@ public class LtvGroundArrow : MonoBehaviour
         Vector2 adjusted = EvaTssCoordinateAdjust.Apply(_lastRawEvaX, _lastRawEvaY);
         evaX = adjusted.x;
         evaY = adjusted.y;
-        if (!tssApi.TryGetImuHeading(evaId, out heading))
-            heading = 0f;
         return true;
     }
 
@@ -335,16 +319,55 @@ public class LtvGroundArrow : MonoBehaviour
     {
         Quaternion arrowRot = Quaternion.Euler(90f, yawDegrees, 0f);
         if (arrowVisual == _pivot)
-            _pivot.rotation = arrowRot;
+            _pivot.localRotation = arrowRot;
         else
         {
-            _pivot.rotation = Quaternion.identity;
-            arrowVisual.rotation = arrowRot;
+            _pivot.localRotation = Quaternion.identity;
+            arrowVisual.localRotation = arrowRot;
         }
     }
 
+    /// <summary>
+    /// Bearing toward path goal (changes per LTV1/LTV2/base). Uses look-ahead only when EVA is on the route.
+    /// </summary>
+    private bool TryComputePathBearing(
+        IReadOnlyList<Vector2> path, float evaX, float evaY, float lookAheadMeters,
+        out float bearing, out string source)
+    {
+        bearing = 0f;
+        source = string.Empty;
+        if (path == null || path.Count < 1) return false;
+
+        Vector2 goal = path[path.Count - 1];
+        float bearingToGoal = BearingDegrees(evaX, evaY, goal.x, goal.y);
+
+        if (path.Count < 2)
+        {
+            bearing = bearingToGoal;
+            source = $"→ goal ({goal.x:F0},{goal.y:F0})";
+            return true;
+        }
+
+        float distToPath = float.MaxValue;
+        if (TryGetLookAheadPoint(path, evaX, evaY, lookAheadMeters, out Vector2 lookAhead, out distToPath)
+            && distToPath <= onPathMaxDistanceMeters)
+        {
+            bearing = BearingDegrees(evaX, evaY, lookAhead.x, lookAhead.y);
+            source = $"EVA→lookahead ({lookAhead.x:F0},{lookAhead.y:F0}) onPath={distToPath:F1}m";
+            return true;
+        }
+
+        bearing = bearingToGoal;
+        source = distToPath < float.MaxValue
+            ? $"EVA→goal ({goal.x:F0},{goal.y:F0}) offPath={distToPath:F0}m"
+            : $"EVA→goal ({goal.x:F0},{goal.y:F0})";
+        return true;
+    }
+
+    /// <summary>IMU bucket for <see cref="evaId"/> — same path as <see cref="TssUnityApiService.TryGetImuHeading"/>.</summary>
     private Dictionary<string, object> GetImuEvaBucket()
     {
+        if (tssApi == null) return null;
         Dictionary<string, object> eva = tssApi.GetEva();
         if (eva == null || !eva.TryGetValue("imu", out object imuObj))
             return null;
