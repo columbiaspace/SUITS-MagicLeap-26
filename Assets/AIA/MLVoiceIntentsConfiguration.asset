@@ -41,7 +41,7 @@ MonoBehaviour:
   - Id: 113
     Value: end ltv repair
   - Id: 114
-    Value: clear display
+    Value: remove display
   - Id: 115
     Value: show display
   - Id: 116

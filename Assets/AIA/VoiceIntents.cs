@@ -40,7 +40,7 @@ public class VoiceIntents : MonoBehaviour
     private const uint DeactivateLunaEventId = 128;
     private const uint ActivateLunaEventId = 129;
 
-    /// <summary>Fires when the MLVoice "clear display" phrase is detected. Hides the HUD.</summary>
+    /// <summary>Fires when the MLVoice "remove display" phrase is detected. Hides the HUD.</summary>
     public static event Action HudClearDisplayRequested;
     /// <summary>Fires when the MLVoice "show display" phrase is detected. Shows the HUD.</summary>
     public static event Action HudShowDisplayRequested;
@@ -388,7 +388,7 @@ public class VoiceIntents : MonoBehaviour
                 break;
 
             case HudClearDisplayEventId:
-                Debug.Log("[HUD] 'clear display' phrase detected");
+                Debug.Log("[HUD] 'remove display' phrase detected");
                 HudClearDisplayRequested?.Invoke();
                 break;
 
