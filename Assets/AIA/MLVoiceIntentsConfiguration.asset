@@ -68,6 +68,110 @@ MonoBehaviour:
     Value: deactivate luna | de activate luna | disable luna | turn off luna | luna off | mute luna | stop luna
   - Id: 129
     Value: activate luna | act if ate luna | enable luna | turn on luna | luna on | resume luna | start luna
+  - Id: 130
+    Value: please luna what is my oxygen | please luna what is my oxygen status | please luna check my oxygen | please luna oxygen status | please luna give me oxygen status | please luna how is my oxygen | please luna read my oxygen | please luna what are my o2 levels | please luna check o2 | please luna o2 status
+  - Id: 131
+    Value: please luna what is my oxygen pressure | please luna what is my o2 pressure | please luna check oxygen pressure | please luna check o2 pressure | please luna read oxygen pressure | please luna read o2 pressure | please luna oxygen tank pressure | please luna primary and secondary oxygen pressure | please luna what is my tank pressure
+  - Id: 132
+    Value: please luna what is my battery | please luna what is my battery status | please luna check my battery | please luna battery status | please luna give me battery status | please luna how are my batteries | please luna read my batteries | please luna primary and secondary battery | please luna what is my power level
+  - Id: 133
+    Value: please luna what is my co2 | please luna what is my carbon dioxide | please luna what is my carbon dioxide status | please luna check co2 | please luna co2 status | please luna read my co2 | please luna helmet co2 status | please luna suit co2 status | please luna is co2 nominal
+  - Id: 134
+    Value: please luna what is my heart rate | please luna check my heart rate | please luna read my heart rate | please luna heart rate status | please luna what is my pulse | please luna check my pulse | please luna give me heart rate | please luna how is my heart rate
+  - Id: 135
+    Value: please luna what is my temperature | please luna what is my suit temperature | please luna check my temperature | please luna check suit temperature | please luna temperature status | please luna thermal status | please luna am i overheating | please luna read my temperature
+  - Id: 136
+    Value: please luna what is my suit pressure | please luna check suit pressure | please luna suit pressure status | please luna read suit pressure | please luna pressure status | please luna is suit pressure nominal | please luna what is total suit pressure | please luna what is oxygen suit pressure
+  - Id: 137
+    Value: please luna what is my coolant | please luna what is my coolant status | please luna check coolant | please luna coolant status | please luna read coolant | please luna how is coolant storage | please luna what is coolant pressure | please luna cooling status
+  - Id: 138
+    Value: please luna what is my fan status | please luna check fan status | please luna check fans | please luna read fan rpm | please luna primary fan status | please luna secondary fan status | please luna are fans nominal | please luna fan rpm status
+  - Id: 139
+    Value: please luna what is my co2 scrubber | please luna what is my co2 scrubber status | please luna check scrubbers | please luna scrubber status | please luna read scrubber storage | please luna co2 scrubbers nominal | please luna which scrubber should i use | please luna check carbon dioxide scrubbers
+  - Id: 140
+    Value: please luna give me my vitals | please luna give me my vitals summary | please luna summarize my vitals | please luna check vitals | please luna read vitals | please luna vital status | please luna suit vitals summary | please luna quick vitals check
+  - Id: 141
+    Value: please luna is my suit nominal | please luna is my suit telemetry nominal | please luna check telemetry nominal | please luna telemetry status | please luna is anything off nominal | please luna tell me if anything is wrong | please luna suit health check | please luna all systems status
+  - Id: 142
+    Value: please luna what consumables are low | please luna check consumables | please luna consumables status | please luna what resources are low | please luna check resources | please luna oxygen and battery reserves | please luna remaining consumables | please luna do i have low consumables
+  - Id: 143
+    Value: please luna what is my coordinate | please luna what is my current coordinate | please luna current coordinate | please luna where am i | please luna read my position | please luna what is my eva coordinate | please luna give me my coordinates | please luna current location
+  - Id: 144
+    Value: please luna what is my ltv coordinate | please luna what are the ltv coordinates | please luna ltv coordinate | please luna where is the ltv | please luna give me ltv position | please luna read ltv coordinate | please luna what is the ltv location | please luna find the ltv coordinate
+  - Id: 145
+    Value: please luna what is ltv alpha coordinate | please luna what is the coordinate of ltv alpha | please luna ltv alpha coordinate | please luna where is alpha board | please luna alpha task board coordinate | please luna give me alpha ltv position | please luna where is ltv one | please luna ltv one coordinate
+  - Id: 146
+    Value: please luna what is ltv bravo coordinate | please luna what is the coordinate of ltv bravo | please luna ltv bravo coordinate | please luna where is bravo board | please luna bravo task board coordinate | please luna give me bravo ltv position | please luna where is ltv two | please luna ltv two coordinate
+  - Id: 147
+    Value: please luna how far am i from the ltv | please luna distance to ltv | please luna what is my distance to the ltv | please luna how far to the task board | please luna distance to task board | please luna range to ltv | please luna how many meters to ltv | please luna am i close to the ltv
+  - Id: 148
+    Value: please luna what bearing to the ltv | please luna what bearing should i follow to the ltv | please luna bearing to ltv | please luna heading to ltv | please luna direction to ltv | please luna point me toward the ltv | please luna navigation bearing to ltv | please luna guide heading to ltv
+  - Id: 149
+    Value: please luna how far am i from base | please luna distance to base | please luna what is my distance to base | please luna how far to the hab | please luna distance to hab | please luna range to base | please luna how many meters to base | please luna am i close to base
+  - Id: 150
+    Value: please luna what bearing to base | please luna what bearing should i follow to base | please luna bearing to base | please luna heading to base | please luna direction to base | please luna point me toward base | please luna navigation bearing to hab | please luna guide heading home
+  - Id: 151
+    Value: please luna guide me back to base | please luna navigate me to base | please luna return me to base | please luna guide me home | please luna help me return to the hab | please luna route me to base | please luna take me back to base | please luna get me home
+  - Id: 152
+    Value: please luna is my route safe | please luna check my route | please luna check path safety | please luna is this path safe | please luna are there hazards ahead | please luna check keep out zones on my route | please luna validate my route | please luna should i avoid this path
+  - Id: 153
+    Value: please luna where is the nearest keep out zone | please luna nearest keep out zone | please luna locate keep out zone | please luna am i near a keep out zone | please luna check nearby hazards | please luna where are the keep out zones | please luna warn me about keep out zones | please luna hazard zone check
+  - Id: 154
+    Value: please luna what is my next navigation step | please luna next navigation step | please luna where should i go next | please luna what direction next | please luna give me next nav step | please luna navigation next step | please luna guide next movement | please luna what is the next waypoint
+  - Id: 155
+    Value: please luna how long to reach the ltv | please luna eta to ltv | please luna time to ltv | please luna how much time to the task board | please luna estimate time to ltv | please luna travel time to ltv | please luna minutes to ltv | please luna ltv arrival estimate
+  - Id: 156
+    Value: please luna how long to return to base | please luna eta to base | please luna time to base | please luna how much time to the hab | please luna estimate time home | please luna travel time to base | please luna minutes to base | please luna base arrival estimate
+  - Id: 157
+    Value: please luna what is first step in ingress | please luna what is the first step in ingress | please luna first ingress step | please luna start ingress guidance | please luna ingress first step | please luna how do i start ingress | please luna begin ingress procedure | please luna ingress step one
+  - Id: 158
+    Value: please luna what is next step in ingress | please luna what is the next ingress step | please luna next ingress step | please luna continue ingress | please luna guide ingress next step | please luna ingress procedure next | please luna what do i do next for ingress | please luna next step for ingress
+  - Id: 159
+    Value: please luna what is first step in egress | please luna what is the first step in egress | please luna first egress step | please luna start egress guidance | please luna egress first step | please luna how do i start egress | please luna begin egress procedure | please luna egress step one
+  - Id: 160
+    Value: please luna what is next step in egress | please luna what is the next egress step | please luna next egress step | please luna continue egress | please luna guide egress next step | please luna egress procedure next | please luna what do i do next for egress | please luna next step for egress
+  - Id: 161
+    Value: please luna what is the depress step | please luna depress step | please luna guide depress | please luna how do i depress | please luna depress procedure | please luna airlock depress step | please luna what switch for depress | please luna begin depress guidance
+  - Id: 162
+    Value: please luna what is oxygen prep step | please luna what is the oxygen prep step | please luna oxygen prep | please luna guide oxygen prep | please luna prepare oxygen tanks | please luna fill oxygen step | please luna o2 prep step | please luna tank prep procedure
+  - Id: 163
+    Value: please luna what is coolant prep step | please luna what is the coolant prep step | please luna coolant prep | please luna guide coolant prep | please luna prepare coolant | please luna coolant fill step | please luna water supply step | please luna cooling prep procedure
+  - Id: 164
+    Value: please luna how do i connect the umbilical | please luna connect umbilical | please luna umbilical connection step | please luna guide umbilical connect | please luna connect ev one umbilical | please luna uia dcu connect step | please luna how to attach umbilical | please luna ingress umbilical connect
+  - Id: 165
+    Value: please luna how do i disconnect the umbilical | please luna disconnect umbilical | please luna umbilical disconnect step | please luna guide umbilical disconnect | please luna disconnect ev one umbilical | please luna uia dcu disconnect step | please luna how to detach umbilical | please luna egress umbilical disconnect
+  - Id: 166
+    Value: please luna what is the current mission phase | please luna current mission phase | please luna what phase are we in | please luna mission phase status | please luna where are we in the eva | please luna eva phase check | please luna what part of the mission is this | please luna phase update
+  - Id: 167
+    Value: please luna what should i do next | please luna next action | please luna give me next action | please luna what is my next task | please luna next mission step | please luna advise next step | please luna what is next | please luna guide my next action
+  - Id: 168
+    Value: please luna how much time is left | please luna time remaining | please luna mission time remaining | please luna eva time left | please luna check timeline | please luna timeline status | please luna are we behind schedule | please luna how much eva time remains
+  - Id: 169
+    Value: please luna start exit recovery mode | please luna start exit recovery mode guidance | please luna begin erm | please luna guide erm | please luna exit recovery mode procedure | please luna help with erm | please luna start ltv recovery | please luna ltv recovery mode guidance
+  - Id: 170
+    Value: please luna what is next exit recovery mode step | please luna next exit recovery mode step | please luna next erm step | please luna continue erm | please luna guide next recovery step | please luna exit recovery mode next | please luna ltv recovery next step | please luna what comes after erm
+  - Id: 171
+    Value: please luna start nav restart | please luna start nav restart guidance | please luna begin nav restart | please luna guide nav restart | please luna navigation restart procedure | please luna start manual return to home | please luna guide manual return home | please luna nav restart procedure
+  - Id: 172
+    Value: please luna what is next nav restart step | please luna next nav restart step | please luna continue nav restart | please luna guide next nav step | please luna manual return home next step | please luna navigation restart next | please luna nav restart step two | please luna what comes next in nav restart
+  - Id: 173
+    Value: please luna diagnose the ltv | please luna run ltv diagnosis | please luna check ltv diagnostics | please luna diagnose rover | please luna check ltv health | please luna ltv status check | please luna what is wrong with the ltv | please luna start ltv diagnostics
+  - Id: 174
+    Value: please luna what ltv errors are active | please luna active ltv errors | please luna list ltv errors | please luna current ltv errors | please luna read ltv errors | please luna check active errors | please luna what errors does the ltv have | please luna ltv error status
+  - Id: 175
+    Value: please luna what is the highest priority ltv repair | please luna highest priority repair | please luna which ltv repair first | please luna triage ltv errors | please luna prioritize ltv repair | please luna what repair should i do first | please luna critical ltv repair | please luna choose next repair
+  - Id: 176
+    Value: please luna explain the current ltv error | please luna explain ltv error | please luna what does this ltv error mean | please luna decode ltv error | please luna interpret current error | please luna ltv error explanation | please luna explain the error code | please luna what does this error code mean
+  - Id: 177
+    Value: please luna where is the task board component | please luna find task board component | please luna locate component on task board | please luna where is that ltv panel | please luna identify task board part | please luna show me task board location | please luna where is the component | please luna help find the ltv component
+  - Id: 178
+    Value: please luna what does asits mean | please luna define asits | please luna explain asits | please luna what is asits | please luna what is a sits | please luna define a s i t s | please luna explain autonomous systems indicators toggle switch | please luna asits meaning
+  - Id: 179
+    Value: please luna what does pops mean | please luna define pops | please luna explain pops | please luna what is pops | please luna what is p o p s | please luna define p o p s | please luna explain power override panel for subsystems | please luna pops meaning
+  - Id: 180
+    Value: please luna what does ril mean | please luna define ril | please luna explain ril | please luna what is ril | please luna what is r i l | please luna define r i l | please luna explain reaction indicator light | please luna ril meaning
+  - Id: 181
+    Value: please luna what voice commands can i say | please luna list voice commands | please luna show voice commands | please luna what are the voice aliases | please luna exact voice commands | please luna headset voice commands | please luna what can i say | please luna command list
   AutoAllowAllSystemIntents: 0
   SystemCommands: 0
   SlotsForVoiceCommands: []

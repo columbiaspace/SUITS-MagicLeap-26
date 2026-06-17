@@ -101,7 +101,16 @@ public class VoiceProcessor : MonoBehaviour
     // rejecting room tone (which is usually well under 0.005).
     [SerializeField, Tooltip("The minimum volume to detect voice input for"), Range(0.0f, 1.0f)]
     private float _minimumSpeakingSampleValue = 0.009f;
-    private const float MinimumSpeakingRmsValue = 0.0025f;
+    // Raised from 0.0025 → 0.003 for outdoor / wind scenarios. Wind buffeting on
+    // the ML2 headset mic produces sustained low-energy noise that occasionally
+    // crests the peak-amplitude gate (a single sample can spike from a gust)
+    // but holds the per-frame RMS below true-speech levels (RMS for indoor
+    // speech reliably sits well above 0.005, room tone < 0.0015, wind hiss
+    // 0.0015–0.0028). Bumping the RMS floor to 0.003 rejects that wind band
+    // without clipping normal speech, which keeps Vosk from being fed long
+    // runs of pure-noise frames that it would otherwise hallucinate words
+    // for ("verge recording", etc.).
+    private const float MinimumSpeakingRmsValue = 0.003f;
 
     [SerializeField, Tooltip("Time in seconds of detected silence before voice request is sent")]
     private float _silenceTimer = 1.0f;
